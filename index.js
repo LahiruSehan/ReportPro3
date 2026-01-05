@@ -27,6 +27,8 @@ class ZohoStatementApp {
     document.addEventListener('DOMContentLoaded', () => {
       this.cacheDOM();
       this.bindEvents();
+      
+      // Order is critical: Check URL first, then existing session
       this.handleOAuthCallback();
       this.checkSession();
     });
@@ -37,7 +39,8 @@ class ZohoStatementApp {
       landing: document.getElementById('view-landing'),
       dashboard: document.getElementById('view-dashboard'),
       configModal: document.getElementById('modal-config'),
-      loading: document.getElementById('loading-overlay')
+      loading: document.getElementById('loading-overlay'),
+      landingError: document.getElementById('landing-error')
     };
     
     this.inputs = {
@@ -65,7 +68,8 @@ class ZohoStatementApp {
       emptyState: document.getElementById('empty-state'),
       orgName: document.getElementById('header-org-name'),
       log: document.getElementById('status-log'),
-      loadingText: document.getElementById('loading-text')
+      loadingText: document.getElementById('loading-text'),
+      landingErrorText: document.getElementById('landing-error-text')
     };
 
     // Set default dates (Current month)
@@ -108,19 +112,21 @@ class ZohoStatementApp {
     };
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleModal(false);
-    this.log("Config updated. Please ensure both Client ID and Org ID are correct.");
+    this.log("Config updated. Handshake will be re-attempted on next action.");
+    this.hideError();
   }
 
   startAuth() {
     if (!this.config.clientId || !this.config.orgId) {
-      alert("Missing Configuration! Please set your Client ID and Organization ID in 'Connection Settings' before authorizing.");
+      this.showError("Client ID and Organization ID must be set in Connection Settings before authorization.");
       this.toggleModal(true);
       return;
     }
     const redirectUri = window.location.origin + window.location.pathname;
     const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.settings.READ";
     const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
-    this.log(`Redirecting to Zoho Auth for region: ${this.config.region}`);
+    
+    this.log(`Redirecting to Zoho Identity Provider (${this.config.region})...`);
     window.location.href = authUrl;
   }
 
@@ -134,11 +140,12 @@ class ZohoStatementApp {
       if (token) {
         this.state.accessToken = token;
         localStorage.setItem('zoho_access_token', token);
+        // Clear hash so page reload doesn't trigger this again
         window.history.replaceState({}, document.title, window.location.pathname);
-        this.log("Access Token received and stored.");
+        this.log("OAuth token parsed successfully.");
       } else if (error) {
-        this.log(`Auth Error: ${error}`);
-        alert(`Authorization Failed: ${error}. Please check your Client ID and Redirect URI.`);
+        this.log(`OAuth Callback Error: ${error}`);
+        this.showError(`Zoho denied access: ${error}. Ensure your Client ID and Redirect URI match exactly in the Zoho API Console.`);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
@@ -146,22 +153,24 @@ class ZohoStatementApp {
 
   async checkSession() {
     if (this.state.accessToken) {
-      if (!this.config.orgId) {
-        this.log("Configuration missing: Organization ID is required.");
+      if (!this.config.orgId || !this.config.clientId) {
+        this.log("Incomplete configuration detected.");
         this.toggleModal(true);
         return;
       }
       
-      this.showLoading("Verifying Zoho Session...");
+      this.showLoading("Verifying Zoho Link...");
       const success = await this.fetchInitialData();
       
       if (success) {
         this.views.landing.classList.add('view-hidden');
         this.views.dashboard.classList.remove('view-hidden');
-        this.log("Session verified. Organization: " + (this.state.org ? this.state.org.name : 'Unknown'));
+        this.hideError();
       } else {
-        this.log("Session verification failed. Clearing tokens.");
-        this.logout(false); // Don't reload immediately to show the error in log
+        // Handshake failed, clear token but stay on landing to show error
+        this.log("Data handshake failed. Check Organization ID and Region.");
+        localStorage.removeItem('zoho_access_token');
+        this.state.accessToken = null;
       }
       this.hideLoading();
     }
@@ -169,27 +178,29 @@ class ZohoStatementApp {
 
   async fetchInitialData() {
     try {
-      this.log(`Attempting API handshake with Org ID: ${this.config.orgId}`);
+      this.log(`Probing Organization profile [${this.config.orgId}]...`);
       
-      // 1. Fetch Org Info
       const orgRes = await this.apiCall('settings/orgprofile');
       if (orgRes && orgRes.organization) {
         this.state.org = orgRes.organization;
         this.targets.orgName.innerText = this.state.org.name;
+        this.log(`Connected to: ${this.state.org.name}`);
       } else {
-        throw new Error("Could not retrieve organization profile. Verify your Org ID.");
+        throw new Error("Invalid profile response from Zoho.");
       }
 
-      // 2. Fetch Customers
+      this.log(`Syncing active customer registry...`);
       const custRes = await this.apiCall('contacts?contact_type=customer&status=active');
       if (custRes && custRes.contacts) {
         this.state.customers = custRes.contacts;
         this.populateCustomerSelect();
-        this.log(`Found ${this.state.customers.length} active customers.`);
+        this.log(`Retrieved ${this.state.customers.length} customers.`);
       }
       return true;
     } catch (e) {
-      this.log(`Verification Error: ${e.message}`);
+      let msg = e.message;
+      if (msg.includes("Organization")) msg = "Invalid Organization ID or Cross-Region mismatch. Check if your account is on .com, .eu, or .in.";
+      this.showError(msg);
       return false;
     }
   }
@@ -212,17 +223,19 @@ class ZohoStatementApp {
       });
       
       if (res.status === 401) {
-        this.log("API returned 401 Unauthorized. Token may have expired.");
-        throw new Error("Session expired");
+        throw new Error("Access Token is invalid or expired. Please re-authorize.");
       }
       
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `API Error ${res.status}`);
+        const errorData = await res.json().catch(() => ({ message: 'API Request Failed' }));
+        // Extract Zoho specific error message if available
+        const zohoMsg = errorData.message || errorData.error_msg || `Server Error ${res.status}`;
+        throw new Error(zohoMsg);
       }
       
       return await res.json();
     } catch (err) {
+      console.error("API Call Error:", err);
       throw err;
     }
   }
@@ -232,29 +245,32 @@ class ZohoStatementApp {
     const from = this.inputs.from.value;
     const to = this.inputs.to.value;
 
-    if (!customerId || !from || !to) {
-      alert("Please select a customer and date range.");
-      return;
-    }
+    if (!customerId) return alert("Select a customer first.");
+    if (!from || !to) return alert("Select a valid date range.");
 
-    this.showLoading("Filtering Outstanding Ledger...");
-    this.log(`Processing ${this.state.selectedCustomer.contact_name}...`);
+    this.showLoading("Synthesizing Ledger...");
+    this.log(`Aggregating data for ${this.state.selectedCustomer.contact_name}...`);
 
     try {
-      // Zoho filters: status=sent (open), overdue
+      // Fetch only Sent (Open) and Overdue invoices
       const invListRes = await this.apiCall(`invoices?customer_id=${customerId}&date_start=${from}&date_end=${to}&status=sent,overdue`);
       
       if (!invListRes || !invListRes.invoices || !invListRes.invoices.length) {
-        this.targets.renderArea.innerHTML = '<div class="p-20 text-center text-neutral-400">No outstanding invoices found for this period.</div>';
+        this.targets.renderArea.innerHTML = `
+          <div class="p-20 text-center space-y-4">
+            <div class="text-neutral-500 italic">No outstanding invoices found for the period:</div>
+            <div class="text-xs font-mono text-neutral-400">${from} to ${to}</div>
+          </div>
+        `;
         this.btns.download.disabled = true;
-        this.log("No matching invoices found.");
+        this.log("No outstanding balances found.");
         this.hideLoading();
         return;
       }
 
       const detailedInvoices = [];
       for (const inv of invListRes.invoices) {
-        this.showLoading(`Retrieving items: ${inv.invoice_number}`);
+        this.showLoading(`Expanding Line Items: ${inv.invoice_number}`);
         const detail = await this.apiCall(`invoices/${inv.invoice_id}`);
         if (detail && detail.invoice) detailedInvoices.push(detail.invoice);
       }
@@ -263,10 +279,10 @@ class ZohoStatementApp {
       this.renderStatementUI();
       this.btns.download.disabled = false;
       this.targets.emptyState.classList.add('view-hidden');
-      this.log(`Successfully mapped ${detailedInvoices.length} invoices.`);
+      this.log(`Mapped ${detailedInvoices.length} outstanding invoices.`);
     } catch (e) {
-      this.log(`Fetch Error: ${e.message}`);
-      alert(`Error generating statement: ${e.message}`);
+      this.log(`Error: ${e.message}`);
+      alert(`Statement Generation Failed: ${e.message}`);
     } finally {
       this.hideLoading();
     }
@@ -277,7 +293,6 @@ class ZohoStatementApp {
     const org = this.state.org;
     const customer = this.state.selectedCustomer;
     const totalDue = invoices.reduce((sum, inv) => sum + (inv.balance || 0), 0);
-    
     const activeCols = Array.from(document.querySelectorAll('#column-toggles input:checked')).map(i => i.dataset.col);
 
     let html = `
@@ -286,61 +301,61 @@ class ZohoStatementApp {
         <div class="flex justify-between items-start mb-10 pb-6 border-b-2 border-black">
           <div>
             <h1 class="text-3xl font-black uppercase tracking-tighter">${org.name}</h1>
-            <p class="text-[10px] text-neutral-600 uppercase font-bold tracking-widest mt-1">Outstanding Customer Statement</p>
+            <p class="text-[10px] text-neutral-600 uppercase font-bold tracking-widest mt-1">Outstanding Itemized Statement</p>
           </div>
           <div class="text-right">
             <p class="font-bold">Period</p>
-            <p class="text-neutral-600">${this.inputs.from.value} to ${this.inputs.to.value}</p>
+            <p class="text-neutral-600">${this.inputs.from.value} — ${this.inputs.to.value}</p>
           </div>
         </div>
 
-        <!-- Addresses -->
+        <!-- Meta Grid -->
         <div class="grid grid-cols-2 gap-10 mb-10">
           <div>
-            <h4 class="text-[9px] font-black uppercase text-neutral-400 mb-2">Statement To:</h4>
+            <h4 class="text-[9px] font-black uppercase text-neutral-400 mb-2">Billed To:</h4>
             <p class="text-lg font-black">${customer.contact_name}</p>
           </div>
           <div class="bg-neutral-50 p-4 border border-black/5">
              <div class="flex justify-between items-center mb-1">
-                <span class="text-[9px] font-black uppercase text-neutral-400">Total Outstanding</span>
+                <span class="text-[9px] font-black uppercase text-neutral-400">Net Balance Due</span>
                 <span class="text-xl font-black">$${totalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
              </div>
-             <p class="text-[8px] text-neutral-500 uppercase tracking-widest">Calculated across ${invoices.length} invoices</p>
+             <p class="text-[8px] text-neutral-500 uppercase tracking-widest font-bold">Consolidated from ${invoices.length} invoices</p>
           </div>
         </div>
 
-        <!-- Invoices -->
+        <!-- Invoice Breakdown -->
         <div class="space-y-12">
           ${invoices.map(inv => `
-            <div class="invoice-block">
-              <div class="flex justify-between items-end bg-neutral-100 p-3 mb-2">
+            <div class="invoice-block border-t border-black/10 pt-4">
+              <div class="flex justify-between items-end bg-neutral-100 p-3 mb-2 rounded">
                 <div>
-                  <span class="text-[9px] font-black uppercase text-neutral-400">Invoice Reference</span>
+                  <span class="text-[9px] font-black uppercase text-neutral-400">Invoice Ref</span>
                   <p class="font-black text-sm">${inv.invoice_number}</p>
                 </div>
                 <div class="text-right">
                    <div class="flex space-x-4 text-[10px]">
                       <div><span class="font-bold">Date:</span> ${inv.date}</div>
                       ${activeCols.includes('due_date') ? `<div><span class="font-bold">Due:</span> ${inv.due_date}</div>` : ''}
-                      ${activeCols.includes('status') ? `<div class="uppercase font-black text-indigo-600">[${inv.status}]</div>` : ''}
+                      ${activeCols.includes('status') ? `<div class="uppercase font-black text-indigo-600">[${inv.status.replace(/_/g, ' ')}]</div>` : ''}
                    </div>
                 </div>
               </div>
 
-              <table class="w-full text-left border-collapse">
+              <table class="w-full text-left border-collapse mt-4">
                 <thead>
-                  <tr class="border-b border-black text-[9px] font-black uppercase">
-                    ${activeCols.includes('sku') ? `<th class="py-2 w-24">SKU</th>` : ''}
-                    <th class="py-2">Item Description</th>
+                  <tr class="border-b-2 border-black text-[9px] font-black uppercase">
+                    ${activeCols.includes('sku') ? `<th class="py-2 w-24">SKU/Code</th>` : ''}
+                    <th class="py-2">Item Detail</th>
                     <th class="py-2 text-right">Qty</th>
                     <th class="py-2 text-right">Rate</th>
-                    <th class="py-2 text-right">Amount</th>
+                    <th class="py-2 text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-black/5 text-[11px]">
                   ${inv.line_items.map(item => `
                     <tr>
-                      ${activeCols.includes('sku') ? `<td class="py-2 font-mono text-[9px]">${item.sku || 'N/A'}</td>` : ''}
+                      ${activeCols.includes('sku') ? `<td class="py-2 font-mono text-[9px]">${item.sku || '---'}</td>` : ''}
                       <td class="py-2 font-medium">${item.name}</td>
                       <td class="py-2 text-right">${item.quantity}</td>
                       <td class="py-2 text-right">${item.rate.toFixed(2)}</td>
@@ -349,9 +364,9 @@ class ZohoStatementApp {
                   `).join('')}
                 </tbody>
                 <tfoot>
-                  <tr class="border-t border-black font-black">
-                    <td colspan="${activeCols.includes('sku') ? 4 : 3}" class="py-3 text-right text-[10px] uppercase">Invoice Balance Due:</td>
-                    <td class="py-3 text-right text-sm font-mono">$${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <tr class="border-t-2 border-black font-black">
+                    <td colspan="${activeCols.includes('sku') ? 4 : 3}" class="py-4 text-right text-[10px] uppercase tracking-wider">Invoice Ledger Balance:</td>
+                    <td class="py-4 text-right text-sm font-mono">$${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -360,9 +375,9 @@ class ZohoStatementApp {
         </div>
 
         <!-- Footer -->
-        <div class="mt-20 pt-10 border-t-2 border-black flex justify-between items-center opacity-60">
-           <div class="text-[8px] font-black uppercase tracking-widest">Generated via Zoho Books Insight Engine</div>
-           <div class="text-[8px] font-medium italic">Internal Record: #${new Date().getTime().toString().slice(-6)}</div>
+        <div class="mt-20 pt-10 border-t border-black/10 flex justify-between items-center opacity-50">
+           <div class="text-[8px] font-black uppercase tracking-widest">Zoho Books Outstanding Engine</div>
+           <div class="text-[8px] font-medium uppercase tracking-tighter">Generated: ${new Date().toLocaleString()}</div>
         </div>
       </div>
     `;
@@ -380,15 +395,15 @@ class ZohoStatementApp {
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    this.showLoading("Synthesizing PDF Document...");
+    this.showLoading("Synthesizing Print Document...");
     html2pdf().set(opt).from(element).save().then(() => {
       this.hideLoading();
-      this.log("PDF synthesis complete.");
+      this.log("PDF Export Complete.");
     });
   }
 
   showLoading(text) {
-    this.targets.loadingText.innerText = text || "Synchronizing...";
+    this.targets.loadingText.innerText = text || "Connecting...";
     this.views.loading.classList.remove('view-hidden');
   }
 
@@ -396,22 +411,28 @@ class ZohoStatementApp {
     this.views.loading.classList.add('view-hidden');
   }
 
+  showError(msg) {
+    this.targets.landingErrorText.innerText = msg;
+    this.views.landingError.classList.remove('view-hidden');
+    this.log(`Error: ${msg}`);
+  }
+
+  hideError() {
+    this.views.landingError.classList.add('view-hidden');
+  }
+
   log(msg) {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const div = document.createElement('div');
-    div.innerHTML = `<span class="text-neutral-600">[${time}]</span> ${msg}`;
+    div.className = "border-l border-white/10 pl-3 mb-1";
+    div.innerHTML = `<span class="text-neutral-600 font-bold">${time}</span> ${msg}`;
     this.targets.log.prepend(div);
   }
 
-  logout(reload = true) {
+  logout() {
     localStorage.removeItem('zoho_access_token');
     this.state.accessToken = null;
-    if (reload) {
-      window.location.reload();
-    } else {
-      this.views.landing.classList.remove('view-hidden');
-      this.views.dashboard.classList.add('view-hidden');
-    }
+    window.location.reload();
   }
 }
 

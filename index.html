@@ -49,6 +49,7 @@
             <option value="in">India (.in)</option>
             <option value="com.au">Australia (.com.au)</option>
           </select>
+          <p class="text-[9px] text-neutral-600 mt-1 italic">Must match your Zoho account URL region.</p>
         </div>
         <div>
           <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Client ID</label>
@@ -73,6 +74,16 @@
         <h1 class="text-6xl md:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-700">STATEMENT</h1>
         <p class="text-neutral-400 text-lg font-light max-w-sm mx-auto">Item-level outstanding ledger generator for Zoho Books. Instant, secure, and precise.</p>
       </div>
+
+      <!-- Error Message Area -->
+      <div id="landing-error" class="view-hidden max-w-md mx-auto p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-medium space-y-2">
+         <div class="flex items-center space-x-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+            <span class="font-bold uppercase tracking-tight">Access Denied</span>
+         </div>
+         <p id="landing-error-text" class="leading-relaxed opacity-80"></p>
+      </div>
+
       <div class="flex flex-col items-center space-y-4">
         <button id="btn-connect" class="px-10 py-5 font-black text-white bg-indigo-600 rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-500/30 transition-all">
           AUTHORIZE ZOHO BOOKS
