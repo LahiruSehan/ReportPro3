@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zoho Ledger Pro | Multi-Customer Item Engine</title>
+  <title>Zoho Ledger Pro | Live Item Engine</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
@@ -15,7 +15,7 @@
     .view-hidden { display: none !important; }
     
     /* Fixed Dropdown Visibility */
-    select { background: #1a1a1a !important; color: white !important; cursor: pointer; border: 1px solid #333 !important; }
+    select { background: #1a1a1a !important; color: white !important; cursor: pointer; border: 1px solid #333 !important; padding: 0.5rem; border-radius: 0.5rem; }
     select option { background: #1a1a1a; color: white; padding: 10px; }
     
     .custom-scrollbar::-webkit-scrollbar { width: 5px; }
@@ -23,12 +23,14 @@
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
 
     /* Statement Styling */
-    .statement-view { background: white; color: black; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; box-shadow: 0 40px 100px rgba(0,0,0,0.6); font-size: 10px; line-height: 1.2; }
+    .statement-view { background: white; color: black; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; box-shadow: 0 40px 100px rgba(0,0,0,0.6); font-size: 9px; line-height: 1.1; }
+    [contenteditable="true"] { transition: background 0.2s; padding: 1px 4px; border-radius: 2px; }
     [contenteditable="true"]:hover { background: #f0f7ff; outline: 1px dashed #6366f1; }
     [contenteditable="true"]:focus { background: #eef2ff; outline: 2px solid #6366f1; }
 
-    .customer-row { background: #f8fafc; border-top: 2px solid #000; border-bottom: 1px solid #000; }
-    .item-row:nth-child(even) { background: #fafafa; }
+    .customer-header-row { background: #f1f5f9; border-top: 1.5pt solid #000; border-bottom: 0.5pt solid #000; }
+    .item-row { border-bottom: 0.1pt solid #eee; }
+    .item-row:hover { background: #f9fafb; }
     
     .btn-indigo { background: #6366f1; transition: all 0.2s; }
     .btn-indigo:hover { background: #4f46e5; transform: scale(1.02); }
@@ -47,11 +49,11 @@
       <div class="space-y-4">
         <div>
           <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Redirect URI (Use in Zoho Console)</label>
-          <code class="block bg-black/40 p-2 rounded text-[10px] font-mono break-all" id="display-redirect-uri"></code>
+          <code class="block bg-black/40 p-2 rounded text-[10px] font-mono break-all text-white" id="display-redirect-uri"></code>
         </div>
         <div>
           <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Zoho Region</label>
-          <select id="cfg-region" class="w-full rounded-lg p-3 text-sm">
+          <select id="cfg-region" class="w-full">
             <option value="com">Global (.com)</option>
             <option value="eu">Europe (.eu)</option>
             <option value="in">India (.in)</option>
@@ -60,10 +62,10 @@
         </div>
         <div>
           <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Client ID</label>
-          <input id="cfg-client-id" type="text" class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white font-mono">
+          <input id="cfg-client-id" type="text" class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white font-mono outline-none focus:border-indigo-500">
         </div>
       </div>
-      <button id="btn-save-config" class="w-full py-4 btn-indigo rounded-xl font-black uppercase text-xs tracking-widest">Connect Account</button>
+      <button id="btn-save-config" class="w-full py-4 btn-indigo rounded-xl font-black uppercase text-xs tracking-widest text-white">Connect Account</button>
     </div>
   </div>
 
@@ -93,9 +95,14 @@
           <option value="">Loading Organizations...</option>
         </select>
       </div>
-      <button id="btn-logout" class="p-2 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-500 transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-      </button>
+      <div class="flex items-center space-x-4">
+        <div id="data-range-info" class="text-[10px] text-neutral-500 font-mono hidden">
+          DATASET: <span id="span-range" class="text-indigo-400">---</span>
+        </div>
+        <button id="btn-logout" class="p-2 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-500 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        </button>
+      </div>
     </header>
 
     <div class="flex flex-grow overflow-hidden px-4 pb-4 gap-4">
@@ -120,37 +127,43 @@
         </div>
 
         <div class="glass-card p-6 space-y-4">
-          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Time Range</h4>
-          <div class="grid grid-cols-2 gap-2">
-            <input type="date" id="date-from" class="bg-white/5 border border-white/10 rounded-lg p-2 text-[10px]">
-            <input type="date" id="date-to" class="bg-white/5 border border-white/10 rounded-lg p-2 text-[10px]">
+          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Filtering Logic</h4>
+          <div class="space-y-2">
+            <div>
+              <label class="text-[8px] uppercase font-bold text-neutral-500">From Date</label>
+              <input type="date" id="date-from" class="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-[10px] text-white outline-none">
+            </div>
+            <div>
+              <label class="text-[8px] uppercase font-bold text-neutral-500">To Date</label>
+              <input type="date" id="date-to" class="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-[10px] text-white outline-none">
+            </div>
           </div>
-          <button id="btn-fetch-statement" class="w-full py-4 btn-indigo rounded-xl font-black text-xs uppercase tracking-widest shadow-xl">Synthesize Ledger</button>
+          <p class="text-[8px] text-neutral-500 italic">Preview updates instantly on customer selection.</p>
         </div>
       </aside>
 
       <!-- Main Engine -->
       <main class="flex-grow glass-card flex flex-col overflow-hidden">
-        <div class="p-4 border-b border-white/5 flex justify-between items-center">
+        <div class="p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
           <div class="flex items-center space-x-2">
             <div class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-neutral-400">Live Synthesis Engine</span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-neutral-400">Live Item Ledger Engine</span>
           </div>
-          <button id="btn-download-pdf" disabled class="px-6 py-2 bg-white text-black text-[10px] font-black uppercase rounded-lg hover:bg-indigo-300 transition-all">Export PDF</button>
+          <button id="btn-download-pdf" disabled class="px-6 py-2 bg-white text-black text-[10px] font-black uppercase rounded-lg hover:bg-indigo-300 transition-all disabled:opacity-30">Export PDF</button>
         </div>
 
-        <div class="flex-grow overflow-auto bg-neutral-900/40 p-10 custom-scrollbar">
+        <div class="flex-grow overflow-auto bg-[#0c0c16] p-10 custom-scrollbar">
           <div id="statement-canvas-container" style="width: 21cm;" class="mx-auto origin-top transition-transform duration-500">
             <div id="empty-state" class="flex flex-col items-center justify-center h-full py-40 opacity-20">
               <svg class="w-20 h-20 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-              <p class="font-black uppercase tracking-[0.3em] text-xs">Waiting for payload</p>
+              <p class="font-black uppercase tracking-[0.3em] text-xs">Select customers to build statement</p>
             </div>
             <div id="statement-render-target"></div>
           </div>
         </div>
 
         <div id="status-log" class="h-10 border-t border-white/5 bg-black/40 flex items-center px-4 font-mono text-[9px] text-neutral-600 gap-4">
-          <span id="log-message">Ready for input...</span>
+          <span id="log-message">Ready for data ingestion...</span>
         </div>
       </main>
     </div>
@@ -159,7 +172,7 @@
   <!-- Load Screen -->
   <div id="loading-overlay" class="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center view-hidden">
     <div class="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
-    <p id="loading-text" class="text-indigo-500 font-black uppercase tracking-[0.5em] text-xs">Accessing Zoho Nodes</p>
+    <p id="loading-text" class="text-indigo-500 font-black uppercase tracking-[0.5em] text-xs text-center">Contacting Zoho Servers</p>
   </div>
 
   <script type="module" src="index.js"></script>
