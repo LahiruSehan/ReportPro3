@@ -25,7 +25,8 @@ class ZohoLedgerApp {
         creditnotes: {}
       },
       currentView: 'ledger', // 'ledger' or 'explorer'
-      explorerActiveModule: 'invoices'
+      explorerActiveModule: 'invoices',
+      sidebarOpen: false
     };
 
     this.init();
@@ -49,7 +50,9 @@ class ZohoLedgerApp {
       landingError: document.getElementById('landing-error'),
       customerList: document.getElementById('customer-list'),
       areaLedger: document.getElementById('area-ledger'),
-      areaExplorer: document.getElementById('area-explorer')
+      areaExplorer: document.getElementById('area-explorer'),
+      sidebar: document.getElementById('registry-sidebar'),
+      sidebarOverlay: document.getElementById('sidebar-overlay')
     };
     
     this.inputs = {
@@ -75,7 +78,12 @@ class ZohoLedgerApp {
       openConfigLanding: document.getElementById('btn-open-config-landing'),
       closeConfig: document.getElementById('btn-close-config'),
       tabLedger: document.getElementById('tab-ledger'),
-      tabExplorer: document.getElementById('tab-explorer')
+      tabExplorer: document.getElementById('tab-explorer'),
+      tabLedgerMobile: document.getElementById('tab-ledger-mobile'),
+      tabExplorerMobile: document.getElementById('tab-explorer-mobile'),
+      mobileMenu: document.getElementById('btn-mobile-menu'),
+      closeSidebar: document.getElementById('btn-close-sidebar'),
+      mobileFilterFab: document.getElementById('btn-mobile-filter-fab')
     };
 
     this.targets = {
@@ -111,8 +119,23 @@ class ZohoLedgerApp {
     if (this.btns.selectAll) this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
     if (this.btns.clearAll) this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
 
-    if (this.btns.tabLedger) this.btns.tabLedger.onclick = () => this.switchView('ledger');
-    if (this.btns.tabExplorer) this.btns.tabExplorer.onclick = () => this.switchView('explorer');
+    // Sidebar/Drawer controls
+    const toggleSidebar = (force) => {
+      this.state.sidebarOpen = typeof force === 'boolean' ? force : !this.state.sidebarOpen;
+      this.views.sidebar.classList.toggle('open', this.state.sidebarOpen);
+      this.views.sidebarOverlay.classList.toggle('open', this.state.sidebarOpen);
+    };
+    if (this.btns.mobileMenu) this.btns.mobileMenu.onclick = () => toggleSidebar(true);
+    if (this.btns.closeSidebar) this.btns.closeSidebar.onclick = () => toggleSidebar(false);
+    if (this.btns.mobileFilterFab) this.btns.mobileFilterFab.onclick = () => toggleSidebar(true);
+    if (this.views.sidebarOverlay) this.views.sidebarOverlay.onclick = () => toggleSidebar(false);
+
+    // View Switching
+    const switchV = (v) => this.switchView(v);
+    if (this.btns.tabLedger) this.btns.tabLedger.onclick = () => switchV('ledger');
+    if (this.btns.tabExplorer) this.btns.tabExplorer.onclick = () => switchV('explorer');
+    if (this.btns.tabLedgerMobile) this.btns.tabLedgerMobile.onclick = () => switchV('ledger');
+    if (this.btns.tabExplorerMobile) this.btns.tabExplorerMobile.onclick = () => switchV('explorer');
 
     if (this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
     
@@ -149,12 +172,21 @@ class ZohoLedgerApp {
 
   switchView(v) {
     this.state.currentView = v;
+    
+    // Desktop tabs
     this.btns.tabLedger.classList.toggle('tab-active', v === 'ledger');
     this.btns.tabExplorer.classList.toggle('tab-active', v === 'explorer');
+    
+    // Mobile tabs
+    this.btns.tabLedgerMobile.classList.toggle('tab-active', v === 'ledger');
+    this.btns.tabExplorerMobile.classList.toggle('tab-active', v === 'explorer');
+    this.btns.tabLedgerMobile.classList.toggle('border-indigo-600', v === 'ledger');
+    this.btns.tabExplorerMobile.classList.toggle('border-indigo-600', v === 'explorer');
+
     this.views.areaLedger.classList.toggle('view-hidden', v !== 'ledger');
     this.views.areaExplorer.classList.toggle('view-hidden', v !== 'explorer');
     this.targets.viewTitle.innerText = v === 'ledger' ? 'Live Item Ledger Engine' : 'Project Data Explorer';
-    this.btns.download.classList.toggle('view-hidden', v !== 'ledger');
+    
     if (v === 'explorer') this.renderExplorer();
   }
 
@@ -249,9 +281,9 @@ class ZohoLedgerApp {
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
       const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
       const div = document.createElement('div');
-      div.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-white/5 transition-all text-xs ${isSelected ? 'bg-indigo-500/10' : ''}`;
+      div.className = `flex items-center space-x-3 p-3 rounded-lg cursor-pointer hover:bg-white/5 transition-all text-sm md:text-xs ${isSelected ? 'bg-indigo-500/10' : ''}`;
       div.innerHTML = `
-        <div class="w-4 h-4 rounded border border-white/20 flex items-center justify-center ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
+        <div class="w-5 h-5 md:w-4 md:h-4 rounded border border-white/20 flex items-center justify-center ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
           ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>' : ''}
         </div>
         <span class="truncate font-medium">${c.contact_name}</span>
@@ -283,7 +315,6 @@ class ZohoLedgerApp {
 
     for (const module of this.state.activeModules) {
       try {
-        // Status filters vary by module in Zoho Books
         let statusFilter = 'status=all';
         if (module === 'invoices') statusFilter = 'status=unpaid';
         
@@ -329,7 +360,6 @@ class ZohoLedgerApp {
     let minDate = null;
     let maxDate = null;
 
-    // Build ledger from invoices ONLY (as requested for the ledger view)
     this.state.selectedCustomerIds.forEach(id => {
       const invData = this.state.dataStore.invoices[id];
       if (invData && invData.records.length > 0) {
@@ -369,7 +399,7 @@ class ZohoLedgerApp {
     });
 
     if (mods.length === 0) {
-      this.targets.explorerArea.innerHTML = '<div class="flex items-center justify-center h-full text-neutral-600 font-black uppercase tracking-widest text-xs">No project data to explore. Select customers first.</div>';
+      this.targets.explorerArea.innerHTML = '<div class="flex items-center justify-center h-full text-neutral-600 font-black uppercase tracking-widest text-[10px] md:text-xs">No project data to explore. Select customers first.</div>';
       this.targets.explorerTabs.innerHTML = '';
       return;
     }
@@ -378,14 +408,12 @@ class ZohoLedgerApp {
        this.state.explorerActiveModule = mods[0];
     }
 
-    // Render Module Tabs
     this.targets.explorerTabs.innerHTML = mods.map(m => `
-      <button onclick="window.app.setExplorerModule('${m}')" class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all ${this.state.explorerActiveModule === m ? 'bg-indigo-600 text-white' : 'bg-white/5 text-neutral-500 hover:text-white'}">
+      <button onclick="window.app.setExplorerModule('${m}')" class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${this.state.explorerActiveModule === m ? 'bg-indigo-600 text-white' : 'bg-white/5 text-neutral-500 hover:text-white'}">
         ${m}
       </button>
     `).join('');
 
-    // Render Module Table
     const data = this.state.dataStore[this.state.explorerActiveModule];
     let rows = [];
     Object.values(data).forEach(cust => {
@@ -402,10 +430,9 @@ class ZohoLedgerApp {
       return;
     }
 
-    // Dynamic header extraction
     const keys = ['customer', ...Object.keys(rows[0]).filter(k => !['customer', 'line_items', 'custom_fields'].includes(k))].slice(0, 8);
     
-    let html = `<table class="explorer-table"><thead><tr>`;
+    let html = `<div class="overflow-x-auto"><table class="explorer-table"><thead><tr>`;
     keys.forEach(k => html += `<th>${k.replace(/_/g, ' ')}</th>`);
     html += `</tr></thead><tbody>`;
     
@@ -414,7 +441,7 @@ class ZohoLedgerApp {
        keys.forEach(k => html += `<td>${r[k] || '---'}</td>`);
        html += `</tr>`;
     });
-    html += `</tbody></table>`;
+    html += `</tbody></table></div>`;
     
     this.targets.explorerArea.innerHTML = html;
   }

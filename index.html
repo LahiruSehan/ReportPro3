@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Zoho Ledger Pro | Live Item Engine</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -21,7 +21,20 @@
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
 
-    .statement-view { background: white; color: black; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; box-shadow: 0 40px 100px rgba(0,0,0,0.6); font-size: 9px; line-height: 1.1; }
+    /* Statement Styling */
+    .statement-view { background: white; color: black; padding: 1cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; box-shadow: 0 40px 100px rgba(0,0,0,0.6); font-size: 9px; line-height: 1.1; position: relative; }
+    
+    /* Mobile Scale for Preview */
+    @media (max-width: 1024px) {
+      .statement-canvas-wrapper { overflow-x: auto; padding-bottom: 20px; }
+      .statement-view { transform-origin: top left; transform: scale(0.6); margin: 0; }
+    }
+    @media (max-width: 640px) {
+      .statement-view { transform: scale(0.42); }
+      .dashboard-container { padding: 0 !important; gap: 0 !important; }
+      header { margin: 10px !important; }
+    }
+
     [contenteditable="true"] { transition: background 0.2s; padding: 1px 4px; border-radius: 2px; }
     [contenteditable="true"]:hover { background: #f0f7ff; outline: 1px dashed #6366f1; }
     [contenteditable="true"]:focus { background: #eef2ff; outline: 2px solid #6366f1; }
@@ -41,6 +54,15 @@
     .explorer-table th { background: rgba(255,255,255,0.05); color: #888; text-transform: uppercase; font-size: 10px; padding: 12px; text-align: left; }
     .explorer-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
     .explorer-table tr:hover { background: rgba(255,255,255,0.02); }
+
+    /* Mobile Sidebar Drawer */
+    #sidebar-overlay { transition: opacity 0.3s ease; }
+    #registry-sidebar { transition: transform 0.3s ease; }
+    @media (max-width: 1024px) {
+      #registry-sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 50; width: 85%; transform: translateX(-100%); background: #0c0c16; }
+      #registry-sidebar.open { transform: translateX(0); }
+      #sidebar-overlay.open { opacity: 1; pointer-events: auto; }
+    }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -48,7 +70,7 @@
 
   <!-- Auth Modal -->
   <div id="modal-config" class="modal-overlay view-hidden">
-    <div class="glass-card p-10 w-full max-w-lg space-y-6 relative">
+    <div class="glass-card p-6 md:p-10 w-[90%] max-w-lg space-y-6 relative">
       <button id="btn-close-config" class="absolute top-4 right-4 text-neutral-500 hover:text-white transition-colors text-2xl font-light">&times;</button>
       <div class="flex items-center space-x-3">
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6">
@@ -79,15 +101,15 @@
 
   <!-- Landing -->
   <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center">
-    <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Zoho Insight Pro" class="h-24 mb-8">
-    <p class="text-neutral-500 max-w-md mb-10 text-lg">Generate item-level outstanding customer statements from Zoho Books in one click.</p>
+    <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Zoho Insight Pro" class="h-16 md:h-24 mb-8">
+    <p class="text-neutral-500 max-w-md mb-10 text-base md:text-lg px-4">Generate item-level outstanding customer statements from Zoho Books in one click.</p>
     
     <div id="landing-error" class="view-hidden mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-left max-w-sm">
       <p class="font-bold uppercase mb-1">Sync Error</p>
       <p id="landing-error-text"></p>
     </div>
 
-    <button id="btn-connect" class="px-12 py-5 bg-indigo-600 rounded-2xl font-black text-white hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/30">
+    <button id="btn-connect" class="px-8 md:px-12 py-4 md:py-5 bg-indigo-600 rounded-2xl font-black text-white hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/30">
       AUTHORIZE ACCESS
     </button>
     <button id="btn-open-config-landing" class="mt-6 text-[10px] font-bold text-neutral-500 uppercase tracking-widest hover:text-white transition-colors">Developer Settings</button>
@@ -95,20 +117,23 @@
 
   <!-- Dashboard -->
   <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
-    <header class="p-4 glass-card m-4 flex items-center justify-between">
-      <div class="flex items-center space-x-6">
-        <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-8">
-        <div class="h-6 w-px bg-white/10"></div>
-        <select id="select-organization" class="bg-transparent border-none text-sm font-bold outline-none pr-8">
-          <option value="">Loading Organizations...</option>
+    <header class="p-3 md:p-4 glass-card m-2 md:m-4 flex items-center justify-between relative z-20">
+      <div class="flex items-center space-x-2 md:space-x-6">
+        <button id="btn-mobile-menu" class="lg:hidden p-2 hover:bg-white/10 rounded-lg text-neutral-400">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
+        <div class="hidden md:block h-6 w-px bg-white/10"></div>
+        <select id="select-organization" class="bg-transparent border-none text-[10px] md:text-sm font-bold outline-none max-w-[120px] md:max-w-none truncate pr-6 md:pr-8">
+          <option value="">Loading...</option>
         </select>
-        <div class="flex space-x-6 ml-4">
+        <div class="hidden lg:flex space-x-6 ml-4">
           <button id="tab-ledger" class="text-xs font-black uppercase tracking-widest text-neutral-500 hover:text-white transition-all pb-1 tab-active">Ledger View</button>
           <button id="tab-explorer" class="text-xs font-black uppercase tracking-widest text-neutral-500 hover:text-white transition-all pb-1">Data Explorer</button>
         </div>
       </div>
-      <div class="flex items-center space-x-4">
-        <div id="data-range-info" class="text-[10px] text-neutral-500 font-mono hidden">
+      <div class="flex items-center space-x-2 md:space-x-4">
+        <div id="data-range-info" class="hidden md:block text-[10px] text-neutral-500 font-mono">
           DATASET: <span id="span-range" class="text-indigo-400">---</span>
         </div>
         <button id="btn-logout" class="p-2 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-500 transition-all">
@@ -117,9 +142,24 @@
       </div>
     </header>
 
-    <div class="flex flex-grow overflow-hidden px-4 pb-4 gap-4">
+    <!-- Mobile View Tabs (Sticky below header) -->
+    <div class="lg:hidden flex px-4 mb-2 justify-center space-x-4">
+      <button id="tab-ledger-mobile" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-neutral-500 border-b-2 border-transparent tab-active">Ledger</button>
+      <button id="tab-explorer-mobile" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-neutral-500 border-b-2 border-transparent">Explorer</button>
+    </div>
+
+    <div class="flex flex-grow overflow-hidden px-0 md:px-4 pb-0 md:pb-4 gap-4 dashboard-container">
+      
+      <!-- Sidebar Overlay for Mobile -->
+      <div id="sidebar-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 opacity-0 pointer-events-none lg:hidden"></div>
+
       <!-- Registry Sidebar -->
-      <aside class="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1">
+      <aside id="registry-sidebar" class="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar p-4 lg:p-0">
+        <div class="lg:hidden flex justify-between items-center mb-2">
+          <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6">
+          <button id="btn-close-sidebar" class="text-neutral-500 text-2xl">&times;</button>
+        </div>
+
         <!-- Module Selector -->
         <div class="glass-card p-6 space-y-4">
           <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Data Modules</h4>
@@ -175,21 +215,21 @@
       </aside>
 
       <!-- Main Engine -->
-      <main class="flex-grow glass-card flex flex-col overflow-hidden">
-        <div class="p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+      <main class="flex-grow glass-card flex flex-col overflow-hidden border-0 md:border">
+        <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
           <div class="flex items-center space-x-2">
             <div class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
-            <span id="view-title" class="text-[10px] font-black uppercase tracking-widest text-neutral-400">Live Item Ledger Engine</span>
+            <span id="view-title" class="text-[10px] font-black uppercase tracking-widest text-neutral-400 truncate max-w-[150px] md:max-w-none">Live Item Ledger Engine</span>
           </div>
-          <button id="btn-download-pdf" disabled class="px-6 py-2 bg-white text-black text-[10px] font-black uppercase rounded-lg hover:bg-indigo-300 transition-all disabled:opacity-30">Export PDF</button>
+          <button id="btn-download-pdf" disabled class="px-4 md:px-6 py-2 bg-white text-black text-[9px] md:text-[10px] font-black uppercase rounded-lg hover:bg-indigo-300 transition-all disabled:opacity-30">Export PDF</button>
         </div>
 
         <!-- Ledger View Area -->
-        <div id="area-ledger" class="flex-grow overflow-auto bg-[#0c0c16] p-10 custom-scrollbar">
-          <div id="statement-canvas-container" style="width: 21cm;" class="mx-auto origin-top transition-transform duration-500">
-            <div id="empty-state" class="flex flex-col items-center justify-center h-full py-40 opacity-20 text-center">
-              <svg class="w-20 h-20 mb-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-              <p class="font-black uppercase tracking-[0.3em] text-xs">Select data source and customers</p>
+        <div id="area-ledger" class="flex-grow overflow-auto bg-[#0c0c16] p-4 md:p-10 custom-scrollbar statement-canvas-wrapper">
+          <div id="statement-canvas-container" class="mx-auto lg:origin-top transition-transform duration-500">
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full py-20 md:py-40 opacity-20 text-center">
+              <svg class="w-16 h-16 md:w-20 md:h-20 mb-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              <p class="font-black uppercase tracking-[0.3em] text-[10px] md:text-xs">Select data source and customers</p>
             </div>
             <div id="statement-render-target"></div>
           </div>
@@ -197,28 +237,35 @@
 
         <!-- Explorer View Area -->
         <div id="area-explorer" class="view-hidden flex-grow flex flex-col overflow-hidden bg-[#0c0c16]">
-          <div class="p-4 border-b border-white/5 flex items-center space-x-4 bg-black/20">
-             <span class="text-[10px] font-black uppercase text-neutral-500">Filter module:</span>
+          <div class="p-3 md:p-4 border-b border-white/5 flex items-center space-x-2 md:space-x-4 bg-black/20 overflow-x-auto custom-scrollbar">
+             <span class="text-[9px] md:text-[10px] font-black uppercase text-neutral-500 flex-shrink-0">Filter:</span>
              <div id="explorer-module-tabs" class="flex space-x-2">
                 <!-- Tabs for modules with data will appear here -->
              </div>
           </div>
-          <div class="flex-grow overflow-auto custom-scrollbar p-6">
+          <div class="flex-grow overflow-auto custom-scrollbar p-3 md:p-6">
             <div id="explorer-render-target"></div>
           </div>
         </div>
 
-        <div id="status-log" class="h-10 border-t border-white/5 bg-black/40 flex items-center px-4 font-mono text-[9px] text-neutral-600 gap-4">
+        <div id="status-log" class="hidden md:flex h-10 border-t border-white/5 bg-black/40 items-center px-4 font-mono text-[9px] text-neutral-600 gap-4">
           <span id="log-message">Ready...</span>
         </div>
       </main>
     </div>
   </div>
 
+  <!-- Mobile Bottom Actions (Quick Filter Indicator) -->
+  <div id="mobile-bottom-info" class="lg:hidden fixed bottom-4 right-4 z-30">
+    <button id="btn-mobile-filter-fab" class="w-12 h-12 bg-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+    </button>
+  </div>
+
   <!-- Load Screen -->
   <div id="loading-overlay" class="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center view-hidden">
     <div class="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
-    <p id="loading-text" class="text-indigo-500 font-black uppercase tracking-[0.5em] text-xs text-center">Contacting Zoho Servers</p>
+    <p id="loading-text" class="text-indigo-500 font-black uppercase tracking-[0.5em] text-[10px] md:text-xs text-center">Contacting Zoho Servers</p>
   </div>
 
   <script type="module" src="index.js"></script>
