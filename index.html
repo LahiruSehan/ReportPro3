@@ -1,0 +1,66 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hello World</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
+
+    body {
+      background-color: #050505;
+      color: #ffffff;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      margin: 0;
+    }
+
+    .gradient-bg {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #050505 100%);
+      z-index: -1;
+    }
+
+    .fade-in {
+      animation: fadeIn 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); filter: blur(10px); }
+      to { opacity: 1; transform: translateY(0); filter: blur(0); }
+    }
+
+    .text-glimmer {
+      background: linear-gradient(180deg, #ffffff 0%, #404040 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      transition: filter 0.3s ease;
+    }
+
+    .text-glimmer:hover {
+      filter: brightness(1.2) drop-shadow(0 0 15px rgba(255,255,255,0.2));
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+  <div class="gradient-bg"></div>
+  
+  <main class="text-center space-y-4 fade-in">
+    <h1 class="text-7xl md:text-9xl font-black tracking-tighter text-glimmer select-none">
+      HELLO WORLD
+    </h1>
+    <p class="text-neutral-500 tracking-[0.3em] text-xs font-light uppercase opacity-50">
+      The Origin of Digital Expression
+    </p>
+  </main>
+
+  <footer class="fixed bottom-8 text-[10px] text-neutral-600 tracking-widest uppercase opacity-30">
+    Zero Dependencies • Pure Standards
+  </footer>
+
+  <script type="module" src="index.js"></script>
+</body>
+</html>
