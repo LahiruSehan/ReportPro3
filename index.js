@@ -38,6 +38,13 @@ class ZohoInsightApp {
     this.tableRecent = document.getElementById('table-recent');
     this.statusDot = document.getElementById('status-dot');
     this.modalConfig = document.getElementById('modal-config');
+    
+    // Config elements
+    this.btnOpenConfigLanding = document.getElementById('btn-open-config-landing');
+    this.btnOpenConfigSidebar = document.getElementById('btn-open-config-sidebar');
+    this.btnCloseConfig = document.getElementById('btn-close-config');
+    this.btnSaveConfig = document.getElementById('btn-save-config');
+    this.btnClearLogs = document.getElementById('btn-clear-logs');
   }
 
   bindEvents() {
@@ -45,6 +52,13 @@ class ZohoInsightApp {
     document.getElementById('btn-logout').addEventListener('click', () => this.logout());
     this.btnSync.addEventListener('click', () => this.syncLiveInvoices());
     this.btnGeneratePdf.addEventListener('click', () => this.generatePDF());
+
+    // Config Modal Listeners
+    this.btnOpenConfigLanding?.addEventListener('click', () => this.toggleConfig(true));
+    this.btnOpenConfigSidebar?.addEventListener('click', () => this.toggleConfig(true));
+    this.btnCloseConfig?.addEventListener('click', () => this.toggleConfig(false));
+    this.btnSaveConfig?.addEventListener('click', () => this.saveConfig());
+    this.btnClearLogs?.addEventListener('click', () => this.clearLogs());
 
     document.querySelectorAll('.sidebar-link').forEach(link => {
       link.addEventListener('click', (e) => {
@@ -57,11 +71,12 @@ class ZohoInsightApp {
   // --- CONFIG & AUTH ---
 
   toggleConfig(show) {
+    if (!this.modalConfig) return;
     this.modalConfig.classList.toggle('view-hidden', !show);
     if (show) {
-      document.getElementById('cfg-client-id').value = this.config.clientId;
-      document.getElementById('cfg-org-id').value = this.config.orgId;
-      document.getElementById('cfg-region').value = this.config.region;
+      document.getElementById('cfg-client-id').value = this.config.clientId || '';
+      document.getElementById('cfg-org-id').value = this.config.orgId || '';
+      document.getElementById('cfg-region').value = this.config.region || 'com';
     }
   }
 
@@ -150,7 +165,6 @@ class ZohoInsightApp {
     this.btnSync.innerText = "Syncing...";
 
     try {
-      // NOTE: Zoho Books API requires Organization ID header
       const url = `https://www.zohoapis.${this.config.region}/books/v3/invoices?organization_id=${this.config.orgId}`;
       
       const response = await fetch(url, {
@@ -160,7 +174,7 @@ class ZohoInsightApp {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({message: 'API Request Failed'}));
         throw new Error(error.message || 'API Request Failed');
       }
 
@@ -170,8 +184,8 @@ class ZohoInsightApp {
       this.log(`Success: Received ${this.state.data.length} invoices.`);
     } catch (err) {
       this.log(`CRITICAL ERROR: ${err.message}`);
-      if (err.message.includes('expired') || err.message.includes('Invalid token')) {
-        this.log("Token likely expired. Re-authenticating required.");
+      if (err.message.includes('expired') || err.message.includes('token')) {
+        this.log("Token likely expired or invalid. Re-authenticating required.");
       }
     } finally {
       this.btnSync.disabled = false;
@@ -214,6 +228,7 @@ class ZohoInsightApp {
   }
 
   log(msg) {
+    if (!this.datasetLog) return;
     const time = new Date().toLocaleTimeString();
     this.datasetLog.innerHTML += `<div>[${time}] ${msg}</div>`;
     this.datasetLog.scrollTop = this.datasetLog.scrollHeight;
@@ -221,7 +236,7 @@ class ZohoInsightApp {
   }
 
   clearLogs() {
-    this.datasetLog.innerHTML = '[SYSTEM]: Log cleared.';
+    if (this.datasetLog) this.datasetLog.innerHTML = '[SYSTEM]: Log cleared.';
   }
 
   prepareReport() {
@@ -266,4 +281,6 @@ class ZohoInsightApp {
   }
 }
 
+// Global scope expose strictly for debugging if needed, 
+// but all listeners are now programmatically attached.
 window.app = new ZohoInsightApp();

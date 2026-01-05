@@ -29,7 +29,7 @@
     <div class="glass-card p-8 w-full max-w-md space-y-6">
       <div class="flex justify-between items-center">
         <h3 class="text-xl font-bold">API Configuration</h3>
-        <button onclick="app.toggleConfig(false)" class="text-neutral-500 hover:text-white">&times;</button>
+        <button id="btn-close-config" class="text-neutral-500 hover:text-white text-2xl leading-none">&times;</button>
       </div>
       <p class="text-xs text-neutral-400">Get these from your <a href="https://api-console.zoho.com/" target="_blank" class="text-indigo-400 underline">Zoho API Console</a>.</p>
       <div class="space-y-4">
@@ -51,7 +51,7 @@
           <input id="cfg-org-id" type="text" placeholder="6000XXXXX" class="w-full bg-white/5 border border-white/10 rounded p-2 text-sm font-mono">
         </div>
       </div>
-      <button onclick="app.saveConfig()" class="w-full py-3 bg-indigo-600 rounded-lg font-bold hover:bg-indigo-500 transition-colors">Save & Initialize</button>
+      <button id="btn-save-config" class="w-full py-3 bg-indigo-600 rounded-lg font-bold hover:bg-indigo-500 transition-colors">Save & Initialize</button>
     </div>
   </div>
 
@@ -66,7 +66,7 @@
         <button id="btn-connect" class="px-8 py-4 font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all">
           Connect Live Zoho Books
         </button>
-        <button onclick="app.toggleConfig(true)" class="text-xs text-neutral-500 hover:text-white underline">Configure Credentials First</button>
+        <button id="btn-open-config-landing" class="text-xs text-neutral-500 hover:text-white underline">Configure Credentials First</button>
       </div>
     </main>
   </div>
@@ -87,7 +87,7 @@
         <a class="sidebar-link flex items-center px-4 py-3 rounded-lg text-sm font-medium" data-target="reports">PDF Engine</a>
       </nav>
       <div class="pt-6 border-t border-white/5 space-y-2">
-        <button onclick="app.toggleConfig(true)" class="w-full text-left px-4 py-1 text-[10px] text-neutral-500 hover:text-white uppercase tracking-widest">Settings</button>
+        <button id="btn-open-config-sidebar" class="w-full text-left px-4 py-1 text-[10px] text-neutral-500 hover:text-white uppercase tracking-widest">Settings</button>
         <button id="btn-logout" class="w-full text-left px-4 py-1 text-[10px] text-red-500/70 hover:text-red-400 uppercase tracking-widest">Disconnect</button>
       </div>
     </aside>
@@ -137,7 +137,7 @@
          <div class="glass-card p-6 space-y-4">
             <div class="flex justify-between items-center">
               <h3 class="text-lg font-semibold">API Communication Log</h3>
-              <button onclick="app.clearLogs()" class="text-xs text-neutral-500">Clear</button>
+              <button id="btn-clear-logs" class="text-xs text-neutral-500">Clear</button>
             </div>
             <div id="dataset-log" class="bg-black/50 p-4 rounded-lg font-mono text-[10px] text-green-400 h-96 overflow-y-auto leading-relaxed">
                [SYSTEM]: Awaiting configuration or user connection...
