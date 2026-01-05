@@ -1,26 +1,21 @@
 
 /**
- * ZOHO STATEMENT PRO - STANDALONE ENGINE
- * Fixes CORS via transparent proxying.
+ * ZOHO LEDGER PRO - ITEM-LEVEL MULTI-SYNTHESIZER
+ * Author: World-Class Senior Frontend Engineer
  */
 
-class ZohoStatementApp {
+class ZohoLedgerApp {
   constructor() {
-    // Shared Proxy to bypass CORS on github.io
     this.proxyPrefix = "https://corsproxy.io/?";
-    
-    this.config = JSON.parse(localStorage.getItem('zoho_config')) || {
-      clientId: '',
-      region: 'com'
-    };
+    this.config = JSON.parse(localStorage.getItem('zoho_config')) || { clientId: '', region: 'com' };
     
     this.state = {
       accessToken: localStorage.getItem('zoho_access_token'),
       organizations: [],
       selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
       customers: [],
-      statementData: null,
-      selectedCustomer: null
+      selectedCustomerIds: new Set(),
+      statementData: null
     };
 
     this.init();
@@ -41,12 +36,13 @@ class ZohoStatementApp {
       dashboard: document.getElementById('view-dashboard'),
       configModal: document.getElementById('modal-config'),
       loading: document.getElementById('loading-overlay'),
-      landingError: document.getElementById('landing-error')
+      landingError: document.getElementById('landing-error'),
+      customerList: document.getElementById('customer-list')
     };
     
     this.inputs = {
-      customer: document.getElementById('select-customer'),
-      organization: document.getElementById('select-organization'),
+      orgSelect: document.getElementById('select-organization'),
+      search: document.getElementById('customer-search'),
       from: document.getElementById('date-from'),
       to: document.getElementById('date-to'),
       clientId: document.getElementById('cfg-client-id'),
@@ -60,6 +56,8 @@ class ZohoStatementApp {
       fetch: document.getElementById('btn-fetch-statement'),
       download: document.getElementById('btn-download-pdf'),
       logout: document.getElementById('btn-logout'),
+      selectAll: document.getElementById('btn-select-all'),
+      clearAll: document.getElementById('btn-clear-all'),
       openConfigLanding: document.getElementById('btn-open-config-landing'),
       closeConfig: document.getElementById('btn-close-config')
     };
@@ -67,10 +65,9 @@ class ZohoStatementApp {
     this.targets = {
       renderArea: document.getElementById('statement-render-target'),
       emptyState: document.getElementById('empty-state'),
-      log: document.getElementById('status-log'),
+      log: document.getElementById('log-message'),
       loadingText: document.getElementById('loading-text'),
-      landingErrorText: document.getElementById('landing-error-text'),
-      errorSuggestion: document.getElementById('error-suggestion')
+      landingErrorText: document.getElementById('landing-error-text')
     };
 
     if (this.inputs.displayRedirect) {
@@ -78,29 +75,26 @@ class ZohoStatementApp {
     }
 
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-    this.inputs.from.value = firstDay;
-    this.inputs.to.value = lastDay;
+    this.inputs.from.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    this.inputs.to.value = now.toISOString().split('T')[0];
   }
 
   bindEvents() {
     this.btns.connect.onclick = () => this.startAuth();
     this.btns.saveConfig.onclick = () => this.saveConfig();
     this.btns.openConfigLanding.onclick = () => this.toggleModal(true);
-    this.btns.closeConfig.onclick = () => this.toggleModal(false);
     this.btns.logout.onclick = () => this.logout();
-    this.btns.fetch.onclick = () => this.generateStatement();
+    this.btns.fetch.onclick = () => this.generateMultiStatement();
     this.btns.download.onclick = () => this.downloadPDF();
+    
+    this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
+    this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
 
-    this.inputs.customer.onchange = (e) => {
-      this.state.selectedCustomer = this.state.customers.find(c => c.contact_id === e.target.value);
-    };
-
-    this.inputs.organization.onchange = (e) => {
+    this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
+    
+    this.inputs.orgSelect.onchange = (e) => {
       this.state.selectedOrgId = e.target.value;
       localStorage.setItem('zoho_selected_org_id', e.target.value);
-      this.log(`Switched context to Org: ${e.target.value}`);
       this.fetchCustomers();
     };
   }
@@ -114,104 +108,73 @@ class ZohoStatementApp {
   }
 
   saveConfig() {
-    this.config = {
-      clientId: this.inputs.clientId.value.trim(),
-      region: this.inputs.region.value
-    };
+    this.config = { clientId: this.inputs.clientId.value.trim(), region: this.inputs.region.value };
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleModal(false);
-    this.log("Settings saved. Ready for synchronization.");
-    this.hideError();
   }
 
   startAuth() {
-    if (!this.config.clientId) {
-      this.showError("Missing Client ID", "Go to Developer Settings and enter your Zoho Client ID.");
-      this.toggleModal(true);
-      return;
-    }
+    if (!this.config.clientId) return this.toggleModal(true);
     const redirectUri = window.location.origin + window.location.pathname;
     const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.settings.READ,ZohoBooks.fullaccess.READ";
-    const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
-    
-    this.log(`Initiating Zoho Secure Auth (${this.config.region})...`);
-    window.location.href = authUrl;
+    window.location.href = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
   }
 
   handleOAuthCallback() {
     const hash = window.location.hash;
     if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.substring(1));
-      const token = params.get('access_token');
-      if (token) {
-        this.state.accessToken = token;
-        localStorage.setItem('zoho_access_token', token);
-        window.history.replaceState({}, document.title, window.location.pathname);
-        this.log("Auth token verified. Probing organizations...");
-      }
+      this.state.accessToken = params.get('access_token');
+      localStorage.setItem('zoho_access_token', this.state.accessToken);
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }
 
   async checkSession() {
     if (this.state.accessToken) {
-      this.showLoading("Waking session...");
+      this.showLoading("Waking Data Handshake...");
       const success = await this.discoverOrganizations();
-      
       if (success) {
         this.views.landing.classList.add('view-hidden');
         this.views.dashboard.classList.remove('view-hidden');
-        this.hideError();
-        this.fetchCustomers();
-      } else {
-        this.hideLoading();
+        await this.fetchCustomers();
       }
+      this.hideLoading();
     }
   }
 
   async discoverOrganizations() {
     try {
-      this.log("Auto-discovering organizations...");
       const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations`;
       const res = await this.rawRequest(url);
-      
       if (res && res.organizations) {
         this.state.organizations = res.organizations;
-        this.populateOrgSelect();
-        
-        if (!this.state.selectedOrgId && res.organizations.length > 0) {
-          this.state.selectedOrgId = res.organizations[0].organization_id;
-          localStorage.setItem('zoho_selected_org_id', this.state.selectedOrgId);
-        }
-        this.inputs.organization.value = this.state.selectedOrgId;
+        this.inputs.orgSelect.innerHTML = '';
+        res.organizations.forEach(org => {
+          const opt = document.createElement('option');
+          opt.value = org.organization_id;
+          opt.innerText = org.name;
+          this.inputs.orgSelect.appendChild(opt);
+        });
+        if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
+        this.inputs.orgSelect.value = this.state.selectedOrgId;
         return true;
       }
-      return false;
     } catch (e) {
-      this.showError(e.message, "This usually happens if your Client ID is wrong or your Zoho region (.eu, .in) doesn't match your Developer Settings.");
+      this.showLandingError(e.message);
       return false;
     }
   }
 
-  populateOrgSelect() {
-    this.inputs.organization.innerHTML = '';
-    this.state.organizations.forEach(org => {
-      const opt = document.createElement('option');
-      opt.value = org.organization_id;
-      opt.innerText = org.name;
-      this.inputs.organization.appendChild(opt);
-    });
-  }
-
   async fetchCustomers() {
-    if (!this.state.selectedOrgId) return;
-    this.showLoading("Syncing Customer Directory...");
+    this.showLoading("Indexing Customer Registry...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
-      const custRes = await this.rawRequest(url);
-      if (custRes && custRes.contacts) {
-        this.state.customers = custRes.contacts;
-        this.populateCustomerSelect();
-        this.log(`Sync complete: ${this.state.customers.length} records retrieved.`);
+      const res = await this.rawRequest(url);
+      if (res && res.contacts) {
+        this.state.customers = res.contacts;
+        this.renderCustomerList();
+        this.log("Registry Synced.");
       }
     } catch (e) {
       this.log(`Sync Error: ${e.message}`);
@@ -220,175 +183,177 @@ class ZohoStatementApp {
     }
   }
 
-  populateCustomerSelect() {
-    this.inputs.customer.innerHTML = '<option value="">Choose Customer...</option>';
+  renderCustomerList() {
+    this.views.customerList.innerHTML = '';
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.contact_id;
-      opt.innerText = c.contact_name;
-      this.inputs.customer.appendChild(opt);
+      const div = document.createElement('div');
+      div.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-white/5 transition-all text-xs ${this.state.selectedCustomerIds.has(c.contact_id) ? 'bg-indigo-500/10' : ''}`;
+      div.innerHTML = `
+        <div class="w-4 h-4 rounded border border-white/20 flex items-center justify-center ${this.state.selectedCustomerIds.has(c.contact_id) ? 'bg-indigo-500 border-indigo-500' : ''}">
+          ${this.state.selectedCustomerIds.has(c.contact_id) ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>' : ''}
+        </div>
+        <span class="truncate font-medium">${c.contact_name}</span>
+      `;
+      div.onclick = () => {
+        if (this.state.selectedCustomerIds.has(c.contact_id)) this.state.selectedCustomerIds.delete(c.contact_id);
+        else this.state.selectedCustomerIds.add(c.contact_id);
+        this.renderCustomerList();
+      };
+      this.views.customerList.appendChild(div);
+    });
+  }
+
+  toggleAllCustomers(selected) {
+    if (selected) {
+      this.state.customers.forEach(c => this.state.selectedCustomerIds.add(c.contact_id));
+    } else {
+      this.state.selectedCustomerIds.clear();
+    }
+    this.renderCustomerList();
+  }
+
+  filterCustomers(term) {
+    const items = this.views.customerList.querySelectorAll('div');
+    items.forEach(item => {
+      const name = item.innerText.toLowerCase();
+      item.style.display = name.includes(term.toLowerCase()) ? 'flex' : 'none';
     });
   }
 
   async rawRequest(url) {
-    // Transparent Proxy Wrap
-    const proxiedUrl = this.proxyPrefix + encodeURIComponent(url);
-    
-    try {
-      const res = await fetch(proxiedUrl, {
-        headers: { 
-          'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`,
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      });
-      
-      if (res.status === 401) throw new Error("Authentication Expired. Please sign in again.");
-      if (res.status === 403) throw new Error("Permission Denied. Check your Client Scopes.");
-      
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: `Zoho Error ${res.status}` }));
-        throw new Error(err.message || "Failed to communicate with Zoho Books.");
-      }
-      return await res.json();
-    } catch (err) {
-      if (err.name === 'TypeError') {
-        throw new Error("CORS Handshake Failed. Your browser might be blocking the proxy. Try disabling ad-blockers for this site.");
-      }
-      throw err;
+    const proxied = this.proxyPrefix + encodeURIComponent(url);
+    const res = await fetch(proxied, {
+      headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (res.status === 401) throw new Error("OAuth Session Expired");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'API Call Failed' }));
+      throw new Error(err.message || 'Zoho communication failure');
     }
+    return res.json();
   }
 
-  async generateStatement() {
-    const customerId = this.inputs.customer.value;
+  async generateMultiStatement() {
+    if (this.state.selectedCustomerIds.size === 0) return alert("Select at least one customer.");
+    
+    this.showLoading("Synthesizing Item Matrix...");
+    this.log(`Aggregating data for ${this.state.selectedCustomerIds.size} customers...`);
+    
+    const combinedData = [];
     const from = this.inputs.from.value;
     const to = this.inputs.to.value;
 
-    if (!customerId) return alert("Select a customer first.");
-    
-    this.showLoading("Mining Transaction Data...");
-    this.log(`Synthesizing statement for ${this.state.selectedCustomer.contact_name}...`);
-
     try {
-      const invUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices?customer_id=${customerId}&date_start=${from}&date_end=${to}&status=sent,overdue&organization_id=${this.state.selectedOrgId}`;
-      const invListRes = await this.rawRequest(invUrl);
-      
-      if (!invListRes || !invListRes.invoices || !invListRes.invoices.length) {
-        this.targets.renderArea.innerHTML = `<div class="p-32 text-center opacity-30 italic font-medium">No outstanding invoices found for the selected period.</div>`;
-        this.btns.download.disabled = true;
-        this.hideLoading();
-        return;
+      for (const cid of this.state.selectedCustomerIds) {
+        const customer = this.state.customers.find(c => c.contact_id === cid);
+        this.showLoading(`Processing: ${customer.contact_name}`);
+        
+        const invUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices?customer_id=${cid}&date_start=${from}&date_end=${to}&status=sent,overdue&organization_id=${this.state.selectedOrgId}`;
+        const invList = await this.rawRequest(invUrl);
+        
+        if (invList?.invoices?.length > 0) {
+          const itemsForCustomer = [];
+          for (const inv of invList.invoices) {
+            const detUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
+            const detail = await this.rawRequest(detUrl);
+            
+            if (detail?.invoice?.line_items) {
+              detail.invoice.line_items.forEach(li => {
+                itemsForCustomer.push({
+                  itemName: li.name,
+                  qty: li.quantity,
+                  subTotal: li.item_total,
+                  invoiceNo: inv.invoice_number,
+                  invoiceDate: inv.date,
+                  dueDate: inv.due_date,
+                  balance: inv.balance
+                });
+              });
+            }
+          }
+          if (itemsForCustomer.length > 0) {
+            combinedData.push({ customerName: customer.contact_name, items: itemsForCustomer });
+          }
+        }
       }
 
-      const detailedInvoices = [];
-      for (const inv of invListRes.invoices) {
-        this.showLoading(`Expanding: ${inv.invoice_number}`);
-        const detUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
-        const detail = await this.rawRequest(detUrl);
-        if (detail && detail.invoice) detailedInvoices.push(detail.invoice);
-      }
-
-      this.state.statementData = detailedInvoices;
+      this.state.statementData = combinedData;
       this.renderStatementUI();
       this.btns.download.disabled = false;
       this.targets.emptyState.classList.add('view-hidden');
-      this.log(`Success: Generated ledger with ${detailedInvoices.length} entries.`);
     } catch (e) {
-      alert(e.message);
+      alert(`Synthesis Error: ${e.message}`);
     } finally {
       this.hideLoading();
     }
   }
 
   renderStatementUI() {
-    const invoices = this.state.statementData;
-    const customer = this.state.selectedCustomer;
+    const data = this.state.statementData;
     const activeOrg = this.state.organizations.find(o => o.organization_id === this.state.selectedOrgId);
-    const totalDue = invoices.reduce((sum, inv) => sum + (inv.balance || 0), 0);
-    const activeCols = Array.from(document.querySelectorAll('#column-toggles input:checked')).map(i => i.dataset.col);
-
+    
     let html = `
-      <div class="statement-view animate-in" id="pdf-content">
-        <div class="flex justify-between items-start mb-12 pb-8 border-b-4 border-black">
-          <div>
-            <h1 class="text-4xl font-black uppercase tracking-tighter">${activeOrg.name}</h1>
-            <p class="text-[10px] text-neutral-500 uppercase font-bold tracking-[0.5em] mt-2">Outstanding Account Statement</p>
-          </div>
-          <div class="text-right">
-            <p class="font-black text-[9px] uppercase text-neutral-400">Date Range</p>
-            <p class="text-lg font-black">${this.inputs.from.value} to ${this.inputs.to.value}</p>
-          </div>
-        </div>
+      <div class="statement-view" id="pdf-content">
+        <header class="flex justify-between items-end border-b-2 border-black pb-4 mb-8">
+           <div>
+              <h1 class="text-2xl font-black uppercase tracking-tight">${activeOrg.name}</h1>
+              <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-1">Itemized Ledger Balance Statement</p>
+           </div>
+           <div class="text-right text-[8px] font-bold uppercase leading-tight">
+              <p>Period Start: ${this.inputs.from.value}</p>
+              <p>Period End: ${this.inputs.to.value}</p>
+           </div>
+        </header>
 
-        <div class="grid grid-cols-2 gap-12 mb-12">
-          <div>
-            <h4 class="text-[9px] font-black uppercase text-neutral-300 mb-2">Statement For</h4>
-            <p class="text-2xl font-black">${customer.contact_name}</p>
-          </div>
-          <div class="bg-neutral-50 p-6 border-l-4 border-black rounded-r-xl">
-             <div class="flex justify-between items-center mb-1">
-                <span class="text-[10px] font-black uppercase text-neutral-400">Total Outstanding</span>
-                <span class="text-2xl font-black">$${totalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-             </div>
-             <p class="text-[9px] text-neutral-500 font-bold italic">Calculated from ${invoices.length} active invoices</p>
-          </div>
-        </div>
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-black text-[8px] font-black uppercase bg-neutral-100">
+              <th class="py-2 px-1">#</th>
+              <th class="py-2 px-1">Item Name / Description</th>
+              <th class="py-2 px-1 text-center">Qty</th>
+              <th class="py-2 px-1 text-right">Sub Total (BCY)</th>
+              <th class="py-2 px-1 text-center">Invoice #</th>
+              <th class="py-2 px-1 text-center">Date</th>
+              <th class="py-2 px-1 text-center">Due Date</th>
+              <th class="py-2 px-1 text-right">Balance (BCY)</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
 
-        <div class="space-y-16">
-          ${invoices.map(inv => `
-            <div class="invoice-block">
-              <div class="flex justify-between items-center bg-neutral-100 px-4 py-3 mb-4 rounded-lg">
-                <div class="flex items-center space-x-6">
-                  <div>
-                    <span class="text-[8px] font-black uppercase text-neutral-400 block">Invoice #</span>
-                    <span class="font-black text-base">${inv.invoice_number}</span>
-                  </div>
-                  <div>
-                    <span class="text-[8px] font-black uppercase text-neutral-400 block">Date</span>
-                    <span class="font-bold">${inv.date}</span>
-                  </div>
-                </div>
-                <div class="text-right">
-                   ${activeCols.includes('due_date') ? `<span class="mr-6"><span class="text-[8px] font-black uppercase text-neutral-400">Due:</span> <span class="font-bold">${inv.due_date}</span></span>` : ''}
-                   ${activeCols.includes('status') ? `<span class="bg-black text-white px-3 py-1 rounded text-[9px] font-black uppercase">${inv.status}</span>` : ''}
-                </div>
-              </div>
+    let globalIndex = 1;
+    data.forEach(cust => {
+      // Customer Header Row
+      html += `
+        <tr class="customer-row">
+          <td colspan="8" class="py-2 px-2 font-black text-[10px] uppercase">Customer Name: ${cust.customerName}</td>
+        </tr>
+      `;
 
-              <table class="w-full text-left border-collapse">
-                <thead>
-                  <tr class="border-b-2 border-black text-[9px] font-black uppercase tracking-widest">
-                    ${activeCols.includes('sku') ? `<th class="py-3 w-32">SKU</th>` : ''}
-                    <th class="py-3">Item Description</th>
-                    <th class="py-3 text-right">Qty</th>
-                    <th class="py-3 text-right">Rate</th>
-                    <th class="py-3 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-black/5 text-[11px]">
-                  ${inv.line_items.map(item => `
-                    <tr>
-                      ${activeCols.includes('sku') ? `<td class="py-3 font-mono text-[9px] opacity-60">${item.sku || '---'}</td>` : ''}
-                      <td class="py-3 font-bold">${item.name}</td>
-                      <td class="py-3 text-right">${item.quantity}</td>
-                      <td class="py-3 text-right">${item.rate.toFixed(2)}</td>
-                      <td class="py-3 text-right font-black">${item.item_total.toFixed(2)}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-                <tfoot>
-                  <tr class="border-t-2 border-black font-black">
-                    <td colspan="${activeCols.includes('sku') ? 4 : 3}" class="py-5 text-right text-[10px] uppercase opacity-40">Invoice Balance Due:</td>
-                    <td class="py-5 text-right text-lg font-black">$${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          `).join('')}
-        </div>
+      cust.items.forEach(item => {
+        html += `
+          <tr class="item-row border-b border-neutral-100">
+            <td class="py-1.5 px-1 font-mono text-[8px] opacity-40">${globalIndex++}</td>
+            <td class="py-1.5 px-1 font-bold" contenteditable="true">${item.itemName}</td>
+            <td class="py-1.5 px-1 text-center" contenteditable="true">${item.qty}</td>
+            <td class="py-1.5 px-1 text-right font-medium" contenteditable="true">${item.subTotal.toFixed(2)}</td>
+            <td class="py-1.5 px-1 text-center text-[8px] font-mono" contenteditable="true">${item.invoiceNo}</td>
+            <td class="py-1.5 px-1 text-center text-[8px]" contenteditable="true">${item.invoiceDate}</td>
+            <td class="py-1.5 px-1 text-center text-[8px]" contenteditable="true">${item.dueDate}</td>
+            <td class="py-1.5 px-1 text-right font-black" contenteditable="true">${item.balance.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    });
 
-        <div class="mt-24 pt-10 border-t border-black/10 flex justify-between items-center opacity-30 italic">
-           <div class="text-[8px] font-bold uppercase tracking-widest">Zoho Books Outstanding Engine | Generated for Internal Reference</div>
-           <div class="text-[8px] font-bold uppercase">Run ID: #${new Date().getTime().toString().slice(-8)}</div>
-        </div>
+    html += `
+          </tbody>
+        </table>
+
+        <footer class="mt-20 pt-8 border-t border-black opacity-20 text-[7px] font-bold uppercase flex justify-between">
+           <div>Authorized Internal Record | System Generated: ${new Date().toLocaleString()}</div>
+           <div>Ref: ${Math.random().toString(36).substr(2, 9).toUpperCase()}</div>
+        </footer>
       </div>
     `;
 
@@ -396,21 +361,19 @@ class ZohoStatementApp {
   }
 
   downloadPDF() {
-    const element = document.getElementById('pdf-content');
-    const name = this.state.selectedCustomer.contact_name.replace(/\s+/g, '_');
-    
-    this.showLoading("Finalizing PDF Export...");
+    const el = document.getElementById('pdf-content');
+    this.showLoading("Compiling PDF Payload...");
     html2pdf().set({
       margin: 0,
-      filename: `Statement_${name}.pdf`,
+      filename: `Bulk_Statement_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 3, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    }).from(element).save().then(() => this.hideLoading());
+    }).from(el).save().then(() => this.hideLoading());
   }
 
-  showLoading(text) {
-    this.targets.loadingText.innerText = text || "Connecting...";
+  showLoading(txt) {
+    this.targets.loadingText.innerText = txt;
     this.views.loading.classList.remove('view-hidden');
   }
 
@@ -418,29 +381,19 @@ class ZohoStatementApp {
     this.views.loading.classList.add('view-hidden');
   }
 
-  showError(msg, suggestion) {
-    this.targets.landingErrorText.innerText = msg;
-    this.targets.errorSuggestion.innerText = suggestion || "Refresh the page and try again.";
+  log(m) {
+    this.targets.log.innerText = `> ${m}`;
+  }
+
+  showLandingError(m) {
+    this.targets.landingErrorText.innerText = m;
     this.views.landingError.classList.remove('view-hidden');
   }
 
-  hideError() {
-    this.views.landingError.classList.add('view-hidden');
-  }
-
-  log(msg) {
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const div = document.createElement('div');
-    div.className = "mb-1.5 border-l-2 border-indigo-500/20 pl-3";
-    div.innerHTML = `<span class="text-neutral-700 font-bold">${time}</span> — ${msg}`;
-    this.targets.log.prepend(div);
-  }
-
   logout() {
-    localStorage.removeItem('zoho_access_token');
-    localStorage.removeItem('zoho_selected_org_id');
+    localStorage.clear();
     window.location.reload();
   }
 }
 
-new ZohoStatementApp();
+new ZohoLedgerApp();

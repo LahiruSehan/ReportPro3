@@ -4,238 +4,162 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zoho Ledger Pro | Item-Level Statement Generator</title>
+  <title>Zoho Ledger Pro | Multi-Customer Item Engine</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     body { background-color: #050505; color: #ffffff; font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; }
-    .gradient-bg { position: fixed; inset: 0; background: radial-gradient(circle at 50% 50%, #111122 0%, #050505 100%); z-index: -1; }
-    .glass-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 1.25rem; }
+    .gradient-bg { position: fixed; inset: 0; background: radial-gradient(circle at 50% 50%, #0f172a 0%, #050505 100%); z-index: -1; }
+    .glass-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 1rem; }
     .view-hidden { display: none !important; }
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); z-index: 100; display: flex; items-center: center; justify-content: center; padding: 20px; }
     
-    /* Scrollbar */
+    /* Fixed Dropdown Visibility */
+    select { background: #1a1a1a !important; color: white !important; cursor: pointer; border: 1px solid #333 !important; }
+    select option { background: #1a1a1a; color: white; padding: 10px; }
+    
     .custom-scrollbar::-webkit-scrollbar { width: 5px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #444; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
 
-    /* PDF Rendering Styles */
-    .statement-view { background: white; color: black; padding: 2.5rem; min-height: 29.7cm; width: 21cm; margin: 0 auto; box-shadow: 0 30px 60px rgba(0,0,0,0.5); font-size: 11px; line-height: 1.4; }
+    /* Statement Styling */
+    .statement-view { background: white; color: black; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; box-shadow: 0 40px 100px rgba(0,0,0,0.6); font-size: 10px; line-height: 1.2; }
+    [contenteditable="true"]:hover { background: #f0f7ff; outline: 1px dashed #6366f1; }
+    [contenteditable="true"]:focus { background: #eef2ff; outline: 2px solid #6366f1; }
+
+    .customer-row { background: #f8fafc; border-top: 2px solid #000; border-bottom: 1px solid #000; }
+    .item-row:nth-child(even) { background: #fafafa; }
     
-    .animate-in { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    
-    .btn-indigo { background: #6366f1; transition: all 0.3s; box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.4); }
-    .btn-indigo:hover { background: #4f46e5; transform: translateY(-2px); box-shadow: 0 15px 30px -5px rgba(99, 102, 241, 0.6); }
-    .btn-indigo:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-    
-    select, input { color-scheme: dark; border: 1px solid rgba(255,255,255,0.1) !important; background: rgba(255,255,255,0.03) !important; }
-    select:focus, input:focus { border-color: #6366f1 !important; outline: none; }
+    .btn-indigo { background: #6366f1; transition: all 0.2s; }
+    .btn-indigo:hover { background: #4f46e5; transform: scale(1.02); }
+    .btn-indigo:disabled { opacity: 0.3; pointer-events: none; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); backdrop-filter: blur(10px); z-index: 100; display: flex; items-center: center; justify-content: center; }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
   <div class="gradient-bg"></div>
 
-  <!-- Settings Modal -->
+  <!-- Auth Modal -->
   <div id="modal-config" class="modal-overlay view-hidden">
-    <div class="glass-card p-10 w-full max-w-xl space-y-8 animate-in">
-      <div class="flex justify-between items-center">
+    <div class="glass-card p-10 w-full max-w-lg space-y-6">
+      <h3 class="text-2xl font-black">Developer Settings</h3>
+      <div class="space-y-4">
         <div>
-          <h3 class="text-2xl font-black tracking-tight">API Setup</h3>
-          <p class="text-[10px] text-neutral-500 uppercase tracking-[0.3em] mt-1 font-bold">Mandatory Configuration</p>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Redirect URI (Use in Zoho Console)</label>
+          <code class="block bg-black/40 p-2 rounded text-[10px] font-mono break-all" id="display-redirect-uri"></code>
         </div>
-        <button id="btn-close-config" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-2xl">&times;</button>
-      </div>
-
-      <div class="space-y-6">
-        <div class="p-5 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl space-y-3">
-           <div class="flex items-center space-x-2 text-indigo-400">
-             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-             <span class="text-xs font-black uppercase tracking-widest">Required Redirect URI</span>
-           </div>
-           <p class="text-[11px] text-neutral-400 leading-relaxed">
-             In your Zoho API Console, your application must have this exact <strong>Redirect URI</strong>:
-             <br><code class="text-white bg-black/40 p-1 rounded mt-2 block font-mono text-[10px]" id="display-redirect-uri"></code>
-           </p>
+        <div>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Zoho Region</label>
+          <select id="cfg-region" class="w-full rounded-lg p-3 text-sm">
+            <option value="com">Global (.com)</option>
+            <option value="eu">Europe (.eu)</option>
+            <option value="in">India (.in)</option>
+            <option value="com.au">Australia (.com.au)</option>
+          </select>
         </div>
-
-        <div class="grid grid-cols-2 gap-4">
-          <div class="col-span-2">
-            <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Zoho Data Region</label>
-            <select id="cfg-region" class="w-full rounded-xl p-4 text-sm outline-none">
-              <option value="com">Global / US (.com)</option>
-              <option value="eu">Europe (.eu)</option>
-              <option value="in">India (.in)</option>
-              <option value="com.au">Australia (.com.au)</option>
-              <option value="com.cn">China (.com.cn)</option>
-            </select>
-          </div>
-          <div class="col-span-2">
-            <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Client ID (from API Console)</label>
-            <input id="cfg-client-id" type="text" placeholder="1000.XXXX..." class="w-full rounded-xl p-4 text-sm font-mono">
-          </div>
+        <div>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Client ID</label>
+          <input id="cfg-client-id" type="text" class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white font-mono">
         </div>
       </div>
-      
-      <button id="btn-save-config" class="w-full py-5 btn-indigo rounded-2xl font-black uppercase tracking-widest text-sm">
-        Save & Verify Connection
-      </button>
+      <button id="btn-save-config" class="w-full py-4 btn-indigo rounded-xl font-black uppercase text-xs tracking-widest">Connect Account</button>
     </div>
   </div>
 
-  <!-- Landing View -->
-  <div id="view-landing" class="flex-grow flex items-center justify-center p-6">
-    <main class="text-center space-y-12 max-w-3xl animate-in">
-      <div class="space-y-6">
-        <h1 class="text-7xl md:text-9xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-800">LEDGER</h1>
-        <p class="text-neutral-500 text-xl font-light max-w-lg mx-auto leading-relaxed">The ultimate item-level outstanding statement generator for Zoho Books. No CORS issues, just data.</p>
-      </div>
+  <!-- Landing -->
+  <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center">
+    <h1 class="text-8xl font-black tracking-tighter mb-4">LEDGER</h1>
+    <p class="text-neutral-500 max-w-md mb-10 text-lg">High-fidelity itemized statement engine for Zoho Books.</p>
+    
+    <div id="landing-error" class="view-hidden mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-left max-w-sm">
+      <p class="font-bold uppercase mb-1">Sync Error</p>
+      <p id="landing-error-text"></p>
+    </div>
 
-      <!-- Live Diagnostic Box -->
-      <div id="landing-error" class="view-hidden max-w-lg mx-auto p-6 bg-red-500/5 border border-red-500/20 rounded-2xl text-left">
-         <div class="flex items-center space-x-3 text-red-500 mb-4">
-            <div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
-               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
-            </div>
-            <span class="font-black uppercase tracking-widest text-sm">Synchronization Failed</span>
-         </div>
-         <p id="landing-error-text" class="text-xs text-neutral-400 font-medium leading-relaxed"></p>
-         <div class="mt-4 pt-4 border-t border-white/5 space-y-2">
-            <p class="text-[10px] uppercase font-bold text-neutral-500">Suggested Action:</p>
-            <p id="error-suggestion" class="text-[11px] text-neutral-300 italic"></p>
-         </div>
-      </div>
-
-      <div class="flex flex-col items-center space-y-6">
-        <button id="btn-connect" class="px-16 py-7 text-lg font-black text-white bg-indigo-600 rounded-2xl hover:bg-indigo-700 shadow-2xl transition-all">
-          SYNC ZOHO ACCOUNT
-        </button>
-        <button id="btn-open-config-landing" class="text-xs text-neutral-500 hover:text-white uppercase tracking-widest font-black border-b border-white/10 hover:border-white transition-all pb-1">
-          Open Developer Settings
-        </button>
-      </div>
-    </main>
+    <button id="btn-connect" class="px-12 py-5 bg-indigo-600 rounded-2xl font-black text-white hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/30">
+      AUTHORIZE ACCESS
+    </button>
+    <button id="btn-open-config-landing" class="mt-6 text-[10px] font-bold text-neutral-500 uppercase tracking-widest hover:text-white transition-colors">Developer Settings</button>
   </div>
 
-  <!-- Dashboard View -->
-  <div id="view-dashboard" class="view-hidden flex flex-col h-screen">
-    <!-- Top Navigation -->
-    <header class="glass-card m-4 p-5 flex items-center justify-between z-50">
+  <!-- Dashboard -->
+  <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
+    <header class="p-4 glass-card m-4 flex items-center justify-between">
       <div class="flex items-center space-x-6">
-        <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-black text-black text-2xl shadow-xl">Z</div>
-        <div class="h-10 w-px bg-white/10"></div>
-        <div>
-          <select id="select-organization" class="bg-transparent border-none font-black text-xl tracking-tight outline-none cursor-pointer hover:text-indigo-400 transition-colors p-0 appearance-none pr-8">
-            <option value="">Searching organizations...</option>
-          </select>
-          <p class="text-[9px] text-neutral-500 uppercase tracking-widest font-black mt-0.5">Active Project</p>
-        </div>
+        <div class="text-2xl font-black italic tracking-tighter">INSIGHT</div>
+        <div class="h-6 w-px bg-white/10"></div>
+        <select id="select-organization" class="bg-transparent border-none text-sm font-bold outline-none pr-8">
+          <option value="">Loading Organizations...</option>
+        </select>
       </div>
-      <div class="flex items-center space-x-4">
-        <div id="connection-status" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-           <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-           <span class="text-[9px] font-black uppercase tracking-widest text-emerald-500">Live</span>
-        </div>
-        <button id="btn-logout" class="p-3 hover:bg-red-500/10 rounded-xl transition-all group">
-          <svg class="w-5 h-5 text-neutral-500 group-hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-        </button>
-      </div>
+      <button id="btn-logout" class="p-2 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-500 transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+      </button>
     </header>
 
-    <div class="flex flex-col md:flex-row flex-grow overflow-hidden px-4 pb-4 gap-6">
-      <!-- Control Panel -->
-      <aside class="w-full md:w-96 glass-card p-8 flex flex-col space-y-8 overflow-y-auto custom-scrollbar">
-        <section class="space-y-4">
-          <h4 class="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">1. Select Target</h4>
-          <div>
-            <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2">Customer Name</label>
-            <select id="select-customer" class="w-full rounded-xl p-4 text-sm outline-none">
-              <option value="">Syncing customers...</option>
-            </select>
-          </div>
-        </section>
-
-        <section class="space-y-4">
-          <h4 class="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">2. Define Period</h4>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2">From</label>
-              <input type="date" id="date-from" class="w-full rounded-xl p-3 text-xs">
-            </div>
-            <div>
-              <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2">To</label>
-              <input type="date" id="date-to" class="w-full rounded-xl p-3 text-xs">
+    <div class="flex flex-grow overflow-hidden px-4 pb-4 gap-4">
+      <!-- Registry Sidebar -->
+      <aside class="w-80 flex flex-col gap-4">
+        <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden">
+          <div class="flex justify-between items-center mb-4">
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Customer Registry</h4>
+            <div class="flex space-x-2">
+               <button id="btn-select-all" class="text-[9px] font-bold text-neutral-500 hover:text-white">ALL</button>
+               <button id="btn-clear-all" class="text-[9px] font-bold text-neutral-500 hover:text-white">NONE</button>
             </div>
           </div>
-        </section>
-
-        <section class="space-y-4">
-          <h4 class="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">3. Ledger Columns</h4>
-          <div class="space-y-3 bg-white/5 p-5 rounded-2xl border border-white/5" id="column-toggles">
-            <label class="flex items-center space-x-3 text-xs cursor-pointer group">
-              <input type="checkbox" checked data-col="sku" class="w-5 h-5 rounded-lg border-white/10 bg-white/5 text-indigo-600 focus:ring-0">
-              <span class="text-neutral-400 group-hover:text-white transition-colors font-medium">Include Item SKU/Code</span>
-            </label>
-            <label class="flex items-center space-x-3 text-xs cursor-pointer group">
-              <input type="checkbox" checked data-col="due_date" class="w-5 h-5 rounded-lg border-white/10 bg-white/5 text-indigo-600 focus:ring-0">
-              <span class="text-neutral-400 group-hover:text-white transition-colors font-medium">Show Invoice Due Dates</span>
-            </label>
-            <label class="flex items-center space-x-3 text-xs cursor-pointer group">
-              <input type="checkbox" checked data-col="status" class="w-5 h-5 rounded-lg border-white/10 bg-white/5 text-indigo-600 focus:ring-0">
-              <span class="text-neutral-400 group-hover:text-white transition-colors font-medium">Invoice Status Tags</span>
-            </label>
+          
+          <div class="relative mb-4">
+            <input type="text" id="customer-search" placeholder="Search customers..." class="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs text-white outline-none focus:border-indigo-500">
           </div>
-        </section>
 
-        <button id="btn-fetch-statement" class="w-full py-5 btn-indigo rounded-2xl font-black uppercase tracking-widest text-sm">
-          SYNTHESIZE PREVIEW
-        </button>
+          <div id="customer-list" class="flex-grow overflow-y-auto custom-scrollbar space-y-1">
+            <!-- Customers populated here -->
+          </div>
+        </div>
 
-        <!-- Dynamic Log -->
-        <div id="status-log" class="flex-grow bg-black/40 rounded-2xl p-5 font-mono text-[9px] text-neutral-600 overflow-y-auto custom-scrollbar leading-relaxed border border-white/5">
-          <div class="text-neutral-400 font-bold mb-2">[SYSTEM LOG]</div>
+        <div class="glass-card p-6 space-y-4">
+          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Time Range</h4>
+          <div class="grid grid-cols-2 gap-2">
+            <input type="date" id="date-from" class="bg-white/5 border border-white/10 rounded-lg p-2 text-[10px]">
+            <input type="date" id="date-to" class="bg-white/5 border border-white/10 rounded-lg p-2 text-[10px]">
+          </div>
+          <button id="btn-fetch-statement" class="w-full py-4 btn-indigo rounded-xl font-black text-xs uppercase tracking-widest shadow-xl">Synthesize Ledger</button>
         </div>
       </aside>
 
-      <!-- Preview Engine -->
+      <!-- Main Engine -->
       <main class="flex-grow glass-card flex flex-col overflow-hidden">
-        <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-           <div class="flex items-center space-x-3">
-              <div class="w-2 h-2 rounded-full bg-indigo-500"></div>
-              <h3 class="text-xs font-black uppercase tracking-widest text-neutral-400">A4 Document Engine</h3>
-           </div>
-           <button id="btn-download-pdf" disabled class="px-8 py-3 bg-white text-black text-xs font-black uppercase rounded-xl hover:bg-indigo-400 transition-all disabled:opacity-20 disabled:grayscale">
-              Export PDF
-           </button>
+        <div class="p-4 border-b border-white/5 flex justify-between items-center">
+          <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-neutral-400">Live Synthesis Engine</span>
+          </div>
+          <button id="btn-download-pdf" disabled class="px-6 py-2 bg-white text-black text-[10px] font-black uppercase rounded-lg hover:bg-indigo-300 transition-all">Export PDF</button>
         </div>
 
-        <div class="flex-grow overflow-auto p-12 custom-scrollbar bg-[#0f0f1a]" id="preview-scroll-area">
-           <div id="statement-canvas-container" class="mx-auto origin-top transition-all" style="width: 21cm;">
-              <div id="empty-state" class="flex flex-col items-center justify-center py-40 text-neutral-700 animate-in">
-                 <div class="w-24 h-24 mb-6 rounded-3xl bg-white/5 flex items-center justify-center">
-                    <svg class="w-10 h-10 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                 </div>
-                 <p class="text-sm font-bold uppercase tracking-widest opacity-40">Ready for generation</p>
-              </div>
-              <div id="statement-render-target"></div>
-           </div>
+        <div class="flex-grow overflow-auto bg-neutral-900/40 p-10 custom-scrollbar">
+          <div id="statement-canvas-container" style="width: 21cm;" class="mx-auto origin-top transition-transform duration-500">
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full py-40 opacity-20">
+              <svg class="w-20 h-20 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              <p class="font-black uppercase tracking-[0.3em] text-xs">Waiting for payload</p>
+            </div>
+            <div id="statement-render-target"></div>
+          </div>
+        </div>
+
+        <div id="status-log" class="h-10 border-t border-white/5 bg-black/40 flex items-center px-4 font-mono text-[9px] text-neutral-600 gap-4">
+          <span id="log-message">Ready for input...</span>
         </div>
       </main>
     </div>
   </div>
 
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="fixed inset-0 bg-black/90 backdrop-blur-xl z-[200] flex flex-col items-center justify-center view-hidden">
-    <div class="relative">
-       <div class="w-20 h-20 border-[6px] border-indigo-500/20 rounded-full"></div>
-       <div class="w-20 h-20 border-[6px] border-indigo-500 border-t-transparent rounded-full animate-spin absolute inset-0"></div>
-    </div>
-    <div class="mt-8 text-center space-y-2">
-       <p class="text-white font-black uppercase tracking-[0.4em] text-xs" id="loading-text">Synchronizing Ledger</p>
-       <p class="text-indigo-500/60 text-[10px] font-bold uppercase tracking-widest animate-pulse">Communicating via Secure Proxy</p>
-    </div>
+  <!-- Load Screen -->
+  <div id="loading-overlay" class="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center view-hidden">
+    <div class="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+    <p id="loading-text" class="text-indigo-500 font-black uppercase tracking-[0.5em] text-xs">Accessing Zoho Nodes</p>
   </div>
 
   <script type="module" src="index.js"></script>
