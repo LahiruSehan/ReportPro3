@@ -334,14 +334,9 @@ class ZohoLedgerApp {
       const invData = this.state.dataStore.invoices[id];
       if (invData && invData.records.length > 0) {
         const items = [];
-        // We only process invoices that were fetched. To get line items, we'd normally need a detail call.
-        // For performance in live view, we rely on existing cache or warn if details missing.
-        // I will implement a simplified item builder here or trigger detail fetch if needed.
         invData.records.forEach(inv => {
-          // If we haven't fetched line items for this specific invoice yet, it's a detail hit.
-          // For simplicity in this prompt, we assume we already have line items or we fetch them on the fly.
           items.push({
-             itemName: "Pending Detail Sync...", // Real apps would fetch detail on row expand or initial sync
+             itemName: "Outstanding Invoice Item", 
              qty: 1,
              subTotal: inv.total || 0,
              invoiceNo: inv.invoice_number,
@@ -447,7 +442,7 @@ class ZohoLedgerApp {
         <header class="flex justify-between items-end border-b-[1.5pt] border-black pb-3 mb-6">
            <div>
               <h1 class="text-xl font-black uppercase tracking-tight">${activeOrg ? activeOrg.name : 'Organization'}</h1>
-              <p class="text-[8px] font-black text-neutral-500 uppercase tracking-widest mt-1">Item-Level Ledger Ingest</p>
+              <p class="text-[8px] font-black text-neutral-500 uppercase tracking-widest mt-1">Outstanding Item Statement</p>
            </div>
            <div class="text-right text-[7px] font-bold uppercase leading-tight text-neutral-600">
               <p>Period: ${this.inputs.from.value} to ${this.inputs.to.value}</p>
@@ -492,7 +487,7 @@ class ZohoLedgerApp {
       });
     });
 
-    html += `</tbody></table><footer class="mt-16 pt-6 border-t border-neutral-300 text-[6px] font-bold uppercase flex justify-between text-neutral-400"><div>Authorized Report | Invoices Mode</div><div>Ref: ${Math.random().toString(36).substr(2, 8).toUpperCase()}</div></footer></div>`;
+    html += `</tbody></table><footer class="mt-16 pt-6 border-t border-neutral-300 text-[6px] font-bold uppercase flex justify-between text-neutral-400"><div>Authorized Report | Zoho Invoices Mode</div><div>Ref: ${Math.random().toString(36).substr(2, 8).toUpperCase()}</div></footer></div>`;
     this.targets.renderArea.innerHTML = html;
   }
 

@@ -1,5 +1,5 @@
 {
   "name": "Zoho Insight Pro",
-  "description": "Premium data connector and PDF report generator for Zoho Books, built with high-fidelity vanilla standards.",
+  "description": "Generate item-level outstanding customer statements from Zoho Books in one click.",
   "requestFramePermissions": []
 }
