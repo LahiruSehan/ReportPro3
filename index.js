@@ -77,9 +77,12 @@ class ZohoLedgerApp {
       this.inputs.displayRedirect.innerText = window.location.origin + window.location.pathname;
     }
 
-    // Default dates: Start of current year to Today
+    // Default dates: Last 365 days to today for better data coverage
     const now = new Date();
-    this.inputs.from.value = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+    const lastYear = new Date();
+    lastYear.setDate(now.getDate() - 365);
+    
+    this.inputs.from.value = lastYear.toISOString().split('T')[0];
     this.inputs.to.value = now.toISOString().split('T')[0];
   }
 
@@ -215,11 +218,10 @@ class ZohoLedgerApp {
   async handleCustomerClick(id) {
     if (this.state.selectedCustomerIds.has(id)) {
       this.state.selectedCustomerIds.delete(id);
+      delete this.state.dataStore[id];
     } else {
       this.state.selectedCustomerIds.add(id);
-      if (!this.state.dataStore[id]) {
-        await this.syncCustomerData(id);
-      }
+      await this.syncCustomerData(id);
     }
     this.renderCustomerList();
     this.recalculateAndRender();
@@ -235,7 +237,8 @@ class ZohoLedgerApp {
     const to = this.inputs.to.value;
     
     try {
-      const url = `https://www.zohoapis.${this.config.region}/books/v3/invoices?customer_id=${id}&date_start=${from}&date_end=${to}&status=sent,overdue&organization_id=${this.state.selectedOrgId}`;
+      // NOTE: Using status=unpaid which includes sent, overdue, and partially paid
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/invoices?customer_id=${id}&date_start=${from}&date_end=${to}&status=unpaid&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
       
       const items = [];
@@ -265,15 +268,19 @@ class ZohoLedgerApp {
       };
       this.log(`${customer.contact_name} synced.`);
     } catch (e) {
-      this.log(`Error syncing ${customer.contact_name}: ${e.message}`);
+      console.error(e);
+      this.log(`Error syncing ${customer.contact_name}: Check date range or org access.`);
+      this.state.selectedCustomerIds.delete(id);
+      this.renderCustomerList();
     } finally {
       this.hideLoading();
     }
   }
 
   async syncAllActiveCustomers() {
-    this.state.dataStore = {}; // Clear cache because dates changed
-    for (const id of this.state.selectedCustomerIds) {
+    this.state.dataStore = {}; // Clear cache because filters changed
+    const ids = Array.from(this.state.selectedCustomerIds);
+    for (const id of ids) {
       await this.syncCustomerData(id);
     }
     this.recalculateAndRender();
@@ -335,7 +342,7 @@ class ZohoLedgerApp {
       <div class="statement-view" id="pdf-content">
         <header class="flex justify-between items-end border-b-[1.5pt] border-black pb-3 mb-6">
            <div>
-              <h1 class="text-xl font-black uppercase tracking-tight">${activeOrg.name}</h1>
+              <h1 class="text-xl font-black uppercase tracking-tight">${activeOrg ? activeOrg.name : 'Organization'}</h1>
               <p class="text-[8px] font-black text-neutral-500 uppercase tracking-widest mt-1">Item-Level Outstanding Ledger</p>
            </div>
            <div class="text-right text-[7px] font-bold uppercase leading-tight text-neutral-600">
@@ -370,7 +377,7 @@ class ZohoLedgerApp {
       `;
 
       if (cust.items.length === 0) {
-        html += `<tr><td colspan="8" class="py-4 text-center text-neutral-400 italic">No outstanding items found.</td></tr>`;
+        html += `<tr><td colspan="8" class="py-4 text-center text-neutral-400 italic">No outstanding items found for this period.</td></tr>`;
       }
 
       cust.items.forEach(item => {
@@ -429,6 +436,7 @@ class ZohoLedgerApp {
 
   downloadPDF() {
     const el = document.getElementById('pdf-content');
+    if (!el) return;
     this.showLoading("Rasterizing PDF...");
     html2pdf().set({
       margin: 0,
@@ -440,21 +448,21 @@ class ZohoLedgerApp {
   }
 
   showLoading(txt) {
-    this.targets.loadingText.innerText = txt;
-    this.views.loading.classList.remove('view-hidden');
+    if (this.targets.loadingText) this.targets.loadingText.innerText = txt;
+    if (this.views.loading) this.views.loading.classList.remove('view-hidden');
   }
 
   hideLoading() {
-    this.views.loading.classList.add('view-hidden');
+    if (this.views.loading) this.views.loading.classList.add('view-hidden');
   }
 
   log(m) {
-    this.targets.log.innerText = `> ${m}`;
+    if (this.targets.log) this.targets.log.innerText = `> ${m}`;
   }
 
   showLandingError(m) {
-    this.targets.landingErrorText.innerText = m;
-    this.views.landingError.classList.remove('view-hidden');
+    if (this.targets.landingErrorText) this.targets.landingErrorText.innerText = m;
+    if (this.views.landingError) this.views.landingError.classList.remove('view-hidden');
   }
 
   logout() {
