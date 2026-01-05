@@ -26,6 +26,7 @@ class ZohoInsightApp {
     this.bindEvents();
     this.handleCallback();
     this.checkSession();
+    this.updateRedirectUriDisplay();
   }
 
   cacheDOM() {
@@ -38,6 +39,7 @@ class ZohoInsightApp {
     this.tableRecent = document.getElementById('table-recent');
     this.statusDot = document.getElementById('status-dot');
     this.modalConfig = document.getElementById('modal-config');
+    this.displayUri = document.getElementById('display-uri');
     
     // Config elements
     this.btnOpenConfigLanding = document.getElementById('btn-open-config-landing');
@@ -68,6 +70,12 @@ class ZohoInsightApp {
     });
   }
 
+  updateRedirectUriDisplay() {
+    if (this.displayUri) {
+      this.displayUri.innerText = window.location.origin + window.location.pathname;
+    }
+  }
+
   // --- CONFIG & AUTH ---
 
   toggleConfig(show) {
@@ -88,12 +96,12 @@ class ZohoInsightApp {
     };
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleConfig(false);
-    this.log(`Config updated. Client ID: ${this.config.clientId.substring(0,8)}...`);
+    this.log(`Config saved successfully for region ${this.config.region}.`);
   }
 
   startAuth() {
     if (!this.config.clientId) {
-      alert("Please configure your Client ID first in Settings.");
+      alert("Required: Provide a Client ID in Settings before connecting.");
       this.toggleConfig(true);
       return;
     }
@@ -107,22 +115,20 @@ class ZohoInsightApp {
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `prompt=consent`;
 
-    this.log(`Redirecting to Zoho Auth (${this.config.region})...`);
+    this.log(`Requesting authorization from Zoho accounts.${this.config.region}...`);
     window.location.href = authUrl;
   }
 
   handleCallback() {
-    // Check for access_token in URL fragment (Implicit Grant)
     const params = new URLSearchParams(window.location.hash.substring(1));
     const token = params.get('access_token');
     
     if (token) {
       this.state.accessToken = token;
       localStorage.setItem('zoho_access_token', token);
-      // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
       this.setConnectedUI(true);
-      this.log("Auth Successful: Access token received.");
+      this.log("Auth Stream Established: Token stored for session.");
       this.syncLiveInvoices();
     }
   }
@@ -141,13 +147,14 @@ class ZohoInsightApp {
       this.viewLanding.classList.add('view-hidden');
       this.viewDashboard.classList.remove('view-hidden');
       this.statusDot.classList.replace('bg-red-500', 'bg-green-500');
-      document.getElementById('sync-status').innerText = "Live";
-      document.getElementById('view-subtitle').innerText = `Org: ${this.config.orgId || 'Not Set'}`;
+      document.getElementById('sync-status').innerText = "Live / Secured";
+      document.getElementById('view-subtitle').innerText = `Organization Context: ${this.config.orgId || 'Manual Setup Required'}`;
     }
   }
 
   logout() {
     localStorage.removeItem('zoho_access_token');
+    this.log("Session terminated. Clearing cache...");
     window.location.reload();
   }
 
@@ -156,36 +163,38 @@ class ZohoInsightApp {
   async syncLiveInvoices() {
     if (!this.state.accessToken) return;
     if (!this.config.orgId) {
-      this.log("Error: Organization ID missing. Check settings.");
+      this.log("Wait: Organization ID is required. Please check settings.");
+      this.toggleConfig(true);
       return;
     }
 
-    this.log(`Fetching invoices from organization ${this.config.orgId}...`);
+    this.log(`Initiating sync for Org ${this.config.orgId}...`);
     this.btnSync.disabled = true;
-    this.btnSync.innerText = "Syncing...";
+    this.btnSync.innerText = "Processing...";
 
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/invoices?organization_id=${this.config.orgId}`;
       
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`
+          'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`,
+          'Content-Type': 'application/json'
         }
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({message: 'API Request Failed'}));
-        throw new Error(error.message || 'API Request Failed');
+        const error = await response.json().catch(() => ({message: 'Handshake failed with Zoho API.'}));
+        throw new Error(error.message || `API Error: ${response.status}`);
       }
 
       const result = await response.json();
       this.state.data = result.invoices || [];
       this.updateUI();
-      this.log(`Success: Received ${this.state.data.length} invoices.`);
+      this.log(`Sync Complete: Found ${this.state.data.length} invoices.`);
     } catch (err) {
-      this.log(`CRITICAL ERROR: ${err.message}`);
-      if (err.message.includes('expired') || err.message.includes('token')) {
-        this.log("Token likely expired or invalid. Re-authenticating required.");
+      this.log(`SYNC ERROR: ${err.message}`);
+      if (err.message.toLowerCase().includes('token')) {
+        this.log("Security Note: Access token may have expired. Re-authenticate.");
       }
     } finally {
       this.btnSync.disabled = false;
@@ -194,24 +203,22 @@ class ZohoInsightApp {
   }
 
   updateUI() {
-    // Stats
     const total = this.state.data.reduce((acc, inv) => acc + (inv.total || 0), 0);
-    document.getElementById('stat-revenue').innerText = `$${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+    document.getElementById('stat-revenue').innerText = `$${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     document.getElementById('stat-pending').innerText = this.state.data.length;
 
-    // Table
     this.tableRecent.innerHTML = this.state.data.map(inv => `
-      <tr class="hover:bg-white/[0.02]">
-        <td class="py-4 font-mono text-xs text-indigo-400">${inv.invoice_number}</td>
-        <td class="py-4 font-semibold">${inv.customer_name}</td>
-        <td class="py-4">
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-white/5 border border-white/10">
+      <tr class="hover:bg-white/[0.04] transition-colors border-b border-white/5">
+        <td class="py-5 px-2 font-mono text-[11px] text-indigo-400 font-bold">${inv.invoice_number}</td>
+        <td class="py-5 font-medium text-neutral-200">${inv.customer_name}</td>
+        <td class="py-5">
+          <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
             ${inv.status}
           </span>
         </td>
-        <td class="py-4 text-right font-mono font-bold">$${inv.total.toFixed(2)}</td>
+        <td class="py-5 text-right font-mono font-bold px-2">$${inv.total.toFixed(2)}</td>
       </tr>
-    `).join('') || '<tr><td colspan="4" class="py-10 text-center text-neutral-600 italic">No live records found.</td></tr>';
+    `).join('') || '<tr><td colspan="4" class="py-20 text-center text-neutral-600 font-light italic">No live invoice data detected in this organization.</td></tr>';
   }
 
   // --- UTILS ---
@@ -230,35 +237,35 @@ class ZohoInsightApp {
   log(msg) {
     if (!this.datasetLog) return;
     const time = new Date().toLocaleTimeString();
-    this.datasetLog.innerHTML += `<div>[${time}] ${msg}</div>`;
+    this.datasetLog.innerHTML += `<div><span class="text-neutral-600">[${time}]</span> ${msg}</div>`;
     this.datasetLog.scrollTop = this.datasetLog.scrollHeight;
     console.log(`[ZOHO]: ${msg}`);
   }
 
   clearLogs() {
-    if (this.datasetLog) this.datasetLog.innerHTML = '[SYSTEM]: Log cleared.';
+    if (this.datasetLog) this.datasetLog.innerHTML = '<div class="text-neutral-700 font-italic">--- Output Stream Cleared ---</div>';
   }
 
   prepareReport() {
     document.getElementById('report-date').innerText = `Generated: ${new Date().toLocaleString()}`;
     const container = document.getElementById('report-table-container');
     container.innerHTML = `
-      <table class="w-full text-left text-[10px] mt-8 border-t border-white/10">
+      <table class="w-full text-left text-[11px] mt-10 border-t border-white/10">
         <thead>
-          <tr class="text-neutral-500">
-            <th class="py-2">ID</th>
-            <th class="py-2">ENTITY</th>
-            <th class="py-2">STATUS</th>
-            <th class="py-2 text-right">TOTAL</th>
+          <tr class="text-neutral-500 font-black">
+            <th class="py-4">INVOICE ID</th>
+            <th class="py-4">CUSTOMER ENTITY</th>
+            <th class="py-4">LATEST STATUS</th>
+            <th class="py-4 text-right">GROSS TOTAL</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-white/5">
           ${this.state.data.map(d => `
             <tr>
-              <td class="py-2 text-neutral-500">${d.invoice_number}</td>
-              <td class="py-2 font-bold">${d.customer_name}</td>
-              <td class="py-2">${d.status.toUpperCase()}</td>
-              <td class="py-2 text-right font-mono">$${d.total.toFixed(2)}</td>
+              <td class="py-3 text-neutral-500 font-mono">${d.invoice_number}</td>
+              <td class="py-3 font-bold">${d.customer_name}</td>
+              <td class="py-3 uppercase text-[10px]">${d.status}</td>
+              <td class="py-3 text-right font-mono font-bold">$${d.total.toFixed(2)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -268,19 +275,17 @@ class ZohoInsightApp {
 
   generatePDF() {
     const element = document.getElementById('report-template');
-    this.btnGeneratePdf.innerText = "Synthesizing...";
+    this.btnGeneratePdf.innerText = "Processing Assets...";
     html2pdf().set({
       margin: 0.5,
-      filename: `Zoho_Report_${Date.now()}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, backgroundColor: '#050505', logging: false },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+      filename: `ZohoInsight_Report_${Date.now()}.pdf`,
+      image: { type: 'jpeg', quality: 1 },
+      html2canvas: { scale: 3, backgroundColor: '#050505', logging: false },
+      jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
     }).from(element).save().then(() => {
-      this.btnGeneratePdf.innerText = "Generate Pro PDF";
+      this.btnGeneratePdf.innerText = "Download Official PDF";
     });
   }
 }
 
-// Global scope expose strictly for debugging if needed, 
-// but all listeners are now programmatically attached.
 window.app = new ZohoInsightApp();

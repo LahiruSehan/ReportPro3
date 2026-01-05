@@ -16,8 +16,8 @@
     .sidebar-link:hover { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
     .sidebar-link.active { background: rgba(99, 102, 241, 0.2); color: #818cf8; border-right: 2px solid #6366f1; }
     .view-hidden { display: none !important; }
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); z-index: 50; display: flex; items-center: center; justify-content: center; }
-    @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 50; display: flex; items-center: center; justify-content: center; padding: 20px; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     .animate-slide { animation: slideIn 0.4s ease-out forwards; }
   </style>
 </head>
@@ -26,32 +26,51 @@
 
   <!-- Config Modal -->
   <div id="modal-config" class="modal-overlay view-hidden">
-    <div class="glass-card p-8 w-full max-w-md space-y-6">
+    <div class="glass-card p-8 w-full max-w-lg space-y-6 overflow-y-auto max-h-[90vh]">
       <div class="flex justify-between items-center">
-        <h3 class="text-xl font-bold">API Configuration</h3>
+        <div>
+          <h3 class="text-xl font-bold">Connection Settings</h3>
+          <p class="text-xs text-neutral-500">Configure your Zoho Books API access</p>
+        </div>
         <button id="btn-close-config" class="text-neutral-500 hover:text-white text-2xl leading-none">&times;</button>
       </div>
-      <p class="text-xs text-neutral-400">Get these from your <a href="https://api-console.zoho.com/" target="_blank" class="text-indigo-400 underline">Zoho API Console</a>.</p>
+
+      <div class="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-lg space-y-3">
+        <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Setup Guide</h4>
+        <ol class="text-[11px] text-neutral-300 space-y-2 list-decimal list-inside leading-relaxed">
+          <li>Create a <strong>JavaScript Application</strong> at <a href="https://api-console.zoho.com/" target="_blank" class="text-white underline">Zoho API Console</a>.</li>
+          <li>Set "Authorized Redirect URI" to: <code id="display-uri" class="bg-black/40 px-1 rounded text-indigo-300">loading...</code></li>
+          <li>Copy the <strong>Client ID</strong> generated there.</li>
+          <li>Get your <strong>Org ID</strong> from Zoho Books > Settings > Organization Profile.</li>
+        </ol>
+      </div>
+
       <div class="space-y-4">
         <div>
-          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Region</label>
-          <select id="cfg-region" class="w-full bg-white/5 border border-white/10 rounded p-2 text-sm">
-            <option value="com">US (com)</option>
-            <option value="eu">Europe (eu)</option>
-            <option value="in">India (in)</option>
-            <option value="com.au">Australia (com.au)</option>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Data Center Region</label>
+          <select id="cfg-region" class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+            <option value="com">United States (.com)</option>
+            <option value="eu">Europe (.eu)</option>
+            <option value="in">India (.in)</option>
+            <option value="com.au">Australia (.com.au)</option>
+            <option value="jp">Japan (.jp)</option>
           </select>
         </div>
         <div>
-          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Client ID</label>
-          <input id="cfg-client-id" type="text" placeholder="1000.XXXXX..." class="w-full bg-white/5 border border-white/10 rounded p-2 text-sm font-mono">
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Zoho Client ID</label>
+          <input id="cfg-client-id" type="text" placeholder="1000.XXXXXXXXXXXXXX..." class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
         </div>
         <div>
           <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Organization ID</label>
-          <input id="cfg-org-id" type="text" placeholder="6000XXXXX" class="w-full bg-white/5 border border-white/10 rounded p-2 text-sm font-mono">
+          <input id="cfg-org-id" type="text" placeholder="60001234567" class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
         </div>
       </div>
-      <button id="btn-save-config" class="w-full py-3 bg-indigo-600 rounded-lg font-bold hover:bg-indigo-500 transition-colors">Save & Initialize</button>
+      
+      <div class="pt-2">
+        <button id="btn-save-config" class="w-full py-4 bg-indigo-600 rounded-xl font-bold hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all">
+          Save Credentials
+        </button>
+      </div>
     </div>
   </div>
 
@@ -59,14 +78,16 @@
   <div id="view-landing" class="flex-grow flex items-center justify-center p-6">
     <main class="text-center space-y-8 max-w-2xl">
       <div class="space-y-4">
-        <h1 class="text-6xl md:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-500">INSIGHT</h1>
-        <p class="text-neutral-400 text-lg font-light max-w-md mx-auto">Real-world Zoho Books integration for professional financial reporting.</p>
+        <h1 class="text-6xl md:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-500 select-none">INSIGHT</h1>
+        <p class="text-neutral-400 text-lg font-light max-w-md mx-auto">Automated financial reporting and dataset insights directly from your Zoho Books organization.</p>
       </div>
       <div class="flex flex-col items-center space-y-4">
-        <button id="btn-connect" class="px-8 py-4 font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all">
-          Connect Live Zoho Books
+        <button id="btn-connect" class="px-10 py-5 font-bold text-white bg-indigo-600 rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-500/40 transition-all hover:scale-[1.02] active:scale-[0.98]">
+          Authorize Zoho Access
         </button>
-        <button id="btn-open-config-landing" class="text-xs text-neutral-500 hover:text-white underline">Configure Credentials First</button>
+        <button id="btn-open-config-landing" class="text-sm text-neutral-500 hover:text-white underline underline-offset-4 decoration-neutral-700 transition-all">
+          Configure API Credentials
+        </button>
       </div>
     </main>
   </div>
@@ -87,8 +108,8 @@
         <a class="sidebar-link flex items-center px-4 py-3 rounded-lg text-sm font-medium" data-target="reports">PDF Engine</a>
       </nav>
       <div class="pt-6 border-t border-white/5 space-y-2">
-        <button id="btn-open-config-sidebar" class="w-full text-left px-4 py-1 text-[10px] text-neutral-500 hover:text-white uppercase tracking-widest">Settings</button>
-        <button id="btn-logout" class="w-full text-left px-4 py-1 text-[10px] text-red-500/70 hover:text-red-400 uppercase tracking-widest">Disconnect</button>
+        <button id="btn-open-config-sidebar" class="w-full text-left px-4 py-1 text-[10px] text-neutral-500 hover:text-white uppercase tracking-widest transition-colors">Settings</button>
+        <button id="btn-logout" class="w-full text-left px-4 py-1 text-[10px] text-red-500/70 hover:text-red-400 uppercase tracking-widest transition-colors">Disconnect</button>
       </div>
     </aside>
 
@@ -96,9 +117,9 @@
       <header class="flex justify-between items-end mb-8">
         <div>
           <h2 id="view-title" class="text-3xl font-bold tracking-tight">Dashboard</h2>
-          <p id="view-subtitle" class="text-neutral-500 text-sm">Waiting for connection...</p>
+          <p id="view-subtitle" class="text-neutral-500 text-sm italic">Initializing connection...</p>
         </div>
-        <button id="btn-sync" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold transition-all disabled:opacity-50">
+        <button id="btn-sync" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold transition-all disabled:opacity-50 shadow-lg shadow-indigo-500/20">
           Sync Live Data
         </button>
       </header>
@@ -106,25 +127,25 @@
       <!-- Content Overview -->
       <div id="content-overview" class="animate-slide space-y-6">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div class="glass-card p-6">
-            <p class="text-neutral-500 text-[10px] font-bold uppercase mb-2">Total Receivables</p>
-            <p class="text-2xl font-bold" id="stat-revenue">$0.00</p>
+          <div class="glass-card p-6 hover:border-white/10 transition-colors">
+            <p class="text-neutral-500 text-[10px] font-bold uppercase mb-2 tracking-widest">Total Receivables</p>
+            <p class="text-3xl font-black text-white" id="stat-revenue">$0.00</p>
           </div>
-          <div class="glass-card p-6">
-            <p class="text-neutral-500 text-[10px] font-bold uppercase mb-2">Invoice Count</p>
-            <p class="text-2xl font-bold" id="stat-pending">0</p>
+          <div class="glass-card p-6 hover:border-white/10 transition-colors">
+            <p class="text-neutral-500 text-[10px] font-bold uppercase mb-2 tracking-widest">Total Invoices</p>
+            <p class="text-3xl font-black text-white" id="stat-pending">0</p>
           </div>
-          <div class="glass-card p-6">
-            <p class="text-neutral-500 text-[10px] font-bold uppercase mb-2">Sync Status</p>
-            <p class="text-lg font-bold text-indigo-400" id="sync-status">Inactive</p>
+          <div class="glass-card p-6 hover:border-white/10 transition-colors">
+            <p class="text-neutral-500 text-[10px] font-bold uppercase mb-2 tracking-widest">Connection</p>
+            <p class="text-xl font-bold text-indigo-400" id="sync-status">Inactive</p>
           </div>
         </div>
-        <div class="glass-card p-6">
-          <h3 class="text-lg font-semibold mb-4">Live Invoice Stream</h3>
+        <div class="glass-card p-6 overflow-hidden">
+          <h3 class="text-lg font-semibold mb-4">Latest Transactions</h3>
           <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
               <thead class="text-neutral-500 border-b border-white/5">
-                <tr><th class="py-3">Invoice #</th><th class="py-3">Customer</th><th class="py-3">Status</th><th class="py-3 text-right">Amount</th></tr>
+                <tr><th class="py-4 px-2">ID</th><th class="py-4">Customer</th><th class="py-4">Status</th><th class="py-4 text-right px-2">Total Amount</th></tr>
               </thead>
               <tbody id="table-recent" class="divide-y divide-white/5"></tbody>
             </table>
@@ -136,33 +157,37 @@
       <div id="content-datasets" class="view-hidden animate-slide space-y-6">
          <div class="glass-card p-6 space-y-4">
             <div class="flex justify-between items-center">
-              <h3 class="text-lg font-semibold">API Communication Log</h3>
-              <button id="btn-clear-logs" class="text-xs text-neutral-500">Clear</button>
+              <h3 class="text-lg font-semibold">System Communication Log</h3>
+              <button id="btn-clear-logs" class="text-xs text-neutral-500 hover:text-white">Clear Console</button>
             </div>
-            <div id="dataset-log" class="bg-black/50 p-4 rounded-lg font-mono text-[10px] text-green-400 h-96 overflow-y-auto leading-relaxed">
-               [SYSTEM]: Awaiting configuration or user connection...
+            <div id="dataset-log" class="bg-black/50 p-4 rounded-xl font-mono text-[11px] text-green-500 h-[500px] overflow-y-auto leading-relaxed border border-white/5">
+               [SYSTEM]: Awaiting configuration. Ensure Client ID matches Redirect URI.
             </div>
          </div>
       </div>
 
       <!-- Content Reports -->
       <div id="content-reports" class="view-hidden animate-slide space-y-6">
-         <div class="glass-card p-8 space-y-8" id="report-template" style="color: white; background: #050505;">
-            <div class="flex justify-between items-start border-b border-white/10 pb-6">
+         <div class="glass-card p-12 space-y-10" id="report-template" style="color: white; background: #050505;">
+            <div class="flex justify-between items-start border-b border-white/10 pb-8">
               <div>
-                <h1 class="text-2xl font-bold">ZOHO BOOKS SUMMARY</h1>
-                <p class="text-neutral-500 text-xs uppercase" id="report-date">Generated: --</p>
+                <h1 class="text-3xl font-black tracking-tight">FINANCIAL REPORT</h1>
+                <p class="text-neutral-500 text-xs mt-1 uppercase tracking-widest" id="report-date">Generated: --</p>
               </div>
               <div class="text-right">
                 <p class="font-bold text-indigo-400">INSIGHT PRO LIVE</p>
-                <p class="text-[10px] text-neutral-600 uppercase">Production Data</p>
+                <p class="text-[10px] text-neutral-600 uppercase">Enterprise Connector</p>
               </div>
             </div>
             <div id="report-table-container"></div>
+            <div class="pt-8 border-t border-white/5 text-[9px] text-neutral-600 uppercase tracking-widest flex justify-between">
+              <span>Verified Zoho Data</span>
+              <span>Internal Confidential</span>
+            </div>
          </div>
-         <div class="flex justify-center pt-4">
-            <button id="btn-generate-pdf" class="px-10 py-4 bg-white text-black font-black rounded-xl hover:bg-neutral-200 transition-all">
-              Generate Pro PDF
+         <div class="flex justify-center pt-8">
+            <button id="btn-generate-pdf" class="px-12 py-5 bg-white text-black font-black rounded-2xl hover:bg-neutral-200 transition-all shadow-xl shadow-white/10">
+              Download Official PDF
             </button>
          </div>
       </div>
