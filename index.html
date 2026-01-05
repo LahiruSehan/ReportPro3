@@ -32,22 +32,31 @@
     <div class="glass-card p-8 w-full max-w-lg space-y-6 overflow-y-auto max-h-[90vh] custom-scrollbar">
       <div class="flex justify-between items-center">
         <div>
-          <h3 class="text-xl font-bold">API Configuration</h3>
-          <p class="text-xs text-neutral-500 font-medium">Step 1: Setup Zoho API Console</p>
+          <h3 class="text-xl font-bold text-white">API Configuration</h3>
+          <p class="text-xs text-neutral-500 font-medium uppercase tracking-widest mt-1">Zoho Console Alignment</p>
         </div>
-        <button id="btn-close-config" class="text-neutral-500 hover:text-white text-2xl">&times;</button>
+        <button id="btn-close-config" class="text-neutral-500 hover:text-white text-2xl transition-colors">&times;</button>
       </div>
 
-      <div class="bg-indigo-500/10 border border-indigo-500/20 p-5 rounded-xl space-y-4">
-        <h4 class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Authorized Redirect URI</h4>
-        <p class="text-[11px] text-neutral-400 leading-relaxed">
-          1. Go to <a href="https://api-console.zoho.com/" target="_blank" class="text-white underline font-bold">Zoho Console</a>.<br>
-          2. Choose <strong>"Client-based Applications"</strong>.<br>
-          3. Paste this <strong>exact</strong> URL into "Authorized Redirect URIs":
-        </p>
-        <div class="flex items-center space-x-2 bg-black/40 p-3 rounded-lg border border-white/5">
-          <code id="display-uri" class="text-[10px] text-indigo-300 truncate flex-grow font-mono">Loading URL...</code>
-          <button id="btn-copy-uri" class="bg-indigo-600 text-[10px] px-3 py-1 rounded font-bold hover:bg-indigo-500 transition-colors uppercase">Copy</button>
+      <div class="bg-indigo-500/10 border border-indigo-500/20 p-5 rounded-xl space-y-5">
+        <div>
+          <h4 class="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3">1. Client-based Application Details</h4>
+          <div class="space-y-3">
+            <div class="space-y-1">
+              <span class="text-[9px] text-neutral-500 font-bold uppercase">Authorized Redirect URI</span>
+              <div class="flex items-center space-x-2 bg-black/40 p-2 rounded-lg border border-white/5">
+                <code id="display-uri" class="text-[10px] text-indigo-300 truncate flex-grow font-mono">Loading...</code>
+                <button id="btn-copy-uri" class="bg-indigo-600 text-[9px] px-2 py-1 rounded font-bold hover:bg-indigo-500 transition-colors">COPY</button>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <span class="text-[9px] text-neutral-500 font-bold uppercase">JavaScript Domain</span>
+              <div class="flex items-center space-x-2 bg-black/40 p-2 rounded-lg border border-white/5">
+                <code id="display-domain" class="text-[10px] text-indigo-300 truncate flex-grow font-mono">https://lahirusehan.github.io</code>
+                <button id="btn-copy-domain" class="bg-indigo-600 text-[9px] px-2 py-1 rounded font-bold hover:bg-indigo-500 transition-colors">COPY</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

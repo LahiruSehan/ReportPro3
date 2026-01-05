@@ -51,6 +51,7 @@ class ZohoInsightApp {
     this.modalConfig = document.getElementById('modal-config');
     this.datasetLog = document.getElementById('dataset-log');
     this.displayUri = document.getElementById('display-uri');
+    this.displayDomain = document.getElementById('display-domain');
     this.statusDot = document.getElementById('status-dot');
     this.syncStatusText = document.getElementById('sync-status');
     this.btnOpenConfigLanding = document.getElementById('btn-open-config-landing');
@@ -58,6 +59,7 @@ class ZohoInsightApp {
     this.btnCloseConfig = document.getElementById('btn-close-config');
     this.btnSaveConfig = document.getElementById('btn-save-config');
     this.btnCopyUri = document.getElementById('btn-copy-uri');
+    this.btnCopyDomain = document.getElementById('btn-copy-domain');
     this.btnClearLogs = document.getElementById('btn-clear-logs');
     this.tableRecent = document.getElementById('table-recent');
     this.tableHeadRow = document.getElementById('table-head-row');
@@ -67,25 +69,21 @@ class ZohoInsightApp {
     this.moduleSelector = document.getElementById('data-module-selector');
   }
 
-  /**
-   * Generates the precise Redirect URI needed for Zoho.
-   * Forces a trailing slash to match GitHub Pages canonical URL behavior.
-   */
   getRedirectUri() {
     let base = window.location.origin + window.location.pathname;
-    // Ensure it ends with exactly one slash
-    if (!base.endsWith('/')) {
-      base += '/';
-    }
+    if (!base.endsWith('/')) base += '/';
     return base;
+  }
+
+  getJavaScriptDomain() {
+    return window.location.origin;
   }
 
   updateRedirectUriDisplay() {
     const uri = this.getRedirectUri();
-    if (this.displayUri) {
-      this.displayUri.innerText = uri;
-      this.log(`Detected Redirect URI: ${uri}`);
-    }
+    const domain = this.getJavaScriptDomain();
+    if (this.displayUri) this.displayUri.innerText = uri;
+    if (this.displayDomain) this.displayDomain.innerText = domain;
   }
 
   bindEvents() {
@@ -98,10 +96,17 @@ class ZohoInsightApp {
     this.btnOpenConfigSidebar?.addEventListener('click', () => this.toggleConfig(true));
     this.btnCloseConfig?.addEventListener('click', () => this.toggleConfig(false));
     this.btnSaveConfig?.addEventListener('click', () => this.saveConfig());
+    
     this.btnCopyUri?.addEventListener('click', () => {
       navigator.clipboard.writeText(this.getRedirectUri());
-      this.btnCopyUri.innerText = "COPIED";
+      this.btnCopyUri.innerText = "OK";
       setTimeout(() => this.btnCopyUri.innerText = "COPY", 2000);
+    });
+
+    this.btnCopyDomain?.addEventListener('click', () => {
+      navigator.clipboard.writeText(this.getJavaScriptDomain());
+      this.btnCopyDomain.innerText = "OK";
+      setTimeout(() => this.btnCopyDomain.innerText = "COPY", 2000);
     });
 
     document.querySelectorAll('.sidebar-link').forEach(link => {
@@ -140,7 +145,7 @@ class ZohoInsightApp {
 
   startAuth() {
     if (!this.config.clientId) {
-      alert("Please enter your Client ID in Settings first.");
+      alert("Missing Client ID. Go to Settings.");
       this.toggleConfig(true);
       return;
     }
@@ -161,12 +166,7 @@ class ZohoInsightApp {
       `prompt=consent`;
 
     this.log(`[AUTH]: Redirecting to Zoho ${this.config.region}...`);
-    this.log(`[AUTH]: URI sent to Zoho: ${redirectUri}`);
-    
-    // Alert the user one last time to verify the Redirect URI matches what is in the console.
-    if(confirm(`IMPORTANT: Ensure this Redirect URI is pasted in your Zoho API Console (Client-based Application):\n\n${redirectUri}\n\nProceed to Zoho Login?`)) {
-      window.location.href = authUrl;
-    }
+    window.location.href = authUrl;
   }
 
   handleCallback() {
@@ -179,7 +179,7 @@ class ZohoInsightApp {
         localStorage.setItem('zoho_access_token', token);
         window.history.replaceState({}, document.title, window.location.pathname);
         this.setConnectedUI(true);
-        this.log("[AUTH]: Success. Connection Secure.");
+        this.log("[AUTH]: Success. Connection Established.");
         this.fetchLiveModule();
       }
     }
@@ -201,7 +201,7 @@ class ZohoInsightApp {
       this.viewDashboard?.classList.remove('view-hidden');
       this.statusDot?.classList.replace('bg-red-600', 'bg-green-500');
       if (this.syncStatusText) this.syncStatusText.innerText = "ACTIVE";
-      if (this.viewSubtitle) this.viewSubtitle.innerText = `Organization: ${this.config.orgId}`;
+      if (this.viewSubtitle) this.viewSubtitle.innerText = `Organization Context: ${this.config.orgId}`;
     }
   }
 
@@ -229,7 +229,7 @@ class ZohoInsightApp {
       const result = await response.json();
       this.state.data = result[module] || [];
       this.updateDashboardUI();
-      this.log(`[DATA]: Ingested ${this.state.data.length} records.`);
+      this.log(`[DATA]: Synchronized ${this.state.data.length} items.`);
     } catch (err) {
       this.log(`[ERROR]: ${err.message}`);
     } finally {
@@ -252,21 +252,21 @@ class ZohoInsightApp {
       head = `<th class="py-5 px-8">ID</th><th class="py-5">CLIENT</th><th class="py-5">STATUS</th><th class="py-5 text-right px-8">AMOUNT</th>`;
       body = this.state.data.map(i => `
         <tr class="hover:bg-white/[0.02]">
-          <td class="py-4 px-8 font-mono text-indigo-400">${i.invoice_number}</td>
+          <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${i.invoice_number}</td>
           <td class="py-4 font-bold">${i.customer_name}</td>
-          <td class="py-4"><span class="px-2 py-1 rounded bg-white/5 text-[9px] uppercase">${i.status}</span></td>
+          <td class="py-4"><span class="px-2 py-1 rounded bg-white/5 text-[9px] uppercase font-black">${i.status}</span></td>
           <td class="py-4 text-right px-8 font-bold font-mono">$${(i.total || 0).toFixed(2)}</td>
         </tr>
       `).join('');
     } else if (module === 'contacts') {
       this.statRevenue.innerText = this.state.data.length;
       this.metricLabel.innerText = "Active Customers";
-      head = `<th class="py-5 px-8">ID</th><th class="py-5">NAME</th><th class="py-5">EMAIL</th><th class="py-5 text-right px-8">RECEIVABLE</th>`;
+      head = `<th class="py-5 px-8">ID</th><th class="py-5">NAME</th><th class="py-5 text-center">CURRENCY</th><th class="py-5 text-right px-8">RECEIVABLE</th>`;
       body = this.state.data.map(c => `
         <tr class="hover:bg-white/[0.02]">
-          <td class="py-4 px-8 font-mono text-indigo-400">${c.contact_id}</td>
+          <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${c.contact_id}</td>
           <td class="py-4 font-bold">${c.contact_name}</td>
-          <td class="py-4 text-neutral-500">${c.email || 'N/A'}</td>
+          <td class="py-4 text-center text-neutral-500 font-mono text-xs">${c.currency_code}</td>
           <td class="py-4 text-right px-8 font-bold font-mono">$${(c.outstanding_receivable_amount || 0).toFixed(2)}</td>
         </tr>
       `).join('');
@@ -276,7 +276,7 @@ class ZohoInsightApp {
       head = `<th class="py-5 px-8">SKU</th><th class="py-5">NAME</th><th class="py-5">STOCK</th><th class="py-5 text-right px-8">RATE</th>`;
       body = this.state.data.map(item => `
         <tr class="hover:bg-white/[0.02]">
-          <td class="py-4 px-8 font-mono text-indigo-400">${item.sku || item.item_id}</td>
+          <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${item.sku || item.item_id}</td>
           <td class="py-4 font-bold">${item.name}</td>
           <td class="py-4">${item.stock_on_hand || 0}</td>
           <td class="py-4 text-right px-8 font-bold font-mono">$${(item.rate || 0).toFixed(2)}</td>
@@ -296,7 +296,6 @@ class ZohoInsightApp {
       link.classList.toggle('active', link.getAttribute('data-target') === viewId);
     });
     this.viewTitle.innerText = viewId.charAt(0).toUpperCase() + viewId.slice(1);
-    if (viewId === 'reports') this.prepareReport();
   }
 
   log(msg) {
@@ -308,11 +307,6 @@ class ZohoInsightApp {
 
   clearLogs() {
     if (this.datasetLog) this.datasetLog.innerHTML = "";
-  }
-
-  prepareReport() {
-    const container = document.getElementById('report-table-container');
-    container.innerHTML = `<p class="text-neutral-400">Analysis for module: <strong>${this.state.currentModule}</strong>. Found ${this.state.data.length} records.</p>`;
   }
 
   generatePDF() {
