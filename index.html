@@ -35,34 +35,33 @@
       <div class="flex justify-between items-center">
         <div>
           <h3 class="text-xl font-bold">API Connection</h3>
-          <p class="text-xs text-neutral-500 uppercase tracking-widest mt-1">Zoho Books Integration</p>
+          <p class="text-xs text-neutral-500 uppercase tracking-widest mt-1">Zoho Developer Settings</p>
         </div>
         <button id="btn-close-config" class="text-neutral-500 hover:text-white text-2xl">&times;</button>
       </div>
 
       <div class="space-y-4">
+        <div class="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl space-y-2">
+           <p class="text-[10px] font-black uppercase text-indigo-400">Required Configuration</p>
+           <p class="text-[11px] text-neutral-400">Ensure your Zoho Client ID is for the correct region and has the redirect URI set to: <br><code class="text-indigo-300 font-mono" id="display-redirect-uri"></code></p>
+        </div>
         <div>
-          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Zoho Region</label>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Zoho Account Region</label>
           <select id="cfg-region" class="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-indigo-500">
             <option value="com">Global/US (.com)</option>
             <option value="eu">Europe (.eu)</option>
             <option value="in">India (.in)</option>
             <option value="com.au">Australia (.com.au)</option>
           </select>
-          <p class="text-[9px] text-neutral-600 mt-1 italic">Must match your Zoho account URL region.</p>
         </div>
         <div>
           <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Client ID</label>
           <input id="cfg-client-id" type="text" placeholder="1000.XXXX..." class="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm font-mono outline-none focus:border-indigo-500">
         </div>
-        <div>
-          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Organization ID</label>
-          <input id="cfg-org-id" type="text" placeholder="60001234567" class="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm font-mono outline-none focus:border-indigo-500">
-        </div>
       </div>
       
       <button id="btn-save-config" class="w-full py-4 btn-primary rounded-xl font-bold uppercase tracking-widest text-sm">
-        Link Account
+        Save Developer Settings
       </button>
     </div>
   </div>
@@ -72,24 +71,32 @@
     <main class="text-center space-y-10 max-w-2xl animate-fade">
       <div class="space-y-4">
         <h1 class="text-6xl md:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-700">STATEMENT</h1>
-        <p class="text-neutral-400 text-lg font-light max-w-sm mx-auto">Item-level outstanding ledger generator for Zoho Books. Instant, secure, and precise.</p>
+        <p class="text-neutral-400 text-lg font-light max-w-sm mx-auto">Instant item-level ledger generation for your Zoho Books customers.</p>
       </div>
 
       <!-- Error Message Area -->
-      <div id="landing-error" class="view-hidden max-w-md mx-auto p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-medium space-y-2">
+      <div id="landing-error" class="view-hidden max-w-md mx-auto p-5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-left space-y-3">
          <div class="flex items-center space-x-2">
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
-            <span class="font-bold uppercase tracking-tight">Access Denied</span>
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+            <span class="font-black uppercase tracking-widest">Connection Error</span>
          </div>
-         <p id="landing-error-text" class="leading-relaxed opacity-80"></p>
+         <p id="landing-error-text" class="leading-relaxed opacity-90"></p>
+         <div class="pt-2 border-t border-red-500/10 text-[10px] text-neutral-500">
+            <p><strong>Common Fixes:</strong></p>
+            <ul class="list-disc ml-4 space-y-1 mt-1">
+               <li>Check if your Zoho Region matches your login URL (.eu, .in, etc.)</li>
+               <li>Ensure your Client ID is valid for the selected region.</li>
+               <li>Verify you have "Books" enabled on this Zoho account.</li>
+            </ul>
+         </div>
       </div>
 
       <div class="flex flex-col items-center space-y-4">
-        <button id="btn-connect" class="px-10 py-5 font-black text-white bg-indigo-600 rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-500/30 transition-all">
+        <button id="btn-connect" class="px-12 py-6 font-black text-white bg-indigo-600 rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-500/30 transition-all">
           AUTHORIZE ZOHO BOOKS
         </button>
         <button id="btn-open-config-landing" class="text-[10px] text-neutral-500 hover:text-white uppercase tracking-widest font-bold border-b border-transparent hover:border-white transition-all">
-          Connection Settings
+          Developer Connection Settings
         </button>
       </div>
     </main>
@@ -102,16 +109,16 @@
       <div class="flex items-center space-x-4">
         <div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center font-black text-black text-xl">Z</div>
         <div>
-          <h2 class="font-black text-lg tracking-tight" id="header-org-name">Insight Pro</h2>
-          <p class="text-[9px] text-neutral-500 uppercase tracking-widest font-bold">Outstanding Item Ledger</p>
+          <select id="select-organization" class="bg-transparent border-none font-black text-lg tracking-tight outline-none cursor-pointer hover:text-indigo-400 transition-colors">
+            <option value="">Fetching Organizations...</option>
+          </select>
+          <p class="text-[9px] text-neutral-500 uppercase tracking-widest font-bold">Select Zoho Organization</p>
         </div>
       </div>
       <div class="flex items-center space-x-3">
-        <button id="btn-show-config" class="p-2 hover:bg-white/5 rounded-lg transition-colors">
-          <svg class="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-        </button>
-        <button id="btn-logout" class="p-2 hover:bg-red-500/10 rounded-lg transition-colors group">
-          <svg class="w-5 h-5 text-neutral-400 group-hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <button id="btn-logout" class="px-4 py-2 hover:bg-red-500/10 rounded-lg transition-colors group flex items-center space-x-2">
+          <span class="text-[10px] font-black uppercase tracking-widest text-neutral-500 group-hover:text-red-500">Disconnect</span>
+          <svg class="w-4 h-4 text-neutral-400 group-hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
         </button>
       </div>
     </header>
@@ -138,7 +145,7 @@
         </div>
 
         <div>
-          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-3 tracking-widest">2. Column Customization</label>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-3 tracking-widest">2. Statement Columns</label>
           <div class="space-y-2 bg-black/20 p-4 rounded-xl border border-white/5" id="column-toggles">
             <label class="flex items-center space-x-3 text-xs cursor-pointer hover:text-indigo-300 transition-colors">
               <input type="checkbox" checked data-col="sku" class="w-4 h-4 rounded border-white/10 bg-white/5">
@@ -156,22 +163,18 @@
         </div>
 
         <button id="btn-fetch-statement" class="w-full py-4 btn-primary rounded-xl font-black uppercase tracking-widest text-sm shadow-xl shadow-indigo-500/20">
-          Sync & Preview
+          Fetch & Preview
         </button>
 
         <div id="status-log" class="flex-grow bg-black/40 rounded-xl p-4 font-mono text-[9px] text-neutral-500 overflow-y-auto custom-scrollbar leading-relaxed">
-          <div>[SYSTEM]: Dashboard Active</div>
+          <div>[SYSTEM]: Ready for selection</div>
         </div>
       </aside>
 
       <!-- Preview Panel -->
       <main class="flex-grow glass-card flex flex-col overflow-hidden relative">
-        <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5" id="preview-watermark">
-           <span class="text-9xl font-black rotate-[-45deg]">PREVIEW</span>
-        </div>
-
         <div class="p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
-           <h3 class="text-xs font-black uppercase tracking-widest text-neutral-400">Statement Preview</h3>
+           <h3 class="text-xs font-black uppercase tracking-widest text-neutral-400">Ledger Preview</h3>
            <button id="btn-download-pdf" disabled class="px-6 py-2 bg-white text-black text-[10px] font-black uppercase rounded-lg hover:bg-neutral-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
               Download PDF
            </button>
@@ -179,10 +182,9 @@
 
         <div class="flex-grow overflow-auto p-8 custom-scrollbar bg-neutral-900/50" id="preview-scroll-area">
            <div id="statement-canvas-container" class="mx-auto origin-top transition-transform duration-300" style="width: 21cm;">
-              <!-- Dynamic Statement rendered here -->
               <div id="empty-state" class="flex flex-col items-center justify-center h-full py-40 text-neutral-600">
                  <svg class="w-16 h-16 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                 <p class="text-sm font-medium">Select a customer and date range to begin synthesis.</p>
+                 <p class="text-sm font-medium">Select a customer to visualize the outstanding ledger.</p>
               </div>
               <div id="statement-render-target"></div>
            </div>
@@ -194,7 +196,7 @@
   <!-- Loading Overlay -->
   <div id="loading-overlay" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center view-hidden">
     <div class="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-    <p class="text-indigo-400 font-black uppercase tracking-widest text-xs" id="loading-text">Synchronizing Ledger...</p>
+    <p class="text-indigo-400 font-black uppercase tracking-widest text-xs" id="loading-text">Communicating with Zoho...</p>
   </div>
 
   <script type="module" src="index.js"></script>
