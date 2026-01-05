@@ -4,17 +4,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hello World</title>
+  <title>Zoho Insight Pro</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF Generation Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap');
 
     body {
       background-color: #050505;
       color: #ffffff;
       font-family: 'Inter', sans-serif;
-      overflow: hidden;
       margin: 0;
+      min-height: 100vh;
     }
 
     .gradient-bg {
@@ -24,42 +26,199 @@
       z-index: -1;
     }
 
-    .fade-in {
-      animation: fadeIn 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    .glass-card {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 1rem;
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); filter: blur(10px); }
-      to { opacity: 1; transform: translateY(0); filter: blur(0); }
+    .sidebar-link {
+      transition: all 0.2s ease;
+    }
+    .sidebar-link:hover {
+      background: rgba(99, 102, 241, 0.1);
+      color: #818cf8;
+    }
+    .sidebar-link.active {
+      background: rgba(99, 102, 241, 0.2);
+      color: #818cf8;
+      border-right: 2px solid #6366f1;
     }
 
-    .text-glimmer {
-      background: linear-gradient(180deg, #ffffff 0%, #404040 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      transition: filter 0.3s ease;
-    }
+    .view-hidden { display: none !important; }
 
-    .text-glimmer:hover {
-      filter: brightness(1.2) drop-shadow(0 0 15px rgba(255,255,255,0.2));
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
     }
+    .animate-slide { animation: slideIn 0.4s ease-out forwards; }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
   </style>
 </head>
-<body class="flex items-center justify-center min-h-screen">
+<body class="flex flex-col">
   <div class="gradient-bg"></div>
-  
-  <main class="text-center space-y-4 fade-in">
-    <h1 class="text-7xl md:text-9xl font-black tracking-tighter text-glimmer select-none">
-      HELLO WORLD
-    </h1>
-    <p class="text-neutral-500 tracking-[0.3em] text-xs font-light uppercase opacity-50">
-      The Origin of Digital Expression
-    </p>
-  </main>
 
-  <footer class="fixed bottom-8 text-[10px] text-neutral-600 tracking-widest uppercase opacity-30">
-    Zero Dependencies • Pure Standards
-  </footer>
+  <!-- Auth/Landing View -->
+  <div id="view-landing" class="flex-grow flex items-center justify-center p-6">
+    <main class="text-center space-y-8 max-w-2xl">
+      <div class="space-y-4">
+        <h1 class="text-6xl md:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-500 select-none">
+          INSIGHT
+        </h1>
+        <p class="text-neutral-400 text-lg font-light max-w-md mx-auto">
+          Securely connect your Zoho Books account to generate high-fidelity PDF financial reports and dataset insights.
+        </p>
+      </div>
+      
+      <div class="pt-4">
+        <button id="btn-connect" class="group relative inline-flex items-center justify-center px-8 py-4 font-bold text-white transition-all duration-200 bg-indigo-600 font-pj rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/20">
+          <svg class="w-5 h-5 mr-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+          Connect Zoho Books
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Dashboard View -->
+  <div id="view-dashboard" class="view-hidden flex flex-col md:flex-row min-h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-full md:w-64 glass-card m-4 p-6 flex flex-col space-y-8 z-10">
+      <div class="flex items-center space-x-3 px-2">
+        <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center font-bold">Z</div>
+        <span class="font-bold tracking-tight">Insight Pro</span>
+      </div>
+      
+      <nav class="flex-grow space-y-2">
+        <a href="#" class="sidebar-link active flex items-center px-4 py-3 rounded-lg text-sm font-medium" data-target="overview">
+          Overview
+        </a>
+        <a href="#" class="sidebar-link flex items-center px-4 py-3 rounded-lg text-sm font-medium" data-target="datasets">
+          Datasets
+        </a>
+        <a href="#" class="sidebar-link flex items-center px-4 py-3 rounded-lg text-sm font-medium" data-target="reports">
+          Reports
+        </a>
+      </nav>
+
+      <div class="pt-6 border-t border-white/5">
+        <button id="btn-logout" class="w-full text-left px-4 py-2 text-xs text-neutral-500 hover:text-white uppercase tracking-widest transition-colors">
+          Disconnect
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-4 md:p-8 overflow-y-auto">
+      <header class="flex justify-between items-end mb-8">
+        <div>
+          <h2 id="view-title" class="text-3xl font-bold tracking-tight">Overview</h2>
+          <p class="text-neutral-500 text-sm">Real-time Zoho Books metrics</p>
+        </div>
+        <button id="btn-sync" class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm transition-all flex items-center space-x-2">
+          <span>Sync Data</span>
+        </button>
+      </header>
+
+      <!-- Content Sections -->
+      <div id="content-overview" class="animate-slide space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="glass-card p-6">
+            <p class="text-neutral-500 text-xs font-semibold uppercase mb-2">Total Revenue</p>
+            <p class="text-2xl font-bold" id="stat-revenue">$0.00</p>
+          </div>
+          <div class="glass-card p-6">
+            <p class="text-neutral-500 text-xs font-semibold uppercase mb-2">Pending Invoices</p>
+            <p class="text-2xl font-bold" id="stat-pending">0</p>
+          </div>
+          <div class="glass-card p-6">
+            <p class="text-neutral-500 text-xs font-semibold uppercase mb-2">Total Receivables</p>
+            <p class="text-2xl font-bold text-indigo-400" id="stat-receivables">$0.00</p>
+          </div>
+        </div>
+
+        <div class="glass-card p-6">
+          <h3 class="text-lg font-semibold mb-4">Recent Activity</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="text-neutral-500 border-b border-white/5">
+                <tr>
+                  <th class="py-3 font-medium">Date</th>
+                  <th class="py-3 font-medium">Customer</th>
+                  <th class="py-3 font-medium">Status</th>
+                  <th class="py-3 font-medium text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody id="table-recent" class="divide-y divide-white/5">
+                <!-- Rows injected by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-datasets" class="view-hidden animate-slide space-y-6">
+         <!-- Dataset Management View -->
+         <div class="glass-card p-6 space-y-4">
+            <div class="flex justify-between items-center">
+              <h3 class="text-lg font-semibold">Active Dataset</h3>
+              <div class="flex space-x-2">
+                 <button class="px-3 py-1 bg-indigo-500 text-xs font-bold rounded" onclick="app.importDataset('Invoices')">Import Invoices</button>
+                 <button class="px-3 py-1 bg-neutral-700 text-xs font-bold rounded" onclick="app.importDataset('Customers')">Import Customers</button>
+              </div>
+            </div>
+            <div id="dataset-log" class="bg-black/50 p-4 rounded-lg font-mono text-[10px] text-green-400 h-48 overflow-y-auto">
+               [SYSTEM]: Ready for data ingestion...
+            </div>
+         </div>
+      </div>
+
+      <div id="content-reports" class="view-hidden animate-slide space-y-6">
+         <!-- PDF Report Section -->
+         <div class="glass-card p-8 space-y-8" id="report-template">
+            <div class="flex justify-between items-start border-b border-white/10 pb-6">
+              <div>
+                <h1 class="text-2xl font-bold">FINANCIAL SUMMARY REPORT</h1>
+                <p class="text-neutral-500 text-xs uppercase tracking-tighter" id="report-date">Generated: Jan 20, 2024</p>
+              </div>
+              <div class="text-right">
+                <p class="font-bold text-indigo-400">ZOHO INSIGHT PRO</p>
+                <p class="text-[10px] text-neutral-600">Enterprise Edition</p>
+              </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-12">
+               <div class="space-y-2">
+                  <h4 class="text-[10px] font-bold text-neutral-500 uppercase">Executive Summary</h4>
+                  <p class="text-sm text-neutral-300 leading-relaxed">This report encompasses all invoice activities tracked within the connected Zoho Books organization. Data reflects the current fiscal status as of synchronization.</p>
+               </div>
+               <div class="glass-card bg-white/5 p-4 rounded">
+                  <table class="w-full text-xs">
+                     <tr class="border-b border-white/5"><td class="py-2">Active Entities</td><td class="text-right font-bold" id="rep-entities">0</td></tr>
+                     <tr class="border-b border-white/5"><td class="py-2">Gross Value</td><td class="text-right font-bold" id="rep-gross">$0.00</td></tr>
+                     <tr><td class="py-2">Risk Score</td><td class="text-right font-bold text-green-400">Low</td></tr>
+                  </table>
+               </div>
+            </div>
+
+            <div id="report-table-container">
+               <!-- Table will be cloned here for PDF -->
+            </div>
+         </div>
+
+         <div class="flex justify-center pt-4">
+            <button id="btn-generate-pdf" class="px-10 py-4 bg-white text-black font-black rounded-xl hover:bg-neutral-200 transition-all flex items-center space-x-3">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              <span>Download PDF Report</span>
+            </button>
+         </div>
+      </div>
+    </main>
+  </div>
 
   <script type="module" src="index.js"></script>
 </body>
