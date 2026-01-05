@@ -84,34 +84,38 @@ class ZohoLedgerApp {
   }
 
   bindEvents() {
-    this.btns.connect.onclick = () => this.startAuth();
-    this.btns.saveConfig.onclick = () => this.saveConfig();
-    this.btns.openConfigLanding.onclick = () => this.toggleModal(true);
-    this.btns.closeConfig.onclick = () => this.toggleModal(false);
-    this.btns.logout.onclick = () => this.logout();
-    this.btns.download.onclick = () => this.downloadPDF();
+    if (this.btns.connect) this.btns.connect.onclick = () => this.startAuth();
+    if (this.btns.saveConfig) this.btns.saveConfig.onclick = () => this.saveConfig();
+    if (this.btns.openConfigLanding) this.btns.openConfigLanding.onclick = () => this.toggleModal(true);
+    if (this.btns.closeConfig) this.btns.closeConfig.onclick = () => this.toggleModal(false);
+    if (this.btns.logout) this.btns.logout.onclick = () => this.logout();
+    if (this.btns.download) this.btns.download.onclick = () => this.downloadPDF();
     
-    this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
-    this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
+    if (this.btns.selectAll) this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
+    if (this.btns.clearAll) this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
 
-    this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
+    if (this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
     
-    this.inputs.orgSelect.onchange = (e) => {
-      this.state.selectedOrgId = e.target.value;
-      localStorage.setItem('zoho_selected_org_id', e.target.value);
-      this.state.dataStore = {}; // Clear cache on org change
-      this.fetchCustomers();
-    };
+    if (this.inputs.orgSelect) {
+      this.inputs.orgSelect.onchange = (e) => {
+        this.state.selectedOrgId = e.target.value;
+        localStorage.setItem('zoho_selected_org_id', e.target.value);
+        this.state.dataStore = {}; // Clear cache on org change
+        this.fetchCustomers();
+      };
+    }
 
-    this.inputs.from.onchange = () => this.syncAllActiveCustomers();
-    this.inputs.to.onchange = () => this.syncAllActiveCustomers();
+    if (this.inputs.from) this.inputs.from.onchange = () => this.syncAllActiveCustomers();
+    if (this.inputs.to) this.inputs.to.onchange = () => this.syncAllActiveCustomers();
   }
 
   toggleModal(show) {
-    this.views.configModal.classList.toggle('view-hidden', !show);
-    if (show) {
-      this.inputs.clientId.value = this.config.clientId;
-      this.inputs.region.value = this.config.region;
+    if (this.views.configModal) {
+      this.views.configModal.classList.toggle('view-hidden', !show);
+      if (show) {
+        this.inputs.clientId.value = this.config.clientId;
+        this.inputs.region.value = this.config.region;
+      }
     }
   }
 
@@ -223,6 +227,8 @@ class ZohoLedgerApp {
 
   async syncCustomerData(id) {
     const customer = this.state.customers.find(c => c.contact_id === id);
+    if (!customer) return;
+    
     this.showLoading(`Syncing: ${customer.contact_name}`);
     
     const from = this.inputs.from.value;
@@ -343,12 +349,12 @@ class ZohoLedgerApp {
             <tr class="border-b border-black text-[7px] font-black uppercase bg-neutral-50">
               <th class="py-1 px-1 w-[20px]">#</th>
               <th class="py-1 px-1 w-[160px]">Item Name</th>
-              <th class="py-1 px-1 w-[40px] text-center">Quantity</th>
-              <th class="py-1 px-1 w-[80px] text-right">Sub Total (BCY)</th>
+              <th class="py-1 px-1 w-[40px] text-center">Quantify</th>
+              <th class="py-1 px-1 w-[80px] text-right">Sub Total byc</th>
               <th class="py-1 px-1 w-[60px] text-center">Invoice Number</th>
               <th class="py-1 px-1 w-[55px] text-center">Invoice Date</th>
               <th class="py-1 px-1 w-[55px] text-center">Due Date</th>
-              <th class="py-1 px-1 w-[80px] text-right">Balance (BCY)</th>
+              <th class="py-1 px-1 w-[80px] text-right">Balance byc</th>
             </tr>
           </thead>
           <tbody>

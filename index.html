@@ -16,7 +16,7 @@
     
     /* Fixed Dropdown Visibility */
     select { background: #1a1a1a !important; color: white !important; cursor: pointer; border: 1px solid #333 !important; padding: 0.5rem; border-radius: 0.5rem; }
-    select option { background: #1a1a1a; color: white; padding: 10px; }
+    select option { background: #1a1a1a !important; color: white !important; padding: 10px; }
     
     .custom-scrollbar::-webkit-scrollbar { width: 5px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -44,7 +44,8 @@
 
   <!-- Auth Modal -->
   <div id="modal-config" class="modal-overlay view-hidden">
-    <div class="glass-card p-10 w-full max-w-lg space-y-6">
+    <div class="glass-card p-10 w-full max-w-lg space-y-6 relative">
+      <button id="btn-close-config" class="absolute top-4 right-4 text-neutral-500 hover:text-white transition-colors text-2xl font-light">&times;</button>
       <h3 class="text-2xl font-black">Developer Settings</h3>
       <div class="space-y-4">
         <div>
