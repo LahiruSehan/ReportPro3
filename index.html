@@ -32,22 +32,22 @@
     <div class="glass-card p-8 w-full max-w-lg space-y-6 overflow-y-auto max-h-[90vh] custom-scrollbar">
       <div class="flex justify-between items-center">
         <div>
-          <h3 class="text-xl font-bold">Connection Settings</h3>
-          <p class="text-xs text-neutral-500">Essential for Zoho API Handshake</p>
+          <h3 class="text-xl font-bold">API Configuration</h3>
+          <p class="text-xs text-neutral-500 font-medium">Step 1: Setup Zoho API Console</p>
         </div>
         <button id="btn-close-config" class="text-neutral-500 hover:text-white text-2xl">&times;</button>
       </div>
 
       <div class="bg-indigo-500/10 border border-indigo-500/20 p-5 rounded-xl space-y-4">
-        <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-widest">1. API Console Sync</h4>
-        <div class="space-y-2">
-          <p class="text-[11px] text-neutral-300 leading-relaxed">
-            Copy the URI below. In <a href="https://api-console.zoho.com/" target="_blank" class="text-white underline font-bold">Zoho Console</a>, create a <strong>JavaScript Application</strong> and paste this into "Authorized Redirect URIs".
-          </p>
-          <div class="flex items-center space-x-2 bg-black/40 p-3 rounded-lg border border-white/5">
-            <code id="display-uri" class="text-[10px] text-indigo-300 truncate flex-grow">Detecting URL...</code>
-            <button id="btn-copy-uri" class="bg-indigo-600 text-[10px] px-3 py-1 rounded font-bold hover:bg-indigo-500 transition-colors">COPY</button>
-          </div>
+        <h4 class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Authorized Redirect URI</h4>
+        <p class="text-[11px] text-neutral-400 leading-relaxed">
+          1. Go to <a href="https://api-console.zoho.com/" target="_blank" class="text-white underline font-bold">Zoho Console</a>.<br>
+          2. Choose <strong>"Client-based Applications"</strong>.<br>
+          3. Paste this <strong>exact</strong> URL into "Authorized Redirect URIs":
+        </p>
+        <div class="flex items-center space-x-2 bg-black/40 p-3 rounded-lg border border-white/5">
+          <code id="display-uri" class="text-[10px] text-indigo-300 truncate flex-grow font-mono">Loading URL...</code>
+          <button id="btn-copy-uri" class="bg-indigo-600 text-[10px] px-3 py-1 rounded font-bold hover:bg-indigo-500 transition-colors uppercase">Copy</button>
         </div>
       </div>
 
@@ -72,8 +72,8 @@
         </div>
       </div>
       
-      <button id="btn-save-config" class="w-full py-4 bg-indigo-600 rounded-xl font-bold hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all">
-        Save & Update System
+      <button id="btn-save-config" class="w-full py-4 bg-indigo-600 rounded-xl font-bold hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all uppercase tracking-widest">
+        Save Settings
       </button>
     </div>
   </div>
@@ -83,14 +83,14 @@
     <main class="text-center space-y-10 max-w-2xl">
       <div class="space-y-4">
         <h1 class="text-7xl md:text-9xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-700 select-none">ZOHO</h1>
-        <p class="text-neutral-400 text-lg font-light max-w-md mx-auto">Premium enterprise data bridge for Zoho Books financial analysis and PDF synthesis.</p>
+        <p class="text-neutral-400 text-lg font-light max-w-md mx-auto">Enterprise-grade data bridge for Zoho Books financial analysis and PDF synthesis.</p>
       </div>
       <div class="flex flex-col items-center space-y-5">
-        <button id="btn-connect" class="group relative px-12 py-5 font-black text-white bg-indigo-600 rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-500/40 transition-all hover:scale-[1.03] active:scale-[0.98]">
-          <span class="relative z-10">INITIALIZE LIVE LINK</span>
+        <button id="btn-connect" class="px-12 py-5 font-black text-white bg-indigo-600 rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-500/40 transition-all hover:scale-[1.03] active:scale-[0.98]">
+          AUTHORIZE LIVE LINK
         </button>
-        <button id="btn-open-config-landing" class="text-sm text-neutral-500 hover:text-white underline underline-offset-8 transition-all">
-          API CREDENTIALS SETUP
+        <button id="btn-open-config-landing" class="text-xs text-neutral-500 hover:text-white underline underline-offset-8 transition-all tracking-widest font-bold">
+          OPEN CONNECTION SETTINGS
         </button>
       </div>
     </main>
@@ -114,7 +114,7 @@
       </nav>
       <div class="pt-6 border-t border-white/5 space-y-3">
         <button id="btn-open-config-sidebar" class="w-full text-left px-4 py-1 text-[10px] text-neutral-500 hover:text-white uppercase tracking-widest font-bold">Settings</button>
-        <button id="btn-logout" class="w-full text-left px-4 py-1 text-[10px] text-red-500/60 hover:text-red-400 uppercase tracking-widest font-bold">Terminate Session</button>
+        <button id="btn-logout" class="w-full text-left px-4 py-1 text-[10px] text-red-500/60 hover:text-red-400 uppercase tracking-widest font-bold">Disconnect</button>
       </div>
     </aside>
 
@@ -122,13 +122,13 @@
       <header class="flex justify-between items-end mb-12">
         <div>
           <h2 id="view-title" class="text-4xl font-black tracking-tight">Overview</h2>
-          <p id="view-subtitle" class="text-neutral-500 text-sm mt-1">Ready for data ingestion.</p>
+          <p id="view-subtitle" class="text-neutral-500 text-sm mt-1">Establishing secure data sync...</p>
         </div>
         <div class="flex space-x-3">
           <select id="data-module-selector" class="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm font-bold outline-none">
             <option value="invoices">Invoices</option>
             <option value="contacts">Customers</option>
-            <option value="items">Items / Products</option>
+            <option value="items">Registry Items</option>
           </select>
           <button id="btn-sync" class="px-8 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-black transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50">
             REFRESH LIVE
@@ -140,26 +140,25 @@
       <div id="content-overview" class="animate-slide space-y-8">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="glass-card p-8 border-l-4 border-indigo-500">
-            <p class="text-neutral-500 text-[10px] font-black uppercase mb-3 tracking-[0.2em]">Primary Metric</p>
+            <p class="text-neutral-500 text-[10px] font-black uppercase mb-3 tracking-[0.2em]">Live Value</p>
             <p class="text-4xl font-black text-white" id="stat-revenue">$0.00</p>
-            <p class="text-[10px] text-neutral-600 mt-2 uppercase" id="metric-label">Total Volume</p>
+            <p class="text-[10px] text-neutral-600 mt-2 uppercase font-bold" id="metric-label">Financial Volume</p>
           </div>
           <div class="glass-card p-8">
-            <p class="text-neutral-500 text-[10px] font-black uppercase mb-3 tracking-[0.2em]">Record Count</p>
+            <p class="text-neutral-500 text-[10px] font-black uppercase mb-3 tracking-[0.2em]">Record Depth</p>
             <p class="text-4xl font-black text-white" id="stat-pending">0</p>
-            <p class="text-[10px] text-neutral-600 mt-2 uppercase">Entities Synced</p>
+            <p class="text-[10px] text-neutral-600 mt-2 uppercase font-bold">Entities Found</p>
           </div>
           <div class="glass-card p-8 bg-indigo-500/[0.02]">
             <p class="text-neutral-500 text-[10px] font-black uppercase mb-3 tracking-[0.2em]">API Health</p>
             <p class="text-xl font-black text-indigo-400" id="sync-status">STDBY</p>
-            <p class="text-[10px] text-neutral-600 mt-3 uppercase">Session Active</p>
+            <p class="text-[10px] text-neutral-600 mt-3 uppercase font-bold">Encrypted Link</p>
           </div>
         </div>
 
         <div class="glass-card p-0 overflow-hidden border border-white/10">
           <div class="px-8 py-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
             <h3 class="text-lg font-black tracking-tight">Real-Time Data Explorer</h3>
-            <span class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Live Feed</span>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
@@ -167,7 +166,7 @@
                 <tr id="table-head-row"><th class="py-5 px-8">ID</th><th class="py-5">Primary Detail</th><th class="py-5">State</th><th class="py-5 text-right px-8">Valuation</th></tr>
               </thead>
               <tbody id="table-recent" class="divide-y divide-white/5">
-                <tr><td colspan="4" class="py-24 text-center text-neutral-700 italic font-light">Establish a secure link to explore live organization data.</td></tr>
+                <tr><td colspan="4" class="py-24 text-center text-neutral-700 italic font-light">Loading live data stream...</td></tr>
               </tbody>
             </table>
           </div>
@@ -179,13 +178,13 @@
          <div class="glass-card p-8 space-y-6">
             <div class="flex justify-between items-center">
               <div>
-                <h3 class="text-xl font-black">Secure System Output</h3>
-                <p class="text-xs text-neutral-500 mt-1">Debugging and API Handshake Logs</p>
+                <h3 class="text-xl font-black">System Output</h3>
+                <p class="text-xs text-neutral-500 mt-1">API Handshake and Fetch Logs</p>
               </div>
-              <button id="btn-clear-logs" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest border border-white/10 rounded-lg hover:bg-white/5">Clear Buffer</button>
+              <button id="btn-clear-logs" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest border border-white/10 rounded-lg hover:bg-white/5 transition-colors">Clear</button>
             </div>
             <div id="dataset-log" class="bg-black/80 p-6 rounded-2xl font-mono text-[11px] text-green-500 h-[500px] overflow-y-auto leading-relaxed border border-white/5 custom-scrollbar">
-               [CORE]: System Initialized. Awaiting Client Handshake...
+               [CORE]: System Initialized.
             </div>
          </div>
       </div>
@@ -195,23 +194,19 @@
          <div class="glass-card p-16 space-y-12" id="report-template" style="color: white; background: #050505;">
             <div class="flex justify-between items-start border-b border-white/10 pb-10">
               <div>
-                <h1 class="text-4xl font-black tracking-tighter">DATA SYNTHESIS</h1>
-                <p class="text-neutral-500 text-[10px] mt-2 uppercase tracking-[0.4em]" id="report-date">TS: 0000-00-00 00:00:00</p>
+                <h1 class="text-4xl font-black tracking-tighter uppercase">Synthesis Report</h1>
+                <p class="text-neutral-500 text-[10px] mt-2 uppercase tracking-[0.4em]" id="report-date">TS: --</p>
               </div>
               <div class="text-right">
                 <p class="font-black text-indigo-500 text-xl">INSIGHT PRO</p>
-                <p class="text-[9px] text-neutral-600 uppercase tracking-widest mt-1">Zoho Enterprise Data Hub</p>
+                <p class="text-[9px] text-neutral-600 uppercase tracking-widest mt-1">Zoho Enterprise Connector</p>
               </div>
             </div>
             <div id="report-table-container"></div>
-            <div class="pt-10 border-t border-white/5 text-[10px] text-neutral-700 uppercase tracking-[0.5em] flex justify-between">
-              <span>Encrypted Data Transmission</span>
-              <span>Proprietary Analysis</span>
-            </div>
          </div>
          <div class="flex justify-center pt-8">
             <button id="btn-generate-pdf" class="px-16 py-6 bg-white text-black font-black rounded-2xl hover:bg-neutral-200 transition-all shadow-2xl shadow-white/5 hover:scale-[1.02]">
-              SYNTHESIZE PDF REPORT
+              GENERATE PDF REPORT
             </button>
          </div>
       </div>
