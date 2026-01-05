@@ -1,7 +1,7 @@
 
 /**
  * ZOHO INSIGHT PRO - ENTERPRISE DATA HUB
- * Refined for GitHub Pages & Zoho OAuth2 Implicit Flow
+ * Enhanced with Projects, Organization Data, and Statement Engine
  */
 
 class ZohoInsightApp {
@@ -15,8 +15,10 @@ class ZohoInsightApp {
     this.state = {
       accessToken: null,
       data: [],
+      orgData: null,
       currentView: 'overview',
-      currentModule: 'invoices'
+      currentModule: 'invoices',
+      selectedRecord: null
     };
 
     this.init();
@@ -36,7 +38,7 @@ class ZohoInsightApp {
     this.handleCallback();
     this.checkSession();
     this.updateRedirectUriDisplay();
-    this.log("System Initialized. Awaiting Configuration.");
+    this.log("System Ready. Waiting for Secure Connection.");
   }
 
   cacheDOM() {
@@ -44,6 +46,7 @@ class ZohoInsightApp {
     this.viewDashboard = document.getElementById('view-dashboard');
     this.viewTitle = document.getElementById('view-title');
     this.viewSubtitle = document.getElementById('view-subtitle');
+    this.orgNameBadge = document.getElementById('org-name-badge');
     this.btnConnect = document.getElementById('btn-connect');
     this.btnSync = document.getElementById('btn-sync');
     this.btnGeneratePdf = document.getElementById('btn-generate-pdf');
@@ -67,6 +70,9 @@ class ZohoInsightApp {
     this.statPending = document.getElementById('stat-pending');
     this.metricLabel = document.getElementById('metric-label');
     this.moduleSelector = document.getElementById('data-module-selector');
+    this.btnBackToOverview = document.getElementById('btn-back-to-overview');
+    this.btnPrintStatement = document.getElementById('btn-print-statement');
+    this.statementCanvas = document.getElementById('statement-canvas');
   }
 
   getRedirectUri() {
@@ -96,6 +102,8 @@ class ZohoInsightApp {
     this.btnOpenConfigSidebar?.addEventListener('click', () => this.toggleConfig(true));
     this.btnCloseConfig?.addEventListener('click', () => this.toggleConfig(false));
     this.btnSaveConfig?.addEventListener('click', () => this.saveConfig());
+    this.btnBackToOverview?.addEventListener('click', () => this.switchView('overview'));
+    this.btnPrintStatement?.addEventListener('click', () => this.printStatement());
     
     this.btnCopyUri?.addEventListener('click', () => {
       navigator.clipboard.writeText(this.getRedirectUri());
@@ -140,12 +148,13 @@ class ZohoInsightApp {
     };
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleConfig(false);
-    this.log(`[CONFIG]: Saved. Region: ${this.config.region}, Org: ${this.config.orgId}`);
+    this.log(`[CONFIG]: Saved. Context Region: ${this.config.region}`);
+    if (this.state.accessToken) this.fetchOrgProfile();
   }
 
   startAuth() {
     if (!this.config.clientId) {
-      alert("Missing Client ID. Go to Settings.");
+      alert("Missing Client ID. Update settings first.");
       this.toggleConfig(true);
       return;
     }
@@ -155,7 +164,9 @@ class ZohoInsightApp {
       "ZohoBooks.invoices.READ",
       "ZohoBooks.contacts.READ",
       "ZohoBooks.settings.READ",
-      "ZohoBooks.items.READ"
+      "ZohoBooks.items.READ",
+      "ZohoBooks.projects.READ",
+      "ZohoBooks.fullaccess.READ"
     ].join(',');
 
     const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?` + 
@@ -165,7 +176,7 @@ class ZohoInsightApp {
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `prompt=consent`;
 
-    this.log(`[AUTH]: Redirecting to Zoho ${this.config.region}...`);
+    this.log(`[AUTH]: Relaying to Zoho OAuth Service...`);
     window.location.href = authUrl;
   }
 
@@ -179,7 +190,7 @@ class ZohoInsightApp {
         localStorage.setItem('zoho_access_token', token);
         window.history.replaceState({}, document.title, window.location.pathname);
         this.setConnectedUI(true);
-        this.log("[AUTH]: Success. Connection Established.");
+        this.fetchOrgProfile();
         this.fetchLiveModule();
       }
     }
@@ -191,6 +202,7 @@ class ZohoInsightApp {
       this.state.accessToken = token;
       this.setConnectedUI(true);
       this.switchView('overview');
+      this.fetchOrgProfile();
       this.fetchLiveModule();
     }
   }
@@ -201,8 +213,24 @@ class ZohoInsightApp {
       this.viewDashboard?.classList.remove('view-hidden');
       this.statusDot?.classList.replace('bg-red-600', 'bg-green-500');
       if (this.syncStatusText) this.syncStatusText.innerText = "ACTIVE";
-      if (this.viewSubtitle) this.viewSubtitle.innerText = `Organization Context: ${this.config.orgId}`;
     }
+  }
+
+  async fetchOrgProfile() {
+    if (!this.state.accessToken || !this.config.orgId) return;
+    try {
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/orgprofile?organization_id=${this.config.orgId}`;
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        this.state.orgData = result.organization;
+        this.orgNameBadge.innerText = this.state.orgData.name;
+        this.orgNameBadge.classList.remove('view-hidden');
+        this.log(`[SYSTEM]: Business Identity Verified: ${this.state.orgData.name}`);
+      }
+    } catch (e) { this.log("[ERROR]: Could not fetch Org Profile."); }
   }
 
   logout() {
@@ -214,7 +242,7 @@ class ZohoInsightApp {
     if (!this.state.accessToken || !this.config.orgId) return;
 
     const module = this.state.currentModule;
-    this.log(`[DATA]: Requesting ${module.toUpperCase()}...`);
+    this.log(`[DATA]: Synchronizing ${module.toUpperCase()} Ledger...`);
     this.btnSync.disabled = true;
     this.btnSync.innerText = "SYNCING...";
 
@@ -224,12 +252,12 @@ class ZohoInsightApp {
         headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}` }
       });
 
-      if (!response.ok) throw new Error(`API Error: ${response.status}`);
+      if (!response.ok) throw new Error(`API Sync Error: ${response.status}`);
 
       const result = await response.json();
       this.state.data = result[module] || [];
       this.updateDashboardUI();
-      this.log(`[DATA]: Synchronized ${this.state.data.length} items.`);
+      this.log(`[DATA]: Success. Pulled ${this.state.data.length} records.`);
     } catch (err) {
       this.log(`[ERROR]: ${err.message}`);
     } finally {
@@ -248,54 +276,193 @@ class ZohoInsightApp {
     if (module === 'invoices') {
       const total = this.state.data.reduce((acc, i) => acc + (i.total || 0), 0);
       this.statRevenue.innerText = `$${total.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-      this.metricLabel.innerText = "Total Invoice Volume";
-      head = `<th class="py-5 px-8">ID</th><th class="py-5">CLIENT</th><th class="py-5">STATUS</th><th class="py-5 text-right px-8">AMOUNT</th>`;
-      body = this.state.data.map(i => `
-        <tr class="hover:bg-white/[0.02]">
+      this.metricLabel.innerText = "Cumulative Volume";
+      head = `<th class="py-5 px-8">ID</th><th class="py-5">CLIENT</th><th class="py-5">STATUS</th><th class="py-5 text-right px-8">ACTION</th>`;
+      body = this.state.data.map((i, idx) => `
+        <tr class="hover:bg-white/[0.04] transition-colors group">
           <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${i.invoice_number}</td>
-          <td class="py-4 font-bold">${i.customer_name}</td>
-          <td class="py-4"><span class="px-2 py-1 rounded bg-white/5 text-[9px] uppercase font-black">${i.status}</span></td>
-          <td class="py-4 text-right px-8 font-bold font-mono">$${(i.total || 0).toFixed(2)}</td>
+          <td class="py-4 font-bold text-neutral-200">${i.customer_name}</td>
+          <td class="py-4"><span class="px-2 py-1 rounded bg-white/5 text-[9px] uppercase font-black text-neutral-400">${i.status}</span></td>
+          <td class="py-4 text-right px-8">
+            <button onclick="window.app.generateItemStatement(${idx})" class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[9px] font-black hover:bg-indigo-600 hover:border-indigo-600 transition-all uppercase tracking-widest">Statement</button>
+          </td>
         </tr>
       `).join('');
     } else if (module === 'contacts') {
+      const total = this.state.data.reduce((acc, c) => acc + (c.outstanding_receivable_amount || 0), 0);
+      this.statRevenue.innerText = `$${total.toLocaleString()}`;
+      this.metricLabel.innerText = "Total Receivables";
+      head = `<th class="py-5 px-8">ID</th><th class="py-5">NAME</th><th class="py-5">TYPE</th><th class="py-5 text-right px-8">ACTION</th>`;
+      body = this.state.data.map((c, idx) => `
+        <tr class="hover:bg-white/[0.04] transition-colors group">
+          <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${c.contact_id.toString().slice(-6)}</td>
+          <td class="py-4 font-bold text-neutral-200">${c.contact_name}</td>
+          <td class="py-4 text-neutral-500 text-xs">${c.contact_type}</td>
+          <td class="py-4 text-right px-8">
+            <button onclick="window.app.generateItemStatement(${idx})" class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[9px] font-black hover:bg-indigo-600 transition-all uppercase tracking-widest">Statement</button>
+          </td>
+        </tr>
+      `).join('');
+    } else if (module === 'projects') {
       this.statRevenue.innerText = this.state.data.length;
-      this.metricLabel.innerText = "Active Customers";
-      head = `<th class="py-5 px-8">ID</th><th class="py-5">NAME</th><th class="py-5 text-center">CURRENCY</th><th class="py-5 text-right px-8">RECEIVABLE</th>`;
-      body = this.state.data.map(c => `
-        <tr class="hover:bg-white/[0.02]">
-          <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${c.contact_id}</td>
-          <td class="py-4 font-bold">${c.contact_name}</td>
-          <td class="py-4 text-center text-neutral-500 font-mono text-xs">${c.currency_code}</td>
-          <td class="py-4 text-right px-8 font-bold font-mono">$${(c.outstanding_receivable_amount || 0).toFixed(2)}</td>
+      this.metricLabel.innerText = "Active Projects";
+      head = `<th class="py-5 px-8">PROJECT NAME</th><th class="py-5">CUSTOMER</th><th class="py-5">STATUS</th><th class="py-5 text-right px-8">ACTION</th>`;
+      body = this.state.data.map((p, idx) => `
+        <tr class="hover:bg-white/[0.04] transition-colors">
+          <td class="py-4 px-8 font-bold text-indigo-400">${p.project_name}</td>
+          <td class="py-4 text-neutral-200">${p.customer_name}</td>
+          <td class="py-4"><span class="px-2 py-0.5 rounded-full border border-indigo-500/20 text-[8px] uppercase font-bold text-indigo-400">${p.status}</span></td>
+          <td class="py-4 text-right px-8">
+            <button onclick="window.app.generateItemStatement(${idx})" class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[9px] font-black hover:bg-indigo-600 transition-all uppercase tracking-widest">Details</button>
+          </td>
         </tr>
       `).join('');
     } else {
       this.statRevenue.innerText = this.state.data.length;
       this.metricLabel.innerText = "Items in Registry";
-      head = `<th class="py-5 px-8">SKU</th><th class="py-5">NAME</th><th class="py-5">STOCK</th><th class="py-5 text-right px-8">RATE</th>`;
-      body = this.state.data.map(item => `
-        <tr class="hover:bg-white/[0.02]">
-          <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${item.sku || item.item_id}</td>
-          <td class="py-4 font-bold">${item.name}</td>
-          <td class="py-4">${item.stock_on_hand || 0}</td>
-          <td class="py-4 text-right px-8 font-bold font-mono">$${(item.rate || 0).toFixed(2)}</td>
+      head = `<th class="py-5 px-8">SKU</th><th class="py-5">NAME</th><th class="py-5">STOCK</th><th class="py-5 text-right px-8">ACTION</th>`;
+      body = this.state.data.map((item, idx) => `
+        <tr class="hover:bg-white/[0.04] transition-colors">
+          <td class="py-4 px-8 font-mono text-indigo-400 font-bold">${item.sku || 'N/A'}</td>
+          <td class="py-4 font-bold text-neutral-200">${item.name}</td>
+          <td class="py-4 font-mono text-neutral-500">${item.stock_on_hand || 0}</td>
+          <td class="py-4 text-right px-8">
+            <button onclick="window.app.generateItemStatement(${idx})" class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[9px] font-black hover:bg-indigo-600 transition-all uppercase tracking-widest">Analysis</button>
+          </td>
         </tr>
       `).join('');
     }
 
     this.tableHeadRow.innerHTML = head;
-    this.tableRecent.innerHTML = body || '<tr><td colspan="4" class="py-20 text-center text-neutral-600 italic">No records found.</td></tr>';
+    this.tableRecent.innerHTML = body || '<tr><td colspan="4" class="py-20 text-center text-neutral-600 italic">No records retrieved.</td></tr>';
+  }
+
+  generateItemStatement(index) {
+    const record = this.state.data[index];
+    if (!record) return;
+    this.state.selectedRecord = record;
+    this.switchView('statement');
+    this.renderStatement();
+  }
+
+  renderStatement() {
+    const r = this.state.selectedRecord;
+    const org = this.state.orgData || { name: "Insights Pro Enterprise" };
+    const module = this.state.currentModule;
+    
+    let content = `
+      <div class="flex justify-between items-start mb-20">
+        <div class="space-y-2">
+          <h1 class="text-4xl font-black tracking-tighter uppercase text-indigo-600">${module.slice(0,-1)} Statement</h1>
+          <p class="text-neutral-500 text-[10px] uppercase tracking-[0.3em] font-bold">Document Generated: ${new Date().toLocaleDateString()}</p>
+        </div>
+        <div class="text-right">
+          <p class="text-xl font-black uppercase">${org.name}</p>
+          <p class="text-[9px] text-neutral-500 uppercase tracking-widest mt-1">Zoho Connected Intelligence</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-20 mb-20">
+        <div>
+          <h4 class="text-[9px] font-black text-neutral-400 uppercase tracking-widest border-b border-black/5 pb-2 mb-4">Target Identity</h4>
+          <p class="text-2xl font-black">${r.customer_name || r.contact_name || r.name || r.project_name}</p>
+          <p class="text-sm text-neutral-600 mt-2">${r.email || r.sku || 'Global Identifier: ' + (r.invoice_id || r.contact_id || r.item_id || r.project_id)}</p>
+        </div>
+        <div>
+          <h4 class="text-[9px] font-black text-neutral-400 uppercase tracking-widest border-b border-black/5 pb-2 mb-4">Financial Overview</h4>
+          <div class="space-y-3">
+             <div class="flex justify-between">
+                <span class="text-sm font-bold text-neutral-500 uppercase">Valuation</span>
+                <span class="text-xl font-black">$${(r.total || r.outstanding_receivable_amount || r.rate || 0).toLocaleString()}</span>
+             </div>
+             <div class="flex justify-between">
+                <span class="text-sm font-bold text-neutral-500 uppercase">Current State</span>
+                <span class="text-sm font-black uppercase text-indigo-500">${r.status || 'Active'}</span>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-neutral-50 p-10 rounded-2xl border border-black/5">
+        <h3 class="text-[10px] font-black uppercase tracking-[0.5em] mb-6 text-neutral-400">Raw Data Matrix</h3>
+        <div class="grid grid-cols-2 gap-y-4 gap-x-8">
+           ${Object.entries(r).filter(([k, v]) => typeof v !== 'object' && v !== null).map(([key, value]) => `
+             <div class="flex flex-col">
+                <span class="text-[8px] font-black uppercase text-neutral-400 mb-1">${key.replace(/_/g, ' ')}</span>
+                <span class="text-[11px] font-mono font-bold truncate">${value}</span>
+             </div>
+           `).join('')}
+        </div>
+      </div>
+
+      <div class="mt-20 pt-10 border-t border-black/5 text-center">
+        <p class="text-[9px] text-neutral-400 font-bold uppercase tracking-widest italic">This document is a real-time synthesis of Zoho Books data as of ${new Date().toLocaleTimeString()}</p>
+      </div>
+    `;
+
+    this.statementCanvas.innerHTML = content;
+  }
+
+  printStatement() {
+    const filename = `${this.state.currentModule}_${this.state.selectedRecord.invoice_number || this.state.selectedRecord.contact_id}.pdf`;
+    html2pdf().from(this.statementCanvas).set({
+      margin: 0,
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).save();
   }
 
   switchView(viewId) {
     this.state.currentView = viewId;
     document.querySelectorAll('[id^="content-"]').forEach(el => el.classList.add('view-hidden'));
-    document.getElementById(`content-${viewId}`).classList.remove('view-hidden');
+    const target = document.getElementById(`content-${viewId}`);
+    if (target) target.classList.remove('view-hidden');
+    
     document.querySelectorAll('.sidebar-link').forEach(link => {
       link.classList.toggle('active', link.getAttribute('data-target') === viewId);
     });
+    
     this.viewTitle.innerText = viewId.charAt(0).toUpperCase() + viewId.slice(1);
+    
+    // UI Logic for different views
+    const controls = document.getElementById('main-controls');
+    if (viewId === 'statement') controls.classList.add('view-hidden');
+    else controls.classList.remove('view-hidden');
+
+    if (viewId === 'reports') this.prepareMasterReport();
+  }
+
+  prepareMasterReport() {
+    const container = document.getElementById('report-table-container');
+    const orgName = this.state.orgData ? this.state.orgData.name : "Zoho Insight Pro";
+    document.getElementById('report-org-name').innerText = orgName;
+    document.getElementById('report-date').innerText = `SYNTHESIZED: ${new Date().toLocaleString()}`;
+    
+    container.innerHTML = `
+      <div class="space-y-6">
+        <p class="text-sm font-bold uppercase tracking-widest text-neutral-400">Ledger Summary: ${this.state.currentModule.toUpperCase()}</p>
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="border-b-2 border-black/10">
+              <th class="py-4">Identifier</th>
+              <th class="py-4">Primary Subject</th>
+              <th class="py-4 text-right">Value</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-black/5">
+            ${this.state.data.map(r => `
+              <tr>
+                <td class="py-3 font-mono text-indigo-600">${r.invoice_number || r.contact_id || r.sku || r.project_id || '--'}</td>
+                <td class="py-3 font-bold">${r.customer_name || r.contact_name || r.name || r.project_name}</td>
+                <td class="py-3 text-right font-mono font-bold">$${(r.total || r.outstanding_receivable_amount || r.rate || 0).toLocaleString()}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
   }
 
   log(msg) {
