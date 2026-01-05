@@ -1,187 +1,249 @@
 
 /**
- * ZOHO INSIGHT PRO - CORE ENGINE
- * Pure Vanilla implementation of Data & PDF Services
+ * ZOHO INSIGHT PRO - REAL WORLD ENGINE
+ * Handles Live OAuth2 and Books API V3
  */
-
-const CONFIG = {
-  MOCK_DATA: [
-    { id: 'INV-001', date: '2024-01-15', customer: 'Nexus Corp', amount: 4500.00, status: 'Paid' },
-    { id: 'INV-002', date: '2024-01-16', customer: 'Skyline Ltd', amount: 1200.50, status: 'Overdue' },
-    { id: 'INV-003', date: '2024-01-18', customer: 'Vertex Solutions', amount: 3300.00, status: 'Sent' },
-    { id: 'INV-004', date: '2024-01-19', customer: 'Global Logics', amount: 890.00, status: 'Paid' },
-    { id: 'INV-005', date: '2024-01-20', customer: 'Terraform Inc', amount: 12500.00, status: 'Sent' },
-  ]
-};
 
 class ZohoInsightApp {
   constructor() {
+    this.config = JSON.parse(localStorage.getItem('zoho_config')) || {
+      clientId: '',
+      orgId: '',
+      region: 'com'
+    };
+    
     this.state = {
-      isLoggedIn: false,
+      accessToken: null,
       data: [],
       currentView: 'overview'
     };
-    
+
     this.init();
   }
 
   init() {
     this.cacheDOM();
     this.bindEvents();
+    this.handleCallback();
     this.checkSession();
   }
 
   cacheDOM() {
     this.viewLanding = document.getElementById('view-landing');
     this.viewDashboard = document.getElementById('view-dashboard');
-    this.viewTitle = document.getElementById('view-title');
     this.btnConnect = document.getElementById('btn-connect');
-    this.btnLogout = document.getElementById('btn-logout');
     this.btnSync = document.getElementById('btn-sync');
     this.btnGeneratePdf = document.getElementById('btn-generate-pdf');
-    this.tableRecent = document.getElementById('table-recent');
     this.datasetLog = document.getElementById('dataset-log');
-    
-    // Stats
-    this.statRevenue = document.getElementById('stat-revenue');
-    this.statPending = document.getElementById('stat-pending');
-    this.statReceivables = document.getElementById('stat-receivables');
+    this.tableRecent = document.getElementById('table-recent');
+    this.statusDot = document.getElementById('status-dot');
+    this.modalConfig = document.getElementById('modal-config');
   }
 
   bindEvents() {
-    this.btnConnect.addEventListener('click', () => this.handleLogin());
-    this.btnLogout.addEventListener('click', () => this.handleLogout());
-    this.btnSync.addEventListener('click', () => this.syncData());
+    this.btnConnect.addEventListener('click', () => this.startAuth());
+    document.getElementById('btn-logout').addEventListener('click', () => this.logout());
+    this.btnSync.addEventListener('click', () => this.syncLiveInvoices());
     this.btnGeneratePdf.addEventListener('click', () => this.generatePDF());
 
-    // Navigation
     document.querySelectorAll('.sidebar-link').forEach(link => {
       link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const target = link.getAttribute('data-target');
+        const target = e.currentTarget.getAttribute('data-target');
         this.switchView(target);
       });
     });
   }
 
-  checkSession() {
-    const saved = localStorage.getItem('zoho_session');
-    if (saved) this.handleLogin(true);
+  // --- CONFIG & AUTH ---
+
+  toggleConfig(show) {
+    this.modalConfig.classList.toggle('view-hidden', !show);
+    if (show) {
+      document.getElementById('cfg-client-id').value = this.config.clientId;
+      document.getElementById('cfg-org-id').value = this.config.orgId;
+      document.getElementById('cfg-region').value = this.config.region;
+    }
   }
 
-  handleLogin(isSilent = false) {
-    if (!isSilent) {
-      this.btnConnect.innerHTML = "Authenticating...";
-      this.btnConnect.disabled = true;
+  saveConfig() {
+    this.config = {
+      clientId: document.getElementById('cfg-client-id').value.trim(),
+      orgId: document.getElementById('cfg-org-id').value.trim(),
+      region: document.getElementById('cfg-region').value
+    };
+    localStorage.setItem('zoho_config', JSON.stringify(this.config));
+    this.toggleConfig(false);
+    this.log(`Config updated. Client ID: ${this.config.clientId.substring(0,8)}...`);
+  }
+
+  startAuth() {
+    if (!this.config.clientId) {
+      alert("Please configure your Client ID first in Settings.");
+      this.toggleConfig(true);
+      return;
     }
 
-    // Simulate OAuth delay
-    setTimeout(() => {
-      this.state.isLoggedIn = true;
-      localStorage.setItem('zoho_session', 'active');
-      
-      this.viewLanding.classList.add('view-hidden');
-      this.viewDashboard.classList.remove('view-hidden');
-      
-      if (!isSilent) this.syncData();
-    }, isSilent ? 0 : 1200);
+    const scope = "ZohoBooks.invoices.READ,ZohoBooks.contacts.READ";
+    const redirectUri = window.location.origin + window.location.pathname;
+    const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?` + 
+      `scope=${scope}&` +
+      `client_id=${this.config.clientId}&` +
+      `response_type=token&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `prompt=consent`;
+
+    this.log(`Redirecting to Zoho Auth (${this.config.region})...`);
+    window.location.href = authUrl;
   }
 
-  handleLogout() {
-    this.state.isLoggedIn = false;
-    localStorage.removeItem('zoho_session');
-    location.reload();
+  handleCallback() {
+    // Check for access_token in URL fragment (Implicit Grant)
+    const params = new URLSearchParams(window.location.hash.substring(1));
+    const token = params.get('access_token');
+    
+    if (token) {
+      this.state.accessToken = token;
+      localStorage.setItem('zoho_access_token', token);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      this.setConnectedUI(true);
+      this.log("Auth Successful: Access token received.");
+      this.syncLiveInvoices();
+    }
   }
+
+  checkSession() {
+    const token = localStorage.getItem('zoho_access_token');
+    if (token) {
+      this.state.accessToken = token;
+      this.setConnectedUI(true);
+      this.switchView('overview');
+    }
+  }
+
+  setConnectedUI(connected) {
+    if (connected) {
+      this.viewLanding.classList.add('view-hidden');
+      this.viewDashboard.classList.remove('view-hidden');
+      this.statusDot.classList.replace('bg-red-500', 'bg-green-500');
+      document.getElementById('sync-status').innerText = "Live";
+      document.getElementById('view-subtitle').innerText = `Org: ${this.config.orgId || 'Not Set'}`;
+    }
+  }
+
+  logout() {
+    localStorage.removeItem('zoho_access_token');
+    window.location.reload();
+  }
+
+  // --- DATA FETCHING ---
+
+  async syncLiveInvoices() {
+    if (!this.state.accessToken) return;
+    if (!this.config.orgId) {
+      this.log("Error: Organization ID missing. Check settings.");
+      return;
+    }
+
+    this.log(`Fetching invoices from organization ${this.config.orgId}...`);
+    this.btnSync.disabled = true;
+    this.btnSync.innerText = "Syncing...";
+
+    try {
+      // NOTE: Zoho Books API requires Organization ID header
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/invoices?organization_id=${this.config.orgId}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'API Request Failed');
+      }
+
+      const result = await response.json();
+      this.state.data = result.invoices || [];
+      this.updateUI();
+      this.log(`Success: Received ${this.state.data.length} invoices.`);
+    } catch (err) {
+      this.log(`CRITICAL ERROR: ${err.message}`);
+      if (err.message.includes('expired') || err.message.includes('Invalid token')) {
+        this.log("Token likely expired. Re-authenticating required.");
+      }
+    } finally {
+      this.btnSync.disabled = false;
+      this.btnSync.innerText = "Sync Live Data";
+    }
+  }
+
+  updateUI() {
+    // Stats
+    const total = this.state.data.reduce((acc, inv) => acc + (inv.total || 0), 0);
+    document.getElementById('stat-revenue').innerText = `$${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+    document.getElementById('stat-pending').innerText = this.state.data.length;
+
+    // Table
+    this.tableRecent.innerHTML = this.state.data.map(inv => `
+      <tr class="hover:bg-white/[0.02]">
+        <td class="py-4 font-mono text-xs text-indigo-400">${inv.invoice_number}</td>
+        <td class="py-4 font-semibold">${inv.customer_name}</td>
+        <td class="py-4">
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-white/5 border border-white/10">
+            ${inv.status}
+          </span>
+        </td>
+        <td class="py-4 text-right font-mono font-bold">$${inv.total.toFixed(2)}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" class="py-10 text-center text-neutral-600 italic">No live records found.</td></tr>';
+  }
+
+  // --- UTILS ---
 
   switchView(viewId) {
     this.state.currentView = viewId;
-    
-    // UI Updates
     document.querySelectorAll('[id^="content-"]').forEach(el => el.classList.add('view-hidden'));
     document.getElementById(`content-${viewId}`).classList.remove('view-hidden');
-    
     document.querySelectorAll('.sidebar-link').forEach(link => {
       link.classList.toggle('active', link.getAttribute('data-target') === viewId);
     });
-
-    this.viewTitle.innerText = viewId.charAt(0).toUpperCase() + viewId.slice(1);
-    
-    if (viewId === 'reports') {
-      this.prepareReport();
-    }
-  }
-
-  syncData() {
-    this.log('Initializing secure handshake with Zoho API...');
-    this.log('Fetching module: Invoices...');
-    
-    setTimeout(() => {
-      this.state.data = CONFIG.MOCK_DATA;
-      this.updateDashboard();
-      this.log('Success: 5 invoices imported successfully.');
-    }, 800);
+    document.getElementById('view-title').innerText = viewId.charAt(0).toUpperCase() + viewId.slice(1);
+    if (viewId === 'reports') this.prepareReport();
   }
 
   log(msg) {
-    if (!this.datasetLog) return;
     const time = new Date().toLocaleTimeString();
     this.datasetLog.innerHTML += `<div>[${time}] ${msg}</div>`;
     this.datasetLog.scrollTop = this.datasetLog.scrollHeight;
+    console.log(`[ZOHO]: ${msg}`);
   }
 
-  updateDashboard() {
-    const total = this.state.data.reduce((acc, curr) => acc + curr.amount, 0);
-    const pending = this.state.data.filter(i => i.status !== 'Paid').length;
-    const receivables = this.state.data
-      .filter(i => i.status !== 'Paid')
-      .reduce((acc, curr) => acc + curr.amount, 0);
-
-    this.statRevenue.innerText = `$${total.toLocaleString()}`;
-    this.statPending.innerText = pending;
-    this.statReceivables.innerText = `$${receivables.toLocaleString()}`;
-
-    // Update Table
-    this.tableRecent.innerHTML = this.state.data.map(item => `
-      <tr class="group hover:bg-white/[0.02] transition-colors">
-        <td class="py-4 text-neutral-400 font-mono text-xs">${item.date}</td>
-        <td class="py-4 font-semibold">${item.customer}</td>
-        <td class="py-4">
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${item.status === 'Paid' ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}">
-            ${item.status}
-          </span>
-        </td>
-        <td class="py-4 text-right font-mono font-bold">$${item.amount.toFixed(2)}</td>
-      </tr>
-    `).join('');
-  }
-
-  importDataset(type) {
-    this.log(`Re-indexing ${type} dataset...`);
-    setTimeout(() => this.log(`Dataset [${type}] refreshed with latest changes.`), 500);
+  clearLogs() {
+    this.datasetLog.innerHTML = '[SYSTEM]: Log cleared.';
   }
 
   prepareReport() {
-    document.getElementById('report-date').innerText = `Generated: ${new Date().toLocaleDateString()}`;
-    document.getElementById('rep-entities').innerText = this.state.data.length;
-    const total = this.state.data.reduce((acc, curr) => acc + curr.amount, 0);
-    document.getElementById('rep-gross').innerText = `$${total.toLocaleString()}`;
-
+    document.getElementById('report-date').innerText = `Generated: ${new Date().toLocaleString()}`;
     const container = document.getElementById('report-table-container');
     container.innerHTML = `
       <table class="w-full text-left text-[10px] mt-8 border-t border-white/10">
-        <thead class="text-neutral-500">
-          <tr>
-            <th class="py-2">ENTITY ID</th>
-            <th class="py-2">CUSTOMER</th>
-            <th class="py-2 text-right">VALUATION</th>
+        <thead>
+          <tr class="text-neutral-500">
+            <th class="py-2">ID</th>
+            <th class="py-2">ENTITY</th>
+            <th class="py-2">STATUS</th>
+            <th class="py-2 text-right">TOTAL</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-white/5">
           ${this.state.data.map(d => `
             <tr>
-              <td class="py-2 text-neutral-400">${d.id}</td>
-              <td class="py-2">${d.customer}</td>
-              <td class="py-2 text-right font-bold">$${d.amount.toFixed(2)}</td>
+              <td class="py-2 text-neutral-500">${d.invoice_number}</td>
+              <td class="py-2 font-bold">${d.customer_name}</td>
+              <td class="py-2">${d.status.toUpperCase()}</td>
+              <td class="py-2 text-right font-mono">$${d.total.toFixed(2)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -191,20 +253,17 @@ class ZohoInsightApp {
 
   generatePDF() {
     const element = document.getElementById('report-template');
-    const opt = {
-      margin: 1,
-      filename: 'Zoho_Insight_Report.pdf',
+    this.btnGeneratePdf.innerText = "Synthesizing...";
+    html2pdf().set({
+      margin: 0.5,
+      filename: `Zoho_Report_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, backgroundColor: '#050505' },
+      html2canvas: { scale: 2, backgroundColor: '#050505', logging: false },
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-    };
-
-    this.btnGeneratePdf.innerText = "Generating...";
-    html2pdf().set(opt).from(element).save().then(() => {
-      this.btnGeneratePdf.innerText = "Download PDF Report";
+    }).from(element).save().then(() => {
+      this.btnGeneratePdf.innerText = "Generate Pro PDF";
     });
   }
 }
 
-// Global scope expose for inline onclicks
 window.app = new ZohoInsightApp();
