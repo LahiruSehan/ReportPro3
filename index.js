@@ -1,11 +1,14 @@
 
 /**
- * ZOHO OUTSTANDING STATEMENT ENGINE
- * Features: Auto-Org discovery, Live fetch, Outstanding-only filtering, A4 PDF synthesis.
+ * ZOHO STATEMENT PRO - STANDALONE ENGINE
+ * Fixes CORS via transparent proxying.
  */
 
 class ZohoStatementApp {
   constructor() {
+    // Shared Proxy to bypass CORS on github.io
+    this.proxyPrefix = "https://corsproxy.io/?";
+    
     this.config = JSON.parse(localStorage.getItem('zoho_config')) || {
       clientId: '',
       region: 'com'
@@ -27,8 +30,6 @@ class ZohoStatementApp {
     document.addEventListener('DOMContentLoaded', () => {
       this.cacheDOM();
       this.bindEvents();
-      
-      // Order is critical: Check URL first
       this.handleOAuthCallback();
       this.checkSession();
     });
@@ -68,14 +69,14 @@ class ZohoStatementApp {
       emptyState: document.getElementById('empty-state'),
       log: document.getElementById('status-log'),
       loadingText: document.getElementById('loading-text'),
-      landingErrorText: document.getElementById('landing-error-text')
+      landingErrorText: document.getElementById('landing-error-text'),
+      errorSuggestion: document.getElementById('error-suggestion')
     };
 
     if (this.inputs.displayRedirect) {
       this.inputs.displayRedirect.innerText = window.location.origin + window.location.pathname;
     }
 
-    // Set default dates (Current month)
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -99,7 +100,7 @@ class ZohoStatementApp {
     this.inputs.organization.onchange = (e) => {
       this.state.selectedOrgId = e.target.value;
       localStorage.setItem('zoho_selected_org_id', e.target.value);
-      this.log(`Switched to Org ID: ${e.target.value}`);
+      this.log(`Switched context to Org: ${e.target.value}`);
       this.fetchCustomers();
     };
   }
@@ -119,22 +120,21 @@ class ZohoStatementApp {
     };
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleModal(false);
-    this.log("Developer configuration updated.");
+    this.log("Settings saved. Ready for synchronization.");
     this.hideError();
   }
 
   startAuth() {
     if (!this.config.clientId) {
-      this.showError("Client ID must be configured first.");
+      this.showError("Missing Client ID", "Go to Developer Settings and enter your Zoho Client ID.");
       this.toggleModal(true);
       return;
     }
     const redirectUri = window.location.origin + window.location.pathname;
-    // Added organizations.READ to auto-discover account details
     const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.settings.READ,ZohoBooks.fullaccess.READ";
     const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
     
-    this.log(`Redirecting to Zoho Identity Provider...`);
+    this.log(`Initiating Zoho Secure Auth (${this.config.region})...`);
     window.location.href = authUrl;
   }
 
@@ -143,16 +143,11 @@ class ZohoStatementApp {
     if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.substring(1));
       const token = params.get('access_token');
-      const error = params.get('error');
-
       if (token) {
         this.state.accessToken = token;
         localStorage.setItem('zoho_access_token', token);
         window.history.replaceState({}, document.title, window.location.pathname);
-        this.log("Access granted. Initializing environment...");
-      } else if (error) {
-        this.showError(`Zoho Auth Error: ${error}. Check your Client ID and Redirect URI.`);
-        window.history.replaceState({}, document.title, window.location.pathname);
+        this.log("Auth token verified. Probing organizations...");
       }
     }
   }
@@ -168,7 +163,6 @@ class ZohoStatementApp {
         this.hideError();
         this.fetchCustomers();
       } else {
-        // We do NOT clear token here unless it's a 401, because a "Failed to fetch" might just be a network error
         this.hideLoading();
       }
     }
@@ -176,14 +170,14 @@ class ZohoStatementApp {
 
   async discoverOrganizations() {
     try {
-      this.log("Fetching account organizations...");
-      const res = await this.apiCallNoOrg('organizations');
+      this.log("Auto-discovering organizations...");
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations`;
+      const res = await this.rawRequest(url);
       
       if (res && res.organizations) {
         this.state.organizations = res.organizations;
         this.populateOrgSelect();
         
-        // Auto-select if not set
         if (!this.state.selectedOrgId && res.organizations.length > 0) {
           this.state.selectedOrgId = res.organizations[0].organization_id;
           localStorage.setItem('zoho_selected_org_id', this.state.selectedOrgId);
@@ -193,10 +187,7 @@ class ZohoStatementApp {
       }
       return false;
     } catch (e) {
-      if (e.message.includes("Expired") || e.message.includes("Unauthorized")) {
-        this.logout(false);
-      }
-      this.showError(`Discovery Failed: ${e.message}`);
+      this.showError(e.message, "This usually happens if your Client ID is wrong or your Zoho region (.eu, .in) doesn't match your Developer Settings.");
       return false;
     }
   }
@@ -213,13 +204,14 @@ class ZohoStatementApp {
 
   async fetchCustomers() {
     if (!this.state.selectedOrgId) return;
-    this.showLoading("Syncing Customer Registry...");
+    this.showLoading("Syncing Customer Directory...");
     try {
-      const custRes = await this.apiCall('contacts?contact_type=customer&status=active');
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
+      const custRes = await this.rawRequest(url);
       if (custRes && custRes.contacts) {
         this.state.customers = custRes.contacts;
         this.populateCustomerSelect();
-        this.log(`Ready: Found ${this.state.customers.length} active customers.`);
+        this.log(`Sync complete: ${this.state.customers.length} records retrieved.`);
       }
     } catch (e) {
       this.log(`Sync Error: ${e.message}`);
@@ -229,7 +221,7 @@ class ZohoStatementApp {
   }
 
   populateCustomerSelect() {
-    this.inputs.customer.innerHTML = '<option value="">Select Customer...</option>';
+    this.inputs.customer.innerHTML = '<option value="">Choose Customer...</option>';
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.contact_id;
@@ -238,35 +230,29 @@ class ZohoStatementApp {
     });
   }
 
-  // API Call without requiring Org ID (for discovery)
-  async apiCallNoOrg(endpoint) {
-    const url = `https://www.zohoapis.${this.config.region}/books/v3/${endpoint}`;
-    return this.rawRequest(url);
-  }
-
-  // Standard API Call
-  async apiCall(endpoint) {
-    if (!this.state.selectedOrgId) throw new Error("No organization selected.");
-    const url = `https://www.zohoapis.${this.config.region}/books/v3/${endpoint}${endpoint.includes('?') ? '&' : '?'}organization_id=${this.state.selectedOrgId}`;
-    return this.rawRequest(url);
-  }
-
   async rawRequest(url) {
+    // Transparent Proxy Wrap
+    const proxiedUrl = this.proxyPrefix + encodeURIComponent(url);
+    
     try {
-      const res = await fetch(url, {
-        headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}` }
+      const res = await fetch(proxiedUrl, {
+        headers: { 
+          'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`,
+          'X-Requested-With': 'XMLHttpRequest'
+        }
       });
       
-      if (res.status === 401) throw new Error("Session Expired. Please login again.");
+      if (res.status === 401) throw new Error("Authentication Expired. Please sign in again.");
+      if (res.status === 403) throw new Error("Permission Denied. Check your Client Scopes.");
       
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: `Request Failed (${res.status})` }));
-        throw new Error(err.message || err.error_msg);
+        const err = await res.json().catch(() => ({ message: `Zoho Error ${res.status}` }));
+        throw new Error(err.message || "Failed to communicate with Zoho Books.");
       }
       return await res.json();
     } catch (err) {
       if (err.name === 'TypeError') {
-        throw new Error("Network Error/Blocked. Check your Region setting and Ad-blocker.");
+        throw new Error("CORS Handshake Failed. Your browser might be blocking the proxy. Try disabling ad-blockers for this site.");
       }
       throw err;
     }
@@ -277,17 +263,17 @@ class ZohoStatementApp {
     const from = this.inputs.from.value;
     const to = this.inputs.to.value;
 
-    if (!customerId) return alert("Please select a target customer.");
+    if (!customerId) return alert("Select a customer first.");
     
-    this.showLoading("Generating Ledger...");
-    this.log(`Fetching outstanding records for ${this.state.selectedCustomer.contact_name}...`);
+    this.showLoading("Mining Transaction Data...");
+    this.log(`Synthesizing statement for ${this.state.selectedCustomer.contact_name}...`);
 
     try {
-      // Fetch Open and Overdue invoices
-      const invListRes = await this.apiCall(`invoices?customer_id=${customerId}&date_start=${from}&date_end=${to}&status=sent,overdue`);
+      const invUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices?customer_id=${customerId}&date_start=${from}&date_end=${to}&status=sent,overdue&organization_id=${this.state.selectedOrgId}`;
+      const invListRes = await this.rawRequest(invUrl);
       
       if (!invListRes || !invListRes.invoices || !invListRes.invoices.length) {
-        this.targets.renderArea.innerHTML = `<div class="p-20 text-center opacity-40 italic">No outstanding balance found for this period.</div>`;
+        this.targets.renderArea.innerHTML = `<div class="p-32 text-center opacity-30 italic font-medium">No outstanding invoices found for the selected period.</div>`;
         this.btns.download.disabled = true;
         this.hideLoading();
         return;
@@ -296,7 +282,8 @@ class ZohoStatementApp {
       const detailedInvoices = [];
       for (const inv of invListRes.invoices) {
         this.showLoading(`Expanding: ${inv.invoice_number}`);
-        const detail = await this.apiCall(`invoices/${inv.invoice_id}`);
+        const detUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
+        const detail = await this.rawRequest(detUrl);
         if (detail && detail.invoice) detailedInvoices.push(detail.invoice);
       }
 
@@ -304,7 +291,7 @@ class ZohoStatementApp {
       this.renderStatementUI();
       this.btns.download.disabled = false;
       this.targets.emptyState.classList.add('view-hidden');
-      this.log(`Statement generated with ${detailedInvoices.length} invoices.`);
+      this.log(`Success: Generated ledger with ${detailedInvoices.length} entries.`);
     } catch (e) {
       alert(e.message);
     } finally {
@@ -320,72 +307,77 @@ class ZohoStatementApp {
     const activeCols = Array.from(document.querySelectorAll('#column-toggles input:checked')).map(i => i.dataset.col);
 
     let html = `
-      <div class="statement-view animate-fade" id="pdf-content">
-        <div class="flex justify-between items-start mb-10 pb-6 border-b-2 border-black">
+      <div class="statement-view animate-in" id="pdf-content">
+        <div class="flex justify-between items-start mb-12 pb-8 border-b-4 border-black">
           <div>
-            <h1 class="text-3xl font-black uppercase tracking-tighter">${activeOrg.name}</h1>
-            <p class="text-[10px] text-neutral-500 uppercase font-bold tracking-[0.4em] mt-1">Outstanding Item Ledger</p>
+            <h1 class="text-4xl font-black uppercase tracking-tighter">${activeOrg.name}</h1>
+            <p class="text-[10px] text-neutral-500 uppercase font-bold tracking-[0.5em] mt-2">Outstanding Account Statement</p>
           </div>
           <div class="text-right">
-            <p class="font-bold">Period</p>
-            <p class="text-neutral-600">${this.inputs.from.value} — ${this.inputs.to.value}</p>
+            <p class="font-black text-[9px] uppercase text-neutral-400">Date Range</p>
+            <p class="text-lg font-black">${this.inputs.from.value} to ${this.inputs.to.value}</p>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-10 mb-10">
+        <div class="grid grid-cols-2 gap-12 mb-12">
           <div>
-            <h4 class="text-[9px] font-black uppercase text-neutral-300 mb-2">Customer Identity</h4>
-            <p class="text-lg font-black">${customer.contact_name}</p>
+            <h4 class="text-[9px] font-black uppercase text-neutral-300 mb-2">Statement For</h4>
+            <p class="text-2xl font-black">${customer.contact_name}</p>
           </div>
-          <div class="bg-neutral-50 p-4 border border-black/5 rounded">
+          <div class="bg-neutral-50 p-6 border-l-4 border-black rounded-r-xl">
              <div class="flex justify-between items-center mb-1">
-                <span class="text-[9px] font-black uppercase text-neutral-400">Balance Due</span>
-                <span class="text-xl font-black">$${totalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span class="text-[10px] font-black uppercase text-neutral-400">Total Outstanding</span>
+                <span class="text-2xl font-black">$${totalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
              </div>
-             <p class="text-[8px] text-neutral-500 uppercase font-bold">Aggregated Records: ${invoices.length}</p>
+             <p class="text-[9px] text-neutral-500 font-bold italic">Calculated from ${invoices.length} active invoices</p>
           </div>
         </div>
 
-        <div class="space-y-12">
+        <div class="space-y-16">
           ${invoices.map(inv => `
-            <div class="invoice-block border-t border-black/10 pt-4">
-              <div class="flex justify-between items-end bg-neutral-100 p-3 mb-4 rounded">
-                <div>
-                  <span class="text-[9px] font-black uppercase text-neutral-400">Invoice ID</span>
-                  <p class="font-black text-sm">${inv.invoice_number}</p>
+            <div class="invoice-block">
+              <div class="flex justify-between items-center bg-neutral-100 px-4 py-3 mb-4 rounded-lg">
+                <div class="flex items-center space-x-6">
+                  <div>
+                    <span class="text-[8px] font-black uppercase text-neutral-400 block">Invoice #</span>
+                    <span class="font-black text-base">${inv.invoice_number}</span>
+                  </div>
+                  <div>
+                    <span class="text-[8px] font-black uppercase text-neutral-400 block">Date</span>
+                    <span class="font-bold">${inv.date}</span>
+                  </div>
                 </div>
-                <div class="text-right text-[10px]">
-                   <span class="font-bold">Date:</span> ${inv.date} 
-                   ${activeCols.includes('due_date') ? `<span class="ml-4"><span class="font-bold">Due:</span> ${inv.due_date}</span>` : ''}
-                   ${activeCols.includes('status') ? `<span class="ml-4 font-black text-indigo-600 uppercase">[${inv.status}]</span>` : ''}
+                <div class="text-right">
+                   ${activeCols.includes('due_date') ? `<span class="mr-6"><span class="text-[8px] font-black uppercase text-neutral-400">Due:</span> <span class="font-bold">${inv.due_date}</span></span>` : ''}
+                   ${activeCols.includes('status') ? `<span class="bg-black text-white px-3 py-1 rounded text-[9px] font-black uppercase">${inv.status}</span>` : ''}
                 </div>
               </div>
 
               <table class="w-full text-left border-collapse">
                 <thead>
-                  <tr class="border-b-2 border-black text-[9px] font-black uppercase">
-                    ${activeCols.includes('sku') ? `<th class="py-2 w-24">SKU</th>` : ''}
-                    <th class="py-2">Description</th>
-                    <th class="py-2 text-right">Qty</th>
-                    <th class="py-2 text-right">Rate</th>
-                    <th class="py-2 text-right">Amount</th>
+                  <tr class="border-b-2 border-black text-[9px] font-black uppercase tracking-widest">
+                    ${activeCols.includes('sku') ? `<th class="py-3 w-32">SKU</th>` : ''}
+                    <th class="py-3">Item Description</th>
+                    <th class="py-3 text-right">Qty</th>
+                    <th class="py-3 text-right">Rate</th>
+                    <th class="py-3 text-right">Amount</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-black/5 text-[11px]">
                   ${inv.line_items.map(item => `
                     <tr>
-                      ${activeCols.includes('sku') ? `<td class="py-2 font-mono text-[9px]">${item.sku || '---'}</td>` : ''}
-                      <td class="py-2 font-medium">${item.name}</td>
-                      <td class="py-2 text-right">${item.quantity}</td>
-                      <td class="py-2 text-right">${item.rate.toFixed(2)}</td>
-                      <td class="py-2 text-right font-medium">${item.item_total.toFixed(2)}</td>
+                      ${activeCols.includes('sku') ? `<td class="py-3 font-mono text-[9px] opacity-60">${item.sku || '---'}</td>` : ''}
+                      <td class="py-3 font-bold">${item.name}</td>
+                      <td class="py-3 text-right">${item.quantity}</td>
+                      <td class="py-3 text-right">${item.rate.toFixed(2)}</td>
+                      <td class="py-3 text-right font-black">${item.item_total.toFixed(2)}</td>
                     </tr>
                   `).join('')}
                 </tbody>
                 <tfoot>
                   <tr class="border-t-2 border-black font-black">
-                    <td colspan="${activeCols.includes('sku') ? 4 : 3}" class="py-4 text-right text-[10px] uppercase">Invoice Balance:</td>
-                    <td class="py-4 text-right text-sm font-mono">$${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td colspan="${activeCols.includes('sku') ? 4 : 3}" class="py-5 text-right text-[10px] uppercase opacity-40">Invoice Balance Due:</td>
+                    <td class="py-5 text-right text-lg font-black">$${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -393,9 +385,9 @@ class ZohoStatementApp {
           `).join('')}
         </div>
 
-        <div class="mt-20 pt-10 border-t border-black/10 flex justify-between items-center opacity-40">
-           <div class="text-[8px] font-black uppercase tracking-widest">Zoho Books Insight Connector</div>
-           <div class="text-[8px] font-medium uppercase tracking-tighter">Rendered on ${new Date().toLocaleString()}</div>
+        <div class="mt-24 pt-10 border-t border-black/10 flex justify-between items-center opacity-30 italic">
+           <div class="text-[8px] font-bold uppercase tracking-widest">Zoho Books Outstanding Engine | Generated for Internal Reference</div>
+           <div class="text-[8px] font-bold uppercase">Run ID: #${new Date().getTime().toString().slice(-8)}</div>
         </div>
       </div>
     `;
@@ -405,14 +397,14 @@ class ZohoStatementApp {
 
   downloadPDF() {
     const element = document.getElementById('pdf-content');
-    const filename = `Statement_${this.state.selectedCustomer.contact_name.replace(/\s+/g, '_')}.pdf`;
+    const name = this.state.selectedCustomer.contact_name.replace(/\s+/g, '_');
     
-    this.showLoading("Synthesizing PDF...");
+    this.showLoading("Finalizing PDF Export...");
     html2pdf().set({
       margin: 0,
-      filename: filename,
+      filename: `Statement_${name}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
+      html2canvas: { scale: 3, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     }).from(element).save().then(() => this.hideLoading());
   }
@@ -426,8 +418,9 @@ class ZohoStatementApp {
     this.views.loading.classList.add('view-hidden');
   }
 
-  showError(msg) {
+  showError(msg, suggestion) {
     this.targets.landingErrorText.innerText = msg;
+    this.targets.errorSuggestion.innerText = suggestion || "Refresh the page and try again.";
     this.views.landingError.classList.remove('view-hidden');
   }
 
@@ -438,16 +431,15 @@ class ZohoStatementApp {
   log(msg) {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const div = document.createElement('div');
-    div.className = "mb-1 border-l-2 border-white/5 pl-2";
-    div.innerHTML = `<span class="text-neutral-700 font-bold">${time}</span> ${msg}`;
+    div.className = "mb-1.5 border-l-2 border-indigo-500/20 pl-3";
+    div.innerHTML = `<span class="text-neutral-700 font-bold">${time}</span> — ${msg}`;
     this.targets.log.prepend(div);
   }
 
-  logout(reload = true) {
+  logout() {
     localStorage.removeItem('zoho_access_token');
     localStorage.removeItem('zoho_selected_org_id');
-    this.state.accessToken = null;
-    if (reload) window.location.reload();
+    window.location.reload();
   }
 }
 
