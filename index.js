@@ -1,7 +1,7 @@
 
 /**
- * ZOHO LEDGER PRO - LIVE ITEM ENGINE & DATA EXPLORER
- * Features: Multi-Module Sync, Live Explorer, Itemized Matrix
+ * BIZSENSE EXPERTS - LIVE ITEM STATEMENT ENGINE
+ * Features: Deep Data Sync, Multi-Module Ledger, Itemized Matrix
  */
 
 class ZohoLedgerApp {
@@ -15,20 +15,18 @@ class ZohoLedgerApp {
       selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
       customers: [],
       selectedCustomerIds: new Set(),
-      // activeModules tracks which data sources to import
       activeModules: new Set(['invoices']), 
-      // dataStore organizes raw data by module and customer
       dataStore: {
         invoices: {},
         estimates: {},
         salesorders: {},
         creditnotes: {}
       },
-      // Cache for full invoice details to prevent redundant API hits
       invoiceDetailsCache: {},
-      currentView: 'ledger', // 'ledger' or 'explorer'
+      currentView: 'ledger', 
       explorerActiveModule: 'invoices',
-      sidebarOpen: false
+      sidebarOpen: false,
+      statementData: []
     };
 
     this.init();
@@ -117,7 +115,6 @@ class ZohoLedgerApp {
     if (this.btns.closeConfig) this.btns.closeConfig.onclick = () => this.toggleModal(false);
     if (this.btns.logout) this.btns.logout.onclick = () => this.logout();
     if (this.btns.download) this.btns.download.onclick = () => this.downloadPDF();
-    
     if (this.btns.selectAll) this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
     if (this.btns.clearAll) this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
 
@@ -177,11 +174,9 @@ class ZohoLedgerApp {
     this.btns.tabExplorer.classList.toggle('tab-active', v === 'explorer');
     this.btns.tabLedgerMobile.classList.toggle('tab-active', v === 'ledger');
     this.btns.tabExplorerMobile.classList.toggle('tab-active', v === 'explorer');
-    this.btns.tabLedgerMobile.classList.toggle('border-indigo-600', v === 'ledger');
-    this.btns.tabExplorerMobile.classList.toggle('border-indigo-600', v === 'explorer');
     this.views.areaLedger.classList.toggle('view-hidden', v !== 'ledger');
     this.views.areaExplorer.classList.toggle('view-hidden', v !== 'explorer');
-    this.targets.viewTitle.innerText = v === 'ledger' ? 'Live Item Ledger Engine' : 'Project Data Explorer';
+    this.targets.viewTitle.innerText = v === 'ledger' ? 'Live Item Ledger Engine' : 'Data Explorer';
     if (v === 'explorer') this.renderExplorer();
   }
 
@@ -204,7 +199,7 @@ class ZohoLedgerApp {
   startAuth() {
     if (!this.config.clientId) return this.toggleModal(true);
     const redirectUri = window.location.origin + window.location.pathname;
-    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.settings.READ,ZohoBooks.fullaccess.READ";
+    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.settings.READ";
     window.location.href = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
   }
 
@@ -255,7 +250,7 @@ class ZohoLedgerApp {
   }
 
   async fetchCustomers() {
-    this.showLoading("Fetching Registry...");
+    this.showLoading("Fetching Customer Registry...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
@@ -303,32 +298,36 @@ class ZohoLedgerApp {
   async syncCustomerData(id) {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
-    this.showLoading(`Importing: ${customer.contact_name}`);
     
+    this.showLoading(`Syncing Items: ${customer.contact_name}`);
     const from = this.inputs.from.value;
     const to = this.inputs.to.value;
 
     for (const module of this.state.activeModules) {
       try {
-        let statusFilter = 'status=all';
-        if (module === 'invoices') statusFilter = 'status=unpaid';
-        
-        const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&date_start=${from}&date_end=${to}&${statusFilter}&organization_id=${this.state.selectedOrgId}`;
+        const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&date_start=${from}&date_end=${to}&organization_id=${this.state.selectedOrgId}`;
         const res = await this.rawRequest(url);
-        
         const records = res[module] || [];
 
-        // If it's invoices, we need to fetch individual line items for the ledger
+        // Deep Sync required for itemized names
         if (module === 'invoices' && records.length > 0) {
           for (let i = 0; i < records.length; i++) {
             const inv = records[i];
-            this.showLoading(`Analyzing Invoice ${i+1}/${records.length} for ${customer.contact_name}`);
             
             if (!this.state.invoiceDetailsCache[inv.invoice_id]) {
+              this.showLoading(`Deep Sync: ${inv.invoice_number} (${i+1}/${records.length})`);
+              
+              // Prevent 429 errors (Rate Limit)
+              await new Promise(r => setTimeout(r, 200)); 
+              
               const detailUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
-              const detailRes = await this.rawRequest(detailUrl);
-              if (detailRes && detailRes.invoice) {
-                this.state.invoiceDetailsCache[inv.invoice_id] = detailRes.invoice;
+              try {
+                const detailRes = await this.rawRequest(detailUrl);
+                if (detailRes && detailRes.invoice) {
+                  this.state.invoiceDetailsCache[inv.invoice_id] = detailRes.invoice;
+                }
+              } catch (e) {
+                console.warn(`Could not fetch details for ${inv.invoice_number}`, e);
               }
             }
           }
@@ -339,10 +338,9 @@ class ZohoLedgerApp {
           records: records
         };
       } catch (e) {
-        console.error(`Error syncing ${module} for ${customer.contact_name}:`, e);
+        this.log(`Sync Fail [${module}]: ${e.message}`);
       }
     }
-    this.log(`${customer.contact_name} data ingested.`);
     this.hideLoading();
   }
 
@@ -377,24 +375,25 @@ class ZohoLedgerApp {
       if (invData && invData.records.length > 0) {
         const items = [];
         invData.records.forEach(inv => {
-          // Fetch full line item details from cache
           const fullInv = this.state.invoiceDetailsCache[inv.invoice_id];
-          if (fullInv && fullInv.line_items) {
+          
+          if (fullInv && fullInv.line_items && fullInv.line_items.length > 0) {
             fullInv.line_items.forEach(li => {
+              const name = li.name || li.item_name || li.description || "Service Item";
               items.push({
-                itemName: li.name || li.description || "Service Item",
+                itemName: name,
                 qty: li.quantity || 1,
                 subTotal: li.item_total || 0,
                 invoiceNo: inv.invoice_number,
                 invoiceDate: inv.date,
                 dueDate: inv.due_date,
-                balance: inv.balance // Balance is usually per invoice, not per item, but we show it for context
+                balance: inv.balance
               });
             });
           } else {
-            // Fallback if detail fetch failed
+            // Fallback if detail fetch failed or is still loading
             items.push({
-              itemName: "Outstanding Invoice Item (Detail Unavailable)", 
+              itemName: `Invoice: ${inv.invoice_number} (Item Names Syncing...)`,
               qty: 1,
               subTotal: inv.total || 0,
               invoiceNo: inv.invoice_number,
@@ -403,6 +402,7 @@ class ZohoLedgerApp {
               balance: inv.balance
             });
           }
+
           const d = new Date(inv.date);
           if (!minDate || d < minDate) minDate = d;
           if (!maxDate || d > maxDate) maxDate = d;
@@ -428,7 +428,7 @@ class ZohoLedgerApp {
     });
 
     if (mods.length === 0) {
-      this.targets.explorerArea.innerHTML = '<div class="flex items-center justify-center h-full text-neutral-600 font-black uppercase tracking-widest text-[10px] md:text-xs">No project data to explore. Select customers first.</div>';
+      this.targets.explorerArea.innerHTML = '<div class="flex items-center justify-center h-full text-neutral-600 font-black uppercase tracking-widest text-xs">No project data to explore. Select customers first.</div>';
       this.targets.explorerTabs.innerHTML = '';
       return;
     }
@@ -438,7 +438,7 @@ class ZohoLedgerApp {
     }
 
     this.targets.explorerTabs.innerHTML = mods.map(m => `
-      <button onclick="window.app.setExplorerModule('${m}')" class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${this.state.explorerActiveModule === m ? 'bg-indigo-600 text-white' : 'bg-white/5 text-neutral-500 hover:text-white'}">
+      <button onclick="window.app.setExplorerModule('${m}')" class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all ${this.state.explorerActiveModule === m ? 'bg-indigo-600 text-white' : 'bg-white/5 text-neutral-500 hover:text-white'}">
         ${m}
       </button>
     `).join('');
@@ -446,12 +446,7 @@ class ZohoLedgerApp {
     const data = this.state.dataStore[this.state.explorerActiveModule];
     let rows = [];
     Object.values(data).forEach(cust => {
-       cust.records.forEach(rec => {
-          rows.push({
-             customer: cust.customerName,
-             ...rec
-          });
-       });
+       cust.records.forEach(rec => rows.push({ customer: cust.customerName, ...rec }));
     });
 
     if (rows.length === 0) {
@@ -459,7 +454,7 @@ class ZohoLedgerApp {
       return;
     }
 
-    const keys = ['customer', ...Object.keys(rows[0]).filter(k => !['customer', 'line_items', 'custom_fields'].includes(k))].slice(0, 8);
+    const keys = ['customer', ...Object.keys(rows[0]).filter(k => !['customer', 'line_items', 'custom_fields'].includes(k))].slice(0, 10);
     
     let html = `<div class="overflow-x-auto"><table class="explorer-table"><thead><tr>`;
     keys.forEach(k => html += `<th>${k.replace(/_/g, ' ')}</th>`);
@@ -498,11 +493,11 @@ class ZohoLedgerApp {
         <header class="flex justify-between items-end border-b-[1.5pt] border-black pb-3 mb-6">
            <div>
               <h1 class="text-xl font-black uppercase tracking-tight">${activeOrg ? activeOrg.name : 'Organization'}</h1>
-              <p class="text-[8px] font-black text-neutral-500 uppercase tracking-widest mt-1">Outstanding Item Statement</p>
+              <p class="text-[8px] font-black text-neutral-500 uppercase tracking-widest mt-1">Itemized Outstanding Ledger</p>
            </div>
            <div class="text-right text-[7px] font-bold uppercase leading-tight text-neutral-600">
               <p>Period: ${this.inputs.from.value} to ${this.inputs.to.value}</p>
-              <p>Generation: ${new Date().toLocaleDateString()}</p>
+              <p>Generated: ${new Date().toLocaleDateString()}</p>
            </div>
         </header>
 
@@ -510,10 +505,10 @@ class ZohoLedgerApp {
           <thead>
             <tr class="border-b border-black text-[7px] font-black uppercase bg-neutral-50">
               <th class="py-1 px-1 w-[20px]">#</th>
-              <th class="py-1 px-1 w-[160px]">Item Name</th>
-              <th class="py-1 px-1 w-[40px] text-center">Qty</th>
-              <th class="py-1 px-1 w-[80px] text-right">Sub Total</th>
-              <th class="py-1 px-1 w-[60px] text-center">Invoice No</th>
+              <th class="py-1 px-1 w-[160px]">Item Description</th>
+              <th class="py-1 px-1 w-[35px] text-center">Qty</th>
+              <th class="py-1 px-1 w-[80px] text-right">Amount</th>
+              <th class="py-1 px-1 w-[60px] text-center">Inv #</th>
               <th class="py-1 px-1 w-[55px] text-center">Inv Date</th>
               <th class="py-1 px-1 w-[55px] text-center">Due Date</th>
               <th class="py-1 px-1 w-[80px] text-right">Inv Balance</th>
@@ -524,10 +519,7 @@ class ZohoLedgerApp {
 
     let globalIndex = 1;
     this.state.statementData.forEach(cust => {
-      html += `<tr class="customer-header-row"><td colspan="8" class="py-1.5 px-2 font-black text-[9px] uppercase">Customer: ${cust.customerName}</td></tr>`;
-      if (cust.items.length === 0) {
-        html += `<tr><td colspan="8" class="py-4 text-center text-neutral-400 italic">No records.</td></tr>`;
-      }
+      html += `<tr class="customer-header-row"><td colspan="8" class="py-1.5 px-2 font-black text-[9px] uppercase">Client: ${cust.customerName}</td></tr>`;
       cust.items.forEach(item => {
         html += `
           <tr class="item-row">
@@ -543,7 +535,7 @@ class ZohoLedgerApp {
       });
     });
 
-    html += `</tbody></table><footer class="mt-16 pt-6 border-t border-neutral-300 text-[6px] font-bold uppercase flex justify-between text-neutral-400"><div>Authorized Report | Zoho Invoices Mode</div><div>Ref: ${Math.random().toString(36).substr(2, 8).toUpperCase()}</div></footer></div>`;
+    html += `</tbody></table><footer class="mt-16 pt-6 border-t border-neutral-300 text-[6px] font-bold uppercase flex justify-between text-neutral-400"><div>Authorized Report | BizSense Experts ENGINE</div><div>Serial: ${Math.random().toString(36).substr(2, 8).toUpperCase()}</div></footer></div>`;
     this.targets.renderArea.innerHTML = html;
   }
 
@@ -571,10 +563,10 @@ class ZohoLedgerApp {
   downloadPDF() {
     const el = document.getElementById('pdf-content');
     if (!el) return;
-    this.showLoading("Rasterizing...");
+    this.showLoading("Rasterizing Statement...");
     html2pdf().set({
       margin: 0,
-      filename: `Zoho_Export_${Date.now()}.pdf`,
+      filename: `Statement_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 3, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
