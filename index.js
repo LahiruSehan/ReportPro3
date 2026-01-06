@@ -24,6 +24,8 @@ class ZohoLedgerApp {
         salesorders: {},
         creditnotes: {}
       },
+      // Cache for full invoice details to prevent redundant API hits
+      invoiceDetailsCache: {},
       currentView: 'ledger', // 'ledger' or 'explorer'
       explorerActiveModule: 'invoices',
       sidebarOpen: false
@@ -119,7 +121,6 @@ class ZohoLedgerApp {
     if (this.btns.selectAll) this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
     if (this.btns.clearAll) this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
 
-    // Sidebar/Drawer controls
     const toggleSidebar = (force) => {
       this.state.sidebarOpen = typeof force === 'boolean' ? force : !this.state.sidebarOpen;
       this.views.sidebar.classList.toggle('open', this.state.sidebarOpen);
@@ -130,7 +131,6 @@ class ZohoLedgerApp {
     if (this.btns.mobileFilterFab) this.btns.mobileFilterFab.onclick = () => toggleSidebar(true);
     if (this.views.sidebarOverlay) this.views.sidebarOverlay.onclick = () => toggleSidebar(false);
 
-    // View Switching
     const switchV = (v) => this.switchView(v);
     if (this.btns.tabLedger) this.btns.tabLedger.onclick = () => switchV('ledger');
     if (this.btns.tabExplorer) this.btns.tabExplorer.onclick = () => switchV('explorer');
@@ -168,25 +168,20 @@ class ZohoLedgerApp {
       salesorders: {},
       creditnotes: {}
     };
+    this.state.invoiceDetailsCache = {};
   }
 
   switchView(v) {
     this.state.currentView = v;
-    
-    // Desktop tabs
     this.btns.tabLedger.classList.toggle('tab-active', v === 'ledger');
     this.btns.tabExplorer.classList.toggle('tab-active', v === 'explorer');
-    
-    // Mobile tabs
     this.btns.tabLedgerMobile.classList.toggle('tab-active', v === 'ledger');
     this.btns.tabExplorerMobile.classList.toggle('tab-active', v === 'explorer');
     this.btns.tabLedgerMobile.classList.toggle('border-indigo-600', v === 'ledger');
     this.btns.tabExplorerMobile.classList.toggle('border-indigo-600', v === 'explorer');
-
     this.views.areaLedger.classList.toggle('view-hidden', v !== 'ledger');
     this.views.areaExplorer.classList.toggle('view-hidden', v !== 'explorer');
     this.targets.viewTitle.innerText = v === 'ledger' ? 'Live Item Ledger Engine' : 'Project Data Explorer';
-    
     if (v === 'explorer') this.renderExplorer();
   }
 
@@ -322,6 +317,23 @@ class ZohoLedgerApp {
         const res = await this.rawRequest(url);
         
         const records = res[module] || [];
+
+        // If it's invoices, we need to fetch individual line items for the ledger
+        if (module === 'invoices' && records.length > 0) {
+          for (let i = 0; i < records.length; i++) {
+            const inv = records[i];
+            this.showLoading(`Analyzing Invoice ${i+1}/${records.length} for ${customer.contact_name}`);
+            
+            if (!this.state.invoiceDetailsCache[inv.invoice_id]) {
+              const detailUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
+              const detailRes = await this.rawRequest(detailUrl);
+              if (detailRes && detailRes.invoice) {
+                this.state.invoiceDetailsCache[inv.invoice_id] = detailRes.invoice;
+              }
+            }
+          }
+        }
+
         this.state.dataStore[module][id] = {
           customerName: customer.contact_name,
           records: records
@@ -365,15 +377,32 @@ class ZohoLedgerApp {
       if (invData && invData.records.length > 0) {
         const items = [];
         invData.records.forEach(inv => {
-          items.push({
-             itemName: "Outstanding Invoice Item", 
-             qty: 1,
-             subTotal: inv.total || 0,
-             invoiceNo: inv.invoice_number,
-             invoiceDate: inv.date,
-             dueDate: inv.due_date,
-             balance: inv.balance
-          });
+          // Fetch full line item details from cache
+          const fullInv = this.state.invoiceDetailsCache[inv.invoice_id];
+          if (fullInv && fullInv.line_items) {
+            fullInv.line_items.forEach(li => {
+              items.push({
+                itemName: li.name || li.description || "Service Item",
+                qty: li.quantity || 1,
+                subTotal: li.item_total || 0,
+                invoiceNo: inv.invoice_number,
+                invoiceDate: inv.date,
+                dueDate: inv.due_date,
+                balance: inv.balance // Balance is usually per invoice, not per item, but we show it for context
+              });
+            });
+          } else {
+            // Fallback if detail fetch failed
+            items.push({
+              itemName: "Outstanding Invoice Item (Detail Unavailable)", 
+              qty: 1,
+              subTotal: inv.total || 0,
+              invoiceNo: inv.invoice_number,
+              invoiceDate: inv.date,
+              dueDate: inv.due_date,
+              balance: inv.balance
+            });
+          }
           const d = new Date(inv.date);
           if (!minDate || d < minDate) minDate = d;
           if (!maxDate || d > maxDate) maxDate = d;
@@ -482,12 +511,12 @@ class ZohoLedgerApp {
             <tr class="border-b border-black text-[7px] font-black uppercase bg-neutral-50">
               <th class="py-1 px-1 w-[20px]">#</th>
               <th class="py-1 px-1 w-[160px]">Item Name</th>
-              <th class="py-1 px-1 w-[40px] text-center">Quantify</th>
-              <th class="py-1 px-1 w-[80px] text-right">Sub Total byc</th>
-              <th class="py-1 px-1 w-[60px] text-center">Invoice Number</th>
-              <th class="py-1 px-1 w-[55px] text-center">Invoice Date</th>
+              <th class="py-1 px-1 w-[40px] text-center">Qty</th>
+              <th class="py-1 px-1 w-[80px] text-right">Sub Total</th>
+              <th class="py-1 px-1 w-[60px] text-center">Invoice No</th>
+              <th class="py-1 px-1 w-[55px] text-center">Inv Date</th>
               <th class="py-1 px-1 w-[55px] text-center">Due Date</th>
-              <th class="py-1 px-1 w-[80px] text-right">Balance byc</th>
+              <th class="py-1 px-1 w-[80px] text-right">Inv Balance</th>
             </tr>
           </thead>
           <tbody>
