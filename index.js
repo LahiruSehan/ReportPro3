@@ -1,7 +1,7 @@
 
 /**
  * BIZSENSE EXPERTS - LIVE ITEM STATEMENT ENGINE
- * Features: Deep Data Sync, Multi-Module Ledger, Itemized Matrix
+ * Features: Deep Data Sync, Nested Invoice Grouping, Multi-Module Ledger
  */
 
 class ZohoLedgerApp {
@@ -26,7 +26,7 @@ class ZohoLedgerApp {
       currentView: 'ledger', 
       explorerActiveModule: 'invoices',
       sidebarOpen: false,
-      statementData: []
+      statementData: [] // Structured as [{ customerName, invoices: [{ invoiceNo, date, balance, items: [] }] }]
     };
 
     this.init();
@@ -373,41 +373,46 @@ class ZohoLedgerApp {
     this.state.selectedCustomerIds.forEach(id => {
       const invData = this.state.dataStore.invoices[id];
       if (invData && invData.records.length > 0) {
-        const items = [];
+        const groupedInvoices = [];
+        
         invData.records.forEach(inv => {
           const fullInv = this.state.invoiceDetailsCache[inv.invoice_id];
+          const invoiceItems = [];
           
           if (fullInv && fullInv.line_items && fullInv.line_items.length > 0) {
             fullInv.line_items.forEach(li => {
               const name = li.name || li.item_name || li.description || "Service Item";
-              items.push({
+              invoiceItems.push({
                 itemName: name,
                 qty: li.quantity || 1,
-                subTotal: li.item_total || 0,
-                invoiceNo: inv.invoice_number,
-                invoiceDate: inv.date,
-                dueDate: inv.due_date,
-                balance: inv.balance
+                subTotal: li.item_total || 0
               });
             });
           } else {
-            // Fallback if detail fetch failed or is still loading
-            items.push({
-              itemName: `Invoice: ${inv.invoice_number} (Item Names Syncing...)`,
+            invoiceItems.push({
+              itemName: `Invoice: ${inv.invoice_number} (Item Details Pending)`,
               qty: 1,
-              subTotal: inv.total || 0,
-              invoiceNo: inv.invoice_number,
-              invoiceDate: inv.date,
-              dueDate: inv.due_date,
-              balance: inv.balance
+              subTotal: inv.total || 0
             });
           }
+
+          groupedInvoices.push({
+            invoiceNo: inv.invoice_number,
+            date: inv.date,
+            dueDate: inv.due_date,
+            balance: inv.balance,
+            items: invoiceItems
+          });
 
           const d = new Date(inv.date);
           if (!minDate || d < minDate) minDate = d;
           if (!maxDate || d > maxDate) maxDate = d;
         });
-        this.state.statementData.push({ customerName: invData.customerName, items });
+
+        this.state.statementData.push({ 
+          customerName: invData.customerName, 
+          invoices: groupedInvoices 
+        });
       }
     });
 
@@ -519,19 +524,33 @@ class ZohoLedgerApp {
 
     let globalIndex = 1;
     this.state.statementData.forEach(cust => {
+      // Customer Header
       html += `<tr class="customer-header-row"><td colspan="8" class="py-1.5 px-2 font-black text-[9px] uppercase">Client: ${cust.customerName}</td></tr>`;
-      cust.items.forEach(item => {
-        html += `
-          <tr class="item-row">
-            <td class="py-1 px-1 text-[7px] text-neutral-400 font-mono">${globalIndex++}</td>
-            <td class="py-1 px-1 font-bold truncate" contenteditable="true">${item.itemName}</td>
-            <td class="py-1 px-1 text-center" contenteditable="true">${item.qty}</td>
-            <td class="py-1 px-1 text-right font-medium" contenteditable="true">${item.subTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-            <td class="py-1 px-1 text-center font-mono text-[7px]" contenteditable="true">${item.invoiceNo}</td>
-            <td class="py-1 px-1 text-center text-[7px]" contenteditable="true">${item.invoiceDate}</td>
-            <td class="py-1 px-1 text-center text-[7px]" contenteditable="true">${item.dueDate}</td>
-            <td class="py-1 px-1 text-right font-black" contenteditable="true">${item.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-          </tr>`;
+      
+      cust.invoices.forEach(inv => {
+        // Invoice Group Sub-Header
+        html += `<tr class="bg-neutral-50 border-b border-neutral-100">
+          <td colspan="4" class="py-1 px-2 font-bold text-[7px] text-indigo-600 uppercase tracking-wider">
+            Invoice: ${inv.invoiceNo} (${inv.date})
+          </td>
+          <td colspan="4" class="py-1 px-1 text-right font-black text-[7px] uppercase">
+            Outstanding Balance: ${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+          </td>
+        </tr>`;
+
+        inv.items.forEach(item => {
+          html += `
+            <tr class="item-row">
+              <td class="py-1 px-1 text-[7px] text-neutral-400 font-mono">${globalIndex++}</td>
+              <td class="py-1 px-1 font-bold truncate pl-4" contenteditable="true">${item.itemName}</td>
+              <td class="py-1 px-1 text-center" contenteditable="true">${item.qty}</td>
+              <td class="py-1 px-1 text-right font-medium" contenteditable="true">${item.subTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+              <td class="py-1 px-1 text-center font-mono text-[7px]" contenteditable="true">${inv.invoiceNo}</td>
+              <td class="py-1 px-1 text-center text-[7px]" contenteditable="true">${inv.date}</td>
+              <td class="py-1 px-1 text-center text-[7px]" contenteditable="true">${inv.dueDate}</td>
+              <td class="py-1 px-1 text-right font-black opacity-20" contenteditable="true">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+            </tr>`;
+        });
       });
     });
 
