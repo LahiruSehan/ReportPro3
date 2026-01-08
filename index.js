@@ -2,6 +2,7 @@
 /**
  * BIZSENSE EXPERTS - INSIGHT PRO ENGINE
  * Professional Statement Generator with Theming and Logo Sync
+ * Updated: Reverted scopes to fix "Invalid OAuth Scope" error.
  */
 
 class ZohoLedgerApp {
@@ -196,9 +197,11 @@ class ZohoLedgerApp {
     this.state.currentView = v;
     const btns = [this.btns.tabLedger, this.btns.tabExplorer, this.btns.tabLedgerMobile, this.btns.tabExplorerMobile];
     btns.forEach(b => {
-      const active = b.id.includes(v);
-      b.classList.toggle('tab-active', active);
-      if (!active) b.classList.add('text-neutral-500'); else b.classList.remove('text-neutral-500');
+      if (b) {
+        const active = b.id.includes(v);
+        b.classList.toggle('tab-active', active);
+        if (!active) b.classList.add('text-neutral-500'); else b.classList.remove('text-neutral-500');
+      }
     });
 
     this.views.areaLedger.classList.toggle('view-hidden', v !== 'ledger');
@@ -225,7 +228,8 @@ class ZohoLedgerApp {
   startAuth() {
     if (!this.config.clientId) return this.toggleModal(true);
     const redirectUri = window.location.origin + window.location.pathname;
-    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.settings.READ,ZohoBooks.organizations.READ";
+    // CRITICAL FIX: Reverted scopes to working set. Removed organizations.READ which caused the error.
+    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.settings.READ";
     window.location.href = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
   }
 
@@ -278,13 +282,17 @@ class ZohoLedgerApp {
 
   async fetchOrganizationDetails() {
     try {
-      const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations/${this.state.selectedOrgId}`;
+      // We try to get basic org info using the settings scope if organizations.READ is unavailable
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
       if (res && res.organization) {
         this.state.currentOrgDetails = res.organization;
       }
     } catch (e) {
-      console.warn("Could not fetch org detail (logo might be missing)", e);
+      console.warn("Could not fetch detailed org info, using basic name instead.", e);
+      // Fallback: search for selected org in basic organizations list
+      const basicOrg = this.state.organizations.find(o => o.organization_id === this.state.selectedOrgId);
+      if (basicOrg) this.state.currentOrgDetails = basicOrg;
     }
   }
 
