@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-app-theme="bizsense">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -18,16 +18,42 @@
       --theme-accent: #818cf8;
       --theme-text-dark: #1e1b4b;
       --theme-border: #e2e8f0;
+      --app-bg: #020205;
+      --app-card: rgba(255, 255, 255, 0.03);
+      --app-text: #ffffff;
+      --app-border: rgba(255, 255, 255, 0.05);
     }
 
-    body { background-color: #020205; color: #ffffff; font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; }
-    .gradient-bg { position: fixed; inset: 0; background: radial-gradient(circle at 20% 20%, #0f172a 0%, #020205 100%); z-index: -1; }
-    .glass-card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 1rem; }
+    [data-app-theme="light"] {
+      --app-bg: #f8fafc;
+      --app-card: #ffffff;
+      --app-text: #0f172a;
+      --app-border: #e2e8f0;
+    }
+
+    [data-app-theme="dark"] {
+      --app-bg: #000000;
+      --app-card: #111111;
+      --app-text: #e2e8f0;
+      --app-border: #222222;
+    }
+
+    body { background-color: var(--app-bg); color: var(--app-text); font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; transition: background-color 0.3s ease, color 0.3s ease; }
+    
+    .gradient-bg { 
+      position: fixed; inset: 0; 
+      background: radial-gradient(circle at 20% 20%, #0f172a 0%, #020205 100%); 
+      z-index: -1; 
+      display: none;
+    }
+    [data-app-theme="bizsense"] .gradient-bg { display: block; }
+
+    .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     .view-hidden { display: none !important; }
     
-    select { background: #111 !important; color: white !important; cursor: pointer; border: 1px solid #333 !important; padding: 0.5rem; border-radius: 0.5rem; outline: none; }
+    select { background: var(--app-card) !important; color: var(--app-text) !important; cursor: pointer; border: 1px solid var(--app-border) !important; padding: 0.5rem; border-radius: 0.5rem; outline: none; }
     
-    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
 
@@ -39,11 +65,12 @@
       min-height: 29.7cm; 
       width: 21cm; 
       margin: 0 auto; 
-      box-shadow: 0 40px 100px rgba(0,0,0,0.8); 
+      box-shadow: 0 40px 100px rgba(0,0,0,0.3); 
       font-size: 10px; 
       line-height: 1.3; 
       position: relative;
-      transition: all 0.3s ease;
+      transition: transform 0.2s ease-out;
+      transform-origin: top center;
     }
     
     .theme-accent-bg { background-color: var(--theme-primary); color: white; }
@@ -51,14 +78,12 @@
     .theme-border-color { border-color: var(--theme-primary); }
     .theme-row-bg { background-color: var(--theme-secondary); }
 
-    /* Mobile Scaling */
-    @media (max-width: 1024px) {
-      .statement-canvas-wrapper { overflow-x: auto; padding: 20px; display: flex; justify-content: flex-start; align-items: flex-start; }
-      .statement-view { transform-origin: top left; transform: scale(0.65); margin: 0; flex-shrink: 0; }
-    }
-    @media (max-width: 640px) {
-      .statement-view { transform: scale(0.4); }
-    }
+    /* PDF Zoom Control Overlay */
+
+    .zoom-controls { position: absolute; bottom: 2rem; right: 2rem; z-index: 100; display: flex; flex-direction: column; gap: 0.5rem; }
+    .zoom-btn { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+
+
 
     [contenteditable="true"]:hover { background: rgba(99, 102, 241, 0.05); outline: 1px dashed var(--theme-primary); }
     [contenteditable="true"]:focus { background: white; outline: 2px solid var(--theme-primary); border-radius: 4px; }
@@ -66,22 +91,46 @@
     .btn-indigo { background: #6366f1; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
     .btn-indigo:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 10px 20px -10px #6366f1; }
     
-    /* Theme Selector Grid */
     .theme-swatch { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
     .theme-swatch.active { border-color: white; transform: scale(1.2); }
 
-    /* Mobile Navigation Drawer */
+    /* Loading Bar */
+    #loading-bar-container { position: absolute; top: 0; left: 0; width: 100%; height: 3px; z-index: 1000; overflow: hidden; background: rgba(255,255,255,0.05); }
+    #loading-bar { height: 100%; width: 0%; background: #6366f1; transition: width 0.3s ease; box-shadow: 0 0 10px #6366f1; }
+
     #registry-sidebar { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-    #sidebar-overlay { transition: opacity 0.3s ease; }
     @media (max-width: 1024px) {
-      #registry-sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; width: 85%; transform: translateX(-110%); background: #08080c; border-right: 1px solid #1a1a1a; box-shadow: 20px 0 50px rgba(0,0,0,0.5); }
+      #registry-sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; width: 85%; transform: translateX(-110%); background: #08080c; border-right: 1px solid #1a1a1a; }
       #registry-sidebar.open { transform: translateX(0); }
-      #sidebar-overlay.open { opacity: 1; pointer-events: auto; }
     }
+
+    .tab-active { background: var(--theme-primary) !important; color: white !important; }
+
+    /* Report Modal */
+    #modal-report { z-index: 400; }
   </style>
 </head>
 <body class="flex flex-col min-h-screen selection:bg-indigo-500/30">
   <div class="gradient-bg"></div>
+
+  <!-- Loading Bar UI -->
+  <div id="loading-bar-container" class="view-hidden">
+    <div id="loading-bar"></div>
+    <div id="loading-bar-text" class="absolute top-2 left-4 text-[9px] font-black uppercase tracking-widest text-indigo-400">Syncing...</div>
+  </div>
+
+  <!-- Report Issue Modal -->
+  <div id="modal-report" class="modal-overlay view-hidden fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+    <div class="glass-card p-8 w-full max-w-md space-y-6">
+      <h3 class="text-xl font-black">Report an Issue</h3>
+      <p class="text-xs text-neutral-500">Briefly describe the problem. This will open WhatsApp to our support line.</p>
+      <textarea id="report-text" placeholder="Explain the issue here..." class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 h-32"></textarea>
+      <div class="flex space-x-3">
+        <button id="btn-cancel-report" class="flex-1 py-3 text-xs font-black uppercase tracking-widest bg-white/5 rounded-xl">Cancel</button>
+        <button id="btn-submit-report" class="flex-1 py-3 text-xs font-black uppercase tracking-widest bg-indigo-600 rounded-xl">Send WhatsApp</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Auth Modal -->
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 bg-black/90 backdrop-blur-xl z-[300] flex items-center justify-center p-4">
@@ -93,7 +142,7 @@
       </div>
       <div class="space-y-4">
         <div class="p-4 bg-white/5 rounded-xl border border-white/5">
-          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2">Redirect URI (Whitelist this in Zoho)</label>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2">Redirect URI</label>
           <code class="block text-[10px] font-mono break-all text-indigo-300" id="display-redirect-uri"></code>
         </div>
         <div class="grid grid-cols-2 gap-4">
@@ -123,18 +172,11 @@
       <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="BizSense Experts" class="h-20 md:h-32 relative z-10">
     </div>
     <h1 class="text-4xl md:text-5xl font-black mb-4 tracking-tighter">INSIGHT PRO</h1>
-    <p class="text-neutral-500 max-w-sm mb-12 text-sm md:text-base leading-relaxed">Automated item-level statement engine for elite Zoho Books users.</p>
-    
+    <p class="text-neutral-500 max-w-sm mb-12 text-sm md:text-base leading-relaxed">Elite Zoho Books statement engine.</p>
     <div id="landing-error" class="view-hidden mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-left max-w-sm">
-      <p class="font-bold uppercase mb-1">Auth Error</p>
       <p id="landing-error-text"></p>
     </div>
-
-    <button id="btn-connect" class="group relative px-10 py-5 bg-indigo-600 rounded-2xl font-black text-white hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/40">
-      <span class="relative z-10">AUTHORIZE SECURELY</span>
-      <div class="absolute inset-0 bg-white/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-    </button>
-    <button id="btn-open-config-landing" class="mt-8 text-[10px] font-bold text-neutral-600 uppercase tracking-widest hover:text-white transition-colors">Developer Console</button>
+    <button id="btn-connect" class="px-10 py-5 bg-indigo-600 rounded-2xl font-black text-white hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/40">AUTHORIZE SECURELY</button>
   </div>
 
   <!-- Dashboard -->
@@ -146,31 +188,46 @@
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
-        <div class="hidden lg:block h-6 w-px bg-white/10"></div>
-        <select id="select-organization" class="bg-transparent border-none text-[10px] md:text-xs font-black uppercase outline-none max-w-[150px] md:max-w-none truncate pr-6">
-          <option value="">Syncing...</option>
-        </select>
+        
+        <!-- Moved Controls: Org + Tabs -->
+        <div class="hidden lg:flex items-center space-x-4">
+          <select id="select-organization" class="bg-transparent border-none text-[10px] md:text-xs font-black uppercase outline-none max-w-[200px] truncate pr-6">
+            <option value="">Syncing...</option>
+          </select>
+          <div class="h-6 w-px bg-white/10"></div>
+          <div class="flex items-center bg-black/20 rounded-xl p-1 border border-white/5">
+            <button id="tab-ledger" class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg tab-active">Ledger</button>
+            <button id="tab-explorer" class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-white transition-all rounded-lg">Explorer</button>
+          </div>
+        </div>
       </div>
 
-      <div class="hidden lg:flex items-center bg-black/40 rounded-xl p-1 border border-white/5">
-        <button id="tab-ledger" class="px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all rounded-lg tab-active">Ledger</button>
-        <button id="tab-explorer" class="px-6 py-2 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-white transition-all rounded-lg">Explorer</button>
-      </div>
+      <!-- Right Side Header: Themes + Report + Logout -->
+      <div class="flex items-center space-x-3">
+        <!-- App Theme Toggles -->
+        <div class="hidden md:flex bg-white/5 rounded-full p-1 border border-white/5 space-x-1">
+          <button id="theme-bizsense" title="BizSense Theme" class="p-2 rounded-full bg-indigo-500 text-white"><svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg></button>
+          <button id="theme-light" title="Light Mode" class="p-2 rounded-full hover:bg-white/10 text-neutral-500"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg></button>
+          <button id="theme-dark" title="Dark Mode" class="p-2 rounded-full hover:bg-white/10 text-neutral-500"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg></button>
+        </div>
 
-      <div class="flex items-center space-x-2 md:space-x-4">
+        <button id="btn-open-report" class="hidden md:flex items-center space-x-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5 hover:border-indigo-500/50 transition-all">
+          <span class="text-[9px] font-black uppercase tracking-widest">Report Issue</span>
+        </button>
+
         <button id="btn-logout" class="p-2.5 hover:bg-red-500/10 rounded-xl text-neutral-500 hover:text-red-500 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- Mobile Navigation Bar -->
+    <!-- Mobile Tabs -->
     <div class="lg:hidden flex px-4 mb-2 justify-center space-x-2">
       <button id="tab-ledger-mobile" class="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-neutral-500 border-b-2 border-transparent tab-active">Ledger</button>
       <button id="tab-explorer-mobile" class="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-neutral-500 border-b-2 border-transparent">Explorer</button>
     </div>
 
-    <div class="flex flex-grow overflow-hidden px-0 md:px-4 pb-0 md:pb-4 gap-4 dashboard-container">
+    <div class="flex flex-grow overflow-hidden px-0 md:px-4 pb-0 md:pb-4 gap-4 dashboard-container relative">
       <div id="sidebar-overlay" class="fixed inset-0 bg-black/80 backdrop-blur-md z-40 opacity-0 pointer-events-none lg:hidden"></div>
 
       <!-- Sidebar -->
@@ -181,7 +238,7 @@
         </div>
 
         <div class="glass-card p-6 space-y-4">
-          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Statement Theme</h4>
+          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">PDF Styles</h4>
           <div class="flex flex-wrap gap-3" id="theme-selector">
             <div class="theme-swatch active bg-indigo-500" data-theme="indigo" title="Modern Indigo"></div>
             <div class="theme-swatch bg-slate-800" data-theme="slate" title="Executive Slate"></div>
@@ -192,85 +249,58 @@
         </div>
 
         <div class="glass-card p-6 space-y-4">
-          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Data Sources</h4>
+          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Modules</h4>
           <div class="grid grid-cols-2 gap-2" id="module-selector">
-            <label class="flex items-center space-x-2 cursor-pointer text-[10px] font-bold p-2 bg-white/5 rounded-lg border border-white/5 hover:border-indigo-500/50 transition-all">
+            <label class="flex items-center space-x-2 cursor-pointer text-[10px] font-bold p-2 bg-white/5 rounded-lg border border-white/5">
               <input type="checkbox" value="invoices" checked class="accent-indigo-500 w-4 h-4">
               <span class="text-neutral-400">Invoices</span>
             </label>
-            <label class="flex items-center space-x-2 cursor-pointer text-[10px] font-bold p-2 bg-white/5 rounded-lg border border-white/5 hover:border-indigo-500/50 transition-all">
+            <label class="flex items-center space-x-2 cursor-pointer text-[10px] font-bold p-2 bg-white/5 rounded-lg border border-white/5">
               <input type="checkbox" value="estimates" class="accent-indigo-500 w-4 h-4">
               <span class="text-neutral-400">Estimates</span>
-            </label>
-            <label class="flex items-center space-x-2 cursor-pointer text-[10px] font-bold p-2 bg-white/5 rounded-lg border border-white/5 hover:border-indigo-500/50 transition-all">
-              <input type="checkbox" value="salesorders" class="accent-indigo-500 w-4 h-4">
-              <span class="text-neutral-400">Orders</span>
-            </label>
-            <label class="flex items-center space-x-2 cursor-pointer text-[10px] font-bold p-2 bg-white/5 rounded-lg border border-white/5 hover:border-indigo-500/50 transition-all">
-              <input type="checkbox" value="creditnotes" class="accent-indigo-500 w-4 h-4">
-              <span class="text-neutral-400">Credits</span>
             </label>
           </div>
         </div>
 
-        <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden min-h-[300px]">
+        <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden">
           <div class="flex justify-between items-center mb-4">
-            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Customer Registry</h4>
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Customers</h4>
             <div class="flex space-x-2">
-               <button id="btn-select-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded hover:bg-white/10 transition-colors">ALL</button>
-               <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded hover:bg-white/10 transition-colors">NONE</button>
+               <button id="btn-select-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">ALL</button>
+               <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">NONE</button>
             </div>
           </div>
           <div class="relative mb-4">
             <input type="text" id="customer-search" placeholder="Filter names..." class="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs text-white outline-none focus:border-indigo-500 placeholder:text-neutral-600">
-            <svg class="absolute right-3 top-3.5 w-4 h-4 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
           </div>
           <div id="customer-list" class="flex-grow overflow-y-auto custom-scrollbar space-y-1"></div>
-        </div>
-
-        <div class="glass-card p-6 space-y-4">
-          <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Reporting Range</h4>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="text-[8px] uppercase font-black text-neutral-600 mb-1 block">Start</label>
-              <input type="date" id="date-from" class="w-full bg-black/40 border border-white/5 rounded-lg p-2 text-[10px] text-white outline-none focus:border-indigo-500">
-            </div>
-            <div>
-              <label class="text-[8px] uppercase font-black text-neutral-600 mb-1 block">End</label>
-              <input type="date" id="date-to" class="w-full bg-black/40 border border-white/5 rounded-lg p-2 text-[10px] text-white outline-none focus:border-indigo-500">
-            </div>
-          </div>
         </div>
       </aside>
 
       <!-- Main Canvas -->
-      <main class="flex-grow glass-card flex flex-col overflow-hidden border-0 lg:border border-white/5">
+      <main class="flex-grow glass-card flex flex-col overflow-hidden border-0 lg:border border-white/5 relative">
         <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
           <div class="flex items-center space-x-3">
-            <div class="flex space-x-1">
-              <div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-              <div class="w-1.5 h-1.5 rounded-full bg-indigo-500/50"></div>
-              <div class="w-1.5 h-1.5 rounded-full bg-indigo-500/20"></div>
-            </div>
             <span id="view-title" class="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Statement Engine</span>
           </div>
           <div class="flex items-center space-x-3">
-            <span id="data-range-info" class="hidden md:block text-[9px] text-neutral-500 font-mono bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
-              SET: <span id="span-range" class="text-indigo-400">---</span>
-            </span>
-            <button id="btn-download-pdf" disabled class="px-6 py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-20">Export PDF</button>
+             <button id="btn-download-pdf" disabled class="px-6 py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl disabled:opacity-20">Export PDF</button>
           </div>
         </div>
 
         <!-- Ledger View -->
-        <div id="area-ledger" class="flex-grow overflow-auto bg-[#040408] p-4 md:p-12 custom-scrollbar statement-canvas-wrapper relative">
-          <div id="statement-canvas-container" class="mx-auto transition-all duration-500">
+        <div id="area-ledger" class="flex-grow overflow-auto bg-[#040408] custom-scrollbar statement-canvas-wrapper relative p-4 md:p-12">
+          
+          <!-- Zoom Controls -->
+          <div class="zoom-controls">
+            <button id="btn-zoom-in" class="zoom-btn" title="Zoom In"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-width="3" stroke-linecap="round"/></svg></button>
+            <button id="btn-zoom-out" class="zoom-btn" title="Zoom Out"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 12H4" stroke-width="3" stroke-linecap="round"/></svg></button>
+            <button id="btn-zoom-fit" class="zoom-btn" title="Fit to Screen"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg></button>
+          </div>
+
+          <div id="statement-canvas-container" class="mx-auto">
             <div id="empty-state" class="flex flex-col items-center justify-center h-full py-40 text-center opacity-30">
-              <div class="p-8 bg-white/5 rounded-full mb-6">
-                <svg class="w-12 h-12 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-              </div>
-              <p class="font-black uppercase tracking-[0.4em] text-xs">Awaiting Data Ingestion</p>
-              <p class="text-[9px] mt-2 uppercase tracking-widest text-neutral-500 font-bold">Select parameters from the sidebar</p>
+              <p class="font-black uppercase tracking-[0.4em] text-xs">Ready for Data</p>
             </div>
             <div id="statement-render-target"></div>
           </div>
@@ -279,7 +309,6 @@
         <!-- Explorer View -->
         <div id="area-explorer" class="view-hidden flex-grow flex flex-col overflow-hidden bg-[#040408]">
           <div class="p-4 border-b border-white/5 flex items-center space-x-3 bg-black/40 overflow-x-auto custom-scrollbar">
-             <span class="text-[9px] font-black uppercase text-neutral-600">Quick Filter:</span>
              <div id="explorer-module-tabs" class="flex space-x-2"></div>
           </div>
           <div class="flex-grow overflow-auto custom-scrollbar p-6">
@@ -287,32 +316,20 @@
           </div>
         </div>
 
-        <!-- Footer Bar -->
         <div id="status-log" class="hidden lg:flex h-10 border-t border-white/5 bg-black/60 items-center px-6 font-mono text-[9px] text-neutral-700 justify-between">
           <div class="flex items-center space-x-4">
-            <span class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> <span>Live Node</span></span>
             <span id="log-message">SYSTEM_READY</span>
           </div>
-          <span class="font-black">BIZSENSE EXPERTS v2.5.0</span>
+          <span class="font-black">BIZSENSE EXPERTS v2.6.0</span>
         </div>
       </main>
     </div>
   </div>
 
-  <!-- Mobile Floating Action Button -->
   <div id="mobile-bottom-info" class="lg:hidden fixed bottom-6 right-6 z-[150]">
-    <button id="btn-mobile-filter-fab" class="w-14 h-14 bg-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white ring-4 ring-indigo-600/20 active:scale-90 transition-transform">
+    <button id="btn-mobile-filter-fab" class="w-14 h-14 bg-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white ring-4 ring-indigo-600/20">
       <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
     </button>
-  </div>
-
-  <!-- Global Loader -->
-  <div id="loading-overlay" class="fixed inset-0 bg-black/98 z-[500] flex flex-col items-center justify-center view-hidden">
-    <div class="relative">
-      <div class="w-20 h-20 border-2 border-indigo-500/20 rounded-full"></div>
-      <div class="absolute inset-0 w-20 h-20 border-t-2 border-indigo-500 rounded-full animate-spin"></div>
-    </div>
-    <p id="loading-text" class="mt-8 text-indigo-500 font-black uppercase tracking-[0.6em] text-[10px] text-center max-w-xs leading-loose">Syncing Ledger Data...</p>
   </div>
 
   <script type="module" src="index.js"></script>
