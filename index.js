@@ -1,7 +1,7 @@
 
 /**
- * BIZSENSE EXPERTS - INSIGHT PRO ENGINE
- * Updated: UI Improvements, Zoom, Fit, Report Issue, App Themes, Progress Bar.
+ * BIZSENSE STATEMENT PRO - ENGINE CORE
+ * Updated: Enhanced Loading UI, Removed Logo/Email from Statements, Fixed Controls.
  */
 
 class ZohoLedgerApp {
@@ -47,7 +47,8 @@ class ZohoLedgerApp {
       this.applyAppTheme(this.state.appTheme);
       this.handleOAuthCallback();
       this.checkSession();
-      this.autoFitZoom();
+      // Zoom Fit on start
+      window.addEventListener('resize', () => { if(this.state.currentView === 'ledger') this.autoFitZoom(); });
     });
   }
 
@@ -58,6 +59,7 @@ class ZohoLedgerApp {
       configModal: document.getElementById('modal-config'),
       reportModal: document.getElementById('modal-report'),
       loadingBar: document.getElementById('loading-bar-container'),
+      loadingOverlay: document.getElementById('loading-status-overlay'),
       loadingProgress: document.getElementById('loading-bar'),
       loadingText: document.getElementById('loading-bar-text'),
       landingError: document.getElementById('landing-error'),
@@ -185,7 +187,7 @@ class ZohoLedgerApp {
   }
 
   setZoom(val) {
-    this.state.zoom = Math.max(0.2, Math.min(2.0, val));
+    this.state.zoom = Math.max(0.1, Math.min(3.0, val));
     if (this.views.statementContainer) {
       this.views.statementContainer.style.transform = `scale(${this.state.zoom})`;
     }
@@ -194,7 +196,8 @@ class ZohoLedgerApp {
   autoFitZoom() {
     const wrapper = this.views.areaLedger;
     if (!wrapper) return;
-    const w = wrapper.clientWidth - 100;
+    const padding = window.innerWidth < 768 ? 20 : 100;
+    const w = wrapper.clientWidth - padding;
     const targetW = 21 * 37.8; // A4 in pixels approx at 96dpi
     this.setZoom(w / targetW);
   }
@@ -203,8 +206,6 @@ class ZohoLedgerApp {
     this.state.appTheme = theme;
     localStorage.setItem('app_theme', theme);
     document.documentElement.setAttribute('data-app-theme', theme);
-    
-    // UI state update
     const themes = [this.btns.themeBiz, this.btns.themeLight, this.btns.themeDark];
     themes.forEach(t => {
       const active = t.id.includes(theme);
@@ -220,7 +221,7 @@ class ZohoLedgerApp {
   reportIssue() {
     const text = this.inputs.reportText.value.trim();
     if (!text) return alert("Please describe the issue.");
-    const url = `https://wa.me/94715717171?text=${encodeURIComponent("Issue Report (Insight Pro): " + text)}`;
+    const url = `https://wa.me/94715717171?text=${encodeURIComponent("BizSense Pro Issue: " + text)}`;
     window.open(url, '_blank');
     this.views.reportModal.classList.add('view-hidden');
     this.inputs.reportText.value = '';
@@ -235,11 +236,9 @@ class ZohoLedgerApp {
     document.documentElement.style.setProperty('--theme-accent', theme.accent);
     document.documentElement.style.setProperty('--theme-text-dark', theme.text);
     document.documentElement.style.setProperty('--theme-border', theme.border);
-
     this.targets.themeSelector.querySelectorAll('.theme-swatch').forEach(s => {
       s.classList.toggle('active', s.getAttribute('data-theme') === themeKey);
     });
-
     if (this.state.statementData.length > 0) this.renderStatementUI();
   }
 
@@ -258,10 +257,9 @@ class ZohoLedgerApp {
         if (!active) b.classList.add('text-neutral-500'); else b.classList.remove('text-neutral-500');
       }
     });
-
     this.views.areaLedger.classList.toggle('view-hidden', v !== 'ledger');
     this.views.areaExplorer.classList.toggle('view-hidden', v !== 'explorer');
-    this.targets.viewTitle.innerText = v === 'ledger' ? 'Statement Engine' : 'Data Explorer';
+    this.targets.viewTitle.innerText = v === 'ledger' ? 'BIZSENSE STATEMENT PRO' : 'Data Explorer';
     if (v === 'explorer') this.renderExplorer();
     else this.autoFitZoom();
   }
@@ -300,13 +298,14 @@ class ZohoLedgerApp {
 
   async checkSession() {
     if (this.state.accessToken) {
-      this.showLoading(10, "Establishing Link...");
+      this.showLoading(10, "Establishing Data Link...");
       const success = await this.discoverOrganizations();
       if (success) {
         this.views.landing.classList.add('view-hidden');
         this.views.dashboard.classList.remove('view-hidden');
         await this.fetchOrganizationDetails();
         await this.fetchCustomers();
+        this.autoFitZoom();
       }
       this.hideLoading();
     }
@@ -349,17 +348,17 @@ class ZohoLedgerApp {
   }
 
   async fetchCustomers() {
-    this.showLoading(30, "Fetching Registry...");
+    this.showLoading(30, "Syncing Customer Registry...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
       if (res && res.contacts) {
         this.state.customers = res.contacts;
         this.renderCustomerList();
-        this.log("Registry Synced.");
+        this.log("Registry Online.");
       }
     } catch (e) {
-      this.log(`Error: ${e.message}`);
+      this.log(`Sync Error: ${e.message}`);
     } finally {
       this.hideLoading();
     }
@@ -392,13 +391,14 @@ class ZohoLedgerApp {
     }
     this.renderCustomerList();
     this.recalculateAndRender();
+    this.autoFitZoom();
   }
 
   async syncCustomerData(id) {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
     
-    this.showLoading(50, `Syncing: ${customer.contact_name}`);
+    this.showLoading(50, `INGESTING: ${customer.contact_name}`);
     for (const module of this.state.activeModules) {
       try {
         const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
@@ -409,8 +409,8 @@ class ZohoLedgerApp {
           for (let i = 0; i < records.length; i++) {
             const inv = records[i];
             if (!this.state.invoiceDetailsCache[inv.invoice_id]) {
-              const prog = 50 + ((i / records.length) * 40);
-              this.showLoading(prog, `Expanding ${inv.invoice_number}`);
+              const prog = 50 + ((i / records.length) * 45);
+              this.showLoading(prog, `PARSING ITEM DETAILS: ${inv.invoice_number}`);
               await new Promise(r => setTimeout(r, 150)); 
               const detailUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
               try {
@@ -431,6 +431,7 @@ class ZohoLedgerApp {
     const ids = Array.from(this.state.selectedCustomerIds);
     for (const id of ids) await this.syncCustomerData(id);
     this.recalculateAndRender();
+    this.autoFitZoom();
   }
 
   toggleAllCustomers(selected) {
@@ -478,7 +479,7 @@ class ZohoLedgerApp {
   renderExplorer() {
     const mods = Object.keys(this.state.dataStore).filter(m => Object.values(this.state.dataStore[m]).some(d => d.records.length > 0));
     if (mods.length === 0) {
-      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] uppercase font-black">Waiting for Sync</div>';
+      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] uppercase font-black">Sync Data to Explore</div>';
       this.targets.explorerTabs.innerHTML = ''; return;
     }
     if (!this.state.explorerActiveModule || !mods.includes(this.state.explorerActiveModule)) this.state.explorerActiveModule = mods[0];
@@ -513,16 +514,14 @@ class ZohoLedgerApp {
     this.btns.download.disabled = false;
 
     const org = this.state.currentOrgDetails || {};
-    const logoUrl = org.logo_url ? (this.proxyPrefix + encodeURIComponent(org.logo_url)) : 'https://i.ibb.co/7mmBhMJ/LOGO.png';
 
     let html = `
       <div class="statement-view font-inter" id="pdf-content">
         <div class="flex justify-between items-start mb-12">
           <div class="flex items-center space-x-4">
-            <img src="${logoUrl}" alt="Org Logo" class="h-16 w-16 object-contain rounded-lg">
             <div>
               <h1 class="text-2xl font-black uppercase tracking-tighter leading-none">${org.name || 'Organization'}</h1>
-              <p class="text-[9px] text-neutral-500 font-bold uppercase mt-1">${org.email || 'Financial Statement'}</p>
+              <p class="text-[9px] text-neutral-500 font-bold uppercase mt-1">Outstanding Ledger Report</p>
             </div>
           </div>
           <div class="text-right">
@@ -567,8 +566,8 @@ class ZohoLedgerApp {
     });
     html += `</tbody></table>
         <div class="mt-20 pt-8 border-t-[3pt] theme-border-color flex justify-between">
-          <div><p class="text-[7px] font-black text-neutral-400 uppercase">Verification Hash</p><div class="mt-4 font-mono text-[9px] text-neutral-300">#${Math.random().toString(36).substr(2, 12).toUpperCase()}</div></div>
-          <div class="text-right"><p class="text-[7px] font-black text-neutral-400 uppercase">Authorized By</p><p class="mt-4 text-sm font-black italic">${org.name || 'BizSense Insights Pro'}</p></div>
+          <div><p class="text-[7px] font-black text-neutral-400 uppercase">Statement Authenticity Key</p><div class="mt-4 font-mono text-[9px] text-neutral-300">#${Math.random().toString(36).substr(2, 12).toUpperCase()}</div></div>
+          <div class="text-right"><p class="text-[7px] font-black text-neutral-400 uppercase">Authorized Signature</p><p class="mt-4 text-sm font-black italic">${org.name || 'Financial Services'}</p></div>
         </div>
       </div>`;
     this.targets.renderArea.innerHTML = html;
@@ -576,6 +575,7 @@ class ZohoLedgerApp {
 
   showLoading(prog, txt) {
     this.views.loadingBar.classList.remove('view-hidden');
+    this.views.loadingOverlay.classList.remove('view-hidden');
     this.views.loadingProgress.style.width = `${prog}%`;
     this.views.loadingText.innerText = txt.toUpperCase();
   }
@@ -584,8 +584,9 @@ class ZohoLedgerApp {
     this.views.loadingProgress.style.width = '100%';
     setTimeout(() => {
       this.views.loadingBar.classList.add('view-hidden');
+      this.views.loadingOverlay.classList.add('view-hidden');
       this.views.loadingProgress.style.width = '0%';
-    }, 500);
+    }, 800);
   }
 
   filterCustomers(term) {
@@ -599,24 +600,24 @@ class ZohoLedgerApp {
     const res = await fetch(this.proxyPrefix + encodeURIComponent(url), {
       headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
     });
-    if (res.status === 401) throw new Error("Auth Failure");
-    if (!res.ok) throw new Error('API Rejection');
+    if (res.status === 401) throw new Error("OAuth Authentication Failure");
+    if (!res.ok) throw new Error('Zoho API Refused Request');
     return res.json();
   }
 
   downloadPDF() {
     const el = document.getElementById('pdf-content');
     if (!el) return;
-    this.showLoading(80, "Rendering PDF...");
+    this.showLoading(80, "FINALIZING RENDER ENGINE...");
     html2pdf().set({
-      margin: 0, filename: `Statement_${Date.now()}.pdf`,
+      margin: 0, filename: `Ledger_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 3, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     }).from(el).save().then(() => this.hideLoading());
   }
 
-  log(m) { this.targets.log.innerText = `SYS: ${m.toUpperCase()}`; }
+  log(m) { this.targets.log.innerText = `SYS_STATUS: ${m.toUpperCase()}`; }
   showLandingError(m) { this.targets.landingErrorText.innerText = m; this.views.landingError.classList.remove('view-hidden'); }
   logout() { localStorage.clear(); window.location.reload(); }
 }
