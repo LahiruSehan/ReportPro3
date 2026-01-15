@@ -172,9 +172,9 @@
     </div>
   </div>
 
-  <!-- Auth Modal -->
+  <!-- Auth Modal (Connection Hub) -->
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
-    <div class="glass-card p-6 md:p-10 w-full max-w-lg space-y-6 relative border-indigo-500/20">
+    <div class="glass-card p-6 md:p-10 w-full max-w-lg space-y-6 relative border-indigo-500/20 shadow-2xl">
       <button id="btn-close-config" class="absolute top-4 right-4 text-neutral-500 hover:text-white transition-colors text-2xl">&times;</button>
       <div class="flex items-center space-x-3">
         <div class="p-2 bg-indigo-500 rounded-lg"><img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6"></div>
@@ -182,12 +182,12 @@
       </div>
       <div class="space-y-4">
         <div class="p-4 bg-white/5 rounded-xl border border-white/5">
-          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2">Redirect URI</label>
+          <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-2 tracking-widest">Redirect URI</label>
           <code class="block text-[10px] font-mono break-all text-indigo-300" id="display-redirect-uri"></code>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div class="col-span-2">
-            <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Zoho Region</label>
+            <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1 tracking-widest">Zoho Region</label>
             <select id="cfg-region" class="w-full">
               <option value="com">Global (.com)</option>
               <option value="eu">Europe (.eu)</option>
@@ -196,7 +196,7 @@
             </select>
           </div>
           <div class="col-span-2">
-            <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1">Client ID</label>
+            <label class="block text-[10px] uppercase text-neutral-500 font-bold mb-1 tracking-widest">Client ID</label>
             <input id="cfg-client-id" type="text" placeholder="1000.XXXXX..." class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white font-mono outline-none focus:border-indigo-500">
           </div>
         </div>
@@ -205,18 +205,36 @@
     </div>
   </div>
 
-  <!-- Landing -->
+  <!-- Landing (Authorize Screen) -->
   <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center">
-    <div class="relative mb-8">
-      <div class="absolute -inset-4 bg-indigo-500/20 blur-3xl rounded-full animate-pulse"></div>
-      <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="BIZSENSE STATEMENT PRO" class="h-20 md:h-32 relative z-10">
+    <div class="glass-card p-8 md:p-16 max-w-2xl w-full flex flex-col items-center relative overflow-hidden">
+      <div class="absolute -top-20 -left-20 w-64 h-64 bg-indigo-600/10 blur-[100px] rounded-full"></div>
+      <div class="absolute -bottom-20 -right-20 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full"></div>
+      
+      <div class="relative mb-10">
+        <div class="absolute -inset-6 bg-indigo-500/20 blur-3xl rounded-full animate-pulse"></div>
+        <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="BIZSENSE STATEMENT PRO" class="h-24 md:h-32 relative z-10">
+      </div>
+      
+      <h1 class="text-4xl md:text-6xl font-black mb-6 tracking-tighter uppercase leading-none">BIZSENSE<br><span class="text-indigo-500">STATEMENT PRO</span></h1>
+      <p class="text-neutral-500 max-w-md mb-12 text-sm md:text-lg leading-relaxed font-medium">Generate item-level outstanding customer statements directly from Zoho Books in one click.</p>
+      
+      <div id="landing-error" class="view-hidden mb-8 p-5 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs text-left w-full max-w-sm flex items-start space-x-3">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <p id="landing-error-text"></p>
+      </div>
+      
+      <div class="flex flex-col md:flex-row gap-4 w-full max-w-md">
+        <button id="btn-connect" class="flex-1 px-8 py-5 bg-indigo-600 rounded-2xl font-black text-white hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/40 uppercase tracking-widest text-xs">
+          Login to Main App
+        </button>
+        <button id="btn-open-config-landing" class="flex-1 px-8 py-5 bg-white/5 border border-white/10 rounded-2xl font-black text-neutral-300 hover:text-white hover:bg-white/10 transition-all uppercase tracking-widest text-xs">
+          Configure Connection
+        </button>
+      </div>
+      
+      <p class="mt-12 text-[10px] text-neutral-600 font-black uppercase tracking-[0.3em]">Authorized Secured Connection via Zoho OAuth 2.0</p>
     </div>
-    <h1 class="text-4xl md:text-5xl font-black mb-4 tracking-tighter uppercase">BIZSENSE STATEMENT PRO</h1>
-    <p class="text-neutral-500 max-w-sm mb-12 text-sm md:text-base leading-relaxed">Generate item-level outstanding customer statements directly from Zoho Books in one click.</p>
-    <div id="landing-error" class="view-hidden mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-left max-w-sm">
-      <p id="landing-error-text"></p>
-    </div>
-    <button id="btn-connect" class="px-10 py-5 bg-indigo-600 rounded-2xl font-black text-white hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/40">AUTHORIZE SECURELY</button>
   </div>
 
   <!-- Dashboard -->
