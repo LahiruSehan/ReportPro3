@@ -1,7 +1,7 @@
 
 /**
  * BIZSENSE STATEMENT PRO - ENGINE CORE
- * Updated: Fixed Running Balance Logic, Project Settings Modal, Enhanced Data Pipeline.
+ * Updated: Refined Ledger Rendering with Invoice Footers and Client Summaries.
  */
 
 class ZohoLedgerApp {
@@ -125,7 +125,6 @@ class ZohoLedgerApp {
       this.inputs.displayRedirect.innerText = window.location.origin + window.location.pathname;
     }
 
-    // Restore checkbox state
     this.inputs.moduleCheckboxes.forEach(cb => {
       cb.checked = this.state.activeModules.has(cb.value);
     });
@@ -565,21 +564,26 @@ class ZohoLedgerApp {
     `;
     let globalCounter = 1;
     this.state.statementData.forEach(cust => {
-      html += `<tr class="theme-row-bg border-b-2 theme-border-color"><td colspan="6" class="py-3 px-3 font-black text-[11px] uppercase tracking-tighter">Client: ${cust.customerName}</td></tr>`;
+      // Calculate Client Total O/S
+      const clientTotalOS = cust.invoices.reduce((sum, inv) => sum + inv.balance, 0);
+
+      html += `<tr class="theme-row-bg border-b-2 theme-border-color">
+        <td colspan="4" class="py-3 px-3 font-black text-[11px] uppercase tracking-tighter">Client: ${cust.customerName}</td>
+        <td colspan="2" class="py-3 px-3 text-right font-black text-[11px] uppercase tracking-tighter">Total O/S: ${clientTotalOS.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+      </tr>`;
+      
       cust.invoices.forEach(inv => {
-        // FIX: Start running balance with invoice balance
         let runningBalance = inv.balance;
         
+        // Simplified Invoice Header (No Total here)
         html += `<tr class="border-b border-neutral-200 bg-neutral-50/50">
-          <td colspan="4" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Invoice: ${inv.invoiceNo} (${inv.date})</td>
-          <td colspan="2" class="py-2 px-3 text-right font-black uppercase text-indigo-600">Initial O/S: ${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+          <td colspan="6" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Invoice: ${inv.invoiceNo} (${inv.date})</td>
         </tr>`;
 
         inv.items.forEach(item => {
-          // Display current balance before reducing it
           const displayBalance = runningBalance;
           runningBalance -= item.subTotal;
-          if (runningBalance < 0.01 && runningBalance > -0.01) runningBalance = 0; // Handle JS float precision
+          if (runningBalance < 0.01 && runningBalance > -0.01) runningBalance = 0; 
 
           html += `<tr class="item-row border-b border-neutral-100">
             <td class="py-2 px-3 text-[8px] opacity-25 font-mono">${globalCounter++}</td>
@@ -590,6 +594,13 @@ class ZohoLedgerApp {
             <td class="py-2 px-3 text-right font-black ${displayBalance <= 0 ? 'text-green-600' : 'text-neutral-800'}" contenteditable="true">${displayBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
           </tr>`;
         });
+
+        // Invoice Footer Row with Total
+        html += `<tr class="border-t border-neutral-300">
+          <td colspan="5" class="py-2 px-3 text-right font-bold text-neutral-500 uppercase">Inv. Outstanding Total:</td>
+          <td class="py-2 px-3 text-right font-black text-[10px] text-indigo-600">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        </tr>
+        <tr class="h-4"></tr>`; 
       });
     });
     html += `</tbody></table>
