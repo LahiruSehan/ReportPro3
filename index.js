@@ -1,7 +1,7 @@
 
 /**
  * BIZSENSE STATEMENT PRO - ENGINE CORE
- * Updated: Enhanced Loading UI, Removed Logo/Email from Statements, Fixed Controls.
+ * Updated: Fixed Running Balance Logic, Project Settings Modal, Enhanced Data Pipeline.
  */
 
 class ZohoLedgerApp {
@@ -24,7 +24,7 @@ class ZohoLedgerApp {
       currentOrgDetails: null,
       customers: [],
       selectedCustomerIds: new Set(),
-      activeModules: new Set(['invoices']), 
+      activeModules: new Set(JSON.parse(localStorage.getItem('active_modules')) || ['invoices']), 
       dataStore: { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} },
       invoiceDetailsCache: {},
       currentView: 'ledger', 
@@ -47,7 +47,6 @@ class ZohoLedgerApp {
       this.applyAppTheme(this.state.appTheme);
       this.handleOAuthCallback();
       this.checkSession();
-      // Zoom Fit on start
       window.addEventListener('resize', () => { if(this.state.currentView === 'ledger') this.autoFitZoom(); });
     });
   }
@@ -58,6 +57,7 @@ class ZohoLedgerApp {
       dashboard: document.getElementById('view-dashboard'),
       configModal: document.getElementById('modal-config'),
       reportModal: document.getElementById('modal-report'),
+      settingsModal: document.getElementById('modal-settings'),
       loadingBar: document.getElementById('loading-bar-container'),
       loadingOverlay: document.getElementById('loading-status-overlay'),
       loadingProgress: document.getElementById('loading-bar'),
@@ -100,6 +100,9 @@ class ZohoLedgerApp {
       openReport: document.getElementById('btn-open-report'),
       cancelReport: document.getElementById('btn-cancel-report'),
       submitReport: document.getElementById('btn-submit-report'),
+      openSettings: document.getElementById('btn-project-settings'),
+      closeSettings: document.getElementById('btn-close-settings'),
+      applySettings: document.getElementById('btn-apply-settings'),
       zoomIn: document.getElementById('btn-zoom-in'),
       zoomOut: document.getElementById('btn-zoom-out'),
       zoomFit: document.getElementById('btn-zoom-fit'),
@@ -121,6 +124,11 @@ class ZohoLedgerApp {
     if (this.inputs.displayRedirect) {
       this.inputs.displayRedirect.innerText = window.location.origin + window.location.pathname;
     }
+
+    // Restore checkbox state
+    this.inputs.moduleCheckboxes.forEach(cb => {
+      cb.checked = this.state.activeModules.has(cb.value);
+    });
   }
 
   bindEvents() {
@@ -132,6 +140,18 @@ class ZohoLedgerApp {
     if (this.btns.download) this.btns.download.onclick = () => this.downloadPDF();
     if (this.btns.selectAll) this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
     if (this.btns.clearAll) this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
+
+    if (this.btns.openSettings) this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
+    if (this.btns.closeSettings) this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
+    if (this.btns.applySettings) this.btns.applySettings.onclick = () => {
+      this.state.activeModules.clear();
+      this.inputs.moduleCheckboxes.forEach(cb => {
+        if (cb.checked) this.state.activeModules.add(cb.value);
+      });
+      localStorage.setItem('active_modules', JSON.stringify(Array.from(this.state.activeModules)));
+      this.views.settingsModal.classList.add('view-hidden');
+      this.syncAllActiveCustomers();
+    };
 
     const toggleSidebar = (force) => {
       this.state.sidebarOpen = typeof force === 'boolean' ? force : !this.state.sidebarOpen;
@@ -162,15 +182,6 @@ class ZohoLedgerApp {
 
     if (this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
     
-    this.inputs.moduleCheckboxes.forEach(cb => {
-      cb.onchange = (e) => {
-        const val = e.target.value;
-        if (e.target.checked) this.state.activeModules.add(val);
-        else this.state.activeModules.delete(val);
-        this.syncAllActiveCustomers();
-      };
-    });
-
     this.targets.themeSelector.onclick = (e) => {
       const theme = e.target.getAttribute('data-theme');
       if (theme) this.applyTheme(theme);
@@ -182,12 +193,13 @@ class ZohoLedgerApp {
         localStorage.setItem('zoho_selected_org_id', e.target.value);
         this.clearDataStore();
         this.fetchOrganizationDetails();
+        this.syncAllActiveCustomers();
       };
     }
   }
 
   setZoom(val) {
-    this.state.zoom = Math.max(0.1, Math.min(3.0, val));
+    this.state.zoom = Math.max(0.05, Math.min(4.0, val));
     if (this.views.statementContainer) {
       this.views.statementContainer.style.transform = `scale(${this.state.zoom})`;
     }
@@ -196,9 +208,9 @@ class ZohoLedgerApp {
   autoFitZoom() {
     const wrapper = this.views.areaLedger;
     if (!wrapper) return;
-    const padding = window.innerWidth < 768 ? 20 : 100;
+    const padding = window.innerWidth < 1024 ? 40 : 120;
     const w = wrapper.clientWidth - padding;
-    const targetW = 21 * 37.8; // A4 in pixels approx at 96dpi
+    const targetW = 21 * 37.8; 
     this.setZoom(w / targetW);
   }
 
@@ -220,8 +232,8 @@ class ZohoLedgerApp {
 
   reportIssue() {
     const text = this.inputs.reportText.value.trim();
-    if (!text) return alert("Please describe the issue.");
-    const url = `https://wa.me/94715717171?text=${encodeURIComponent("BizSense Pro Issue: " + text)}`;
+    if (!text) return alert("Describe the problem.");
+    const url = `https://wa.me/94715717171?text=${encodeURIComponent("BIZSENSE PRO ALERT: " + text)}`;
     window.open(url, '_blank');
     this.views.reportModal.classList.add('view-hidden');
     this.inputs.reportText.value = '';
@@ -298,7 +310,7 @@ class ZohoLedgerApp {
 
   async checkSession() {
     if (this.state.accessToken) {
-      this.showLoading(10, "Establishing Data Link...");
+      this.showLoading(15, "Initializing Data Pipeline...");
       const success = await this.discoverOrganizations();
       if (success) {
         this.views.landing.classList.add('view-hidden');
@@ -348,7 +360,7 @@ class ZohoLedgerApp {
   }
 
   async fetchCustomers() {
-    this.showLoading(30, "Syncing Customer Registry...");
+    this.showLoading(35, "Ingesting Customer Registry...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
@@ -358,7 +370,7 @@ class ZohoLedgerApp {
         this.log("Registry Online.");
       }
     } catch (e) {
-      this.log(`Sync Error: ${e.message}`);
+      this.log(`Critical Error: ${e.message}`);
     } finally {
       this.hideLoading();
     }
@@ -398,7 +410,7 @@ class ZohoLedgerApp {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
     
-    this.showLoading(50, `INGESTING: ${customer.contact_name}`);
+    this.showLoading(45, `Parsing Data: ${customer.contact_name}`);
     for (const module of this.state.activeModules) {
       try {
         const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
@@ -409,8 +421,8 @@ class ZohoLedgerApp {
           for (let i = 0; i < records.length; i++) {
             const inv = records[i];
             if (!this.state.invoiceDetailsCache[inv.invoice_id]) {
-              const prog = 50 + ((i / records.length) * 45);
-              this.showLoading(prog, `PARSING ITEM DETAILS: ${inv.invoice_number}`);
+              const prog = 45 + ((i / records.length) * 50);
+              this.showLoading(prog, `Syncing Details: ${inv.invoice_number}`);
               await new Promise(r => setTimeout(r, 150)); 
               const detailUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
               try {
@@ -421,7 +433,7 @@ class ZohoLedgerApp {
           }
         }
         this.state.dataStore[module][id] = { customerName: customer.contact_name, records: records };
-      } catch (e) { this.log(`Error: ${e.message}`); }
+      } catch (e) { this.log(`Module Error: ${e.message}`); }
     }
     this.hideLoading();
   }
@@ -464,9 +476,16 @@ class ZohoLedgerApp {
               });
             });
           } else {
-            invoiceItems.push({ itemName: `Inv: ${inv.invoice_number}`, qty: 1, subTotal: inv.total || 0 });
+            invoiceItems.push({ itemName: `Syncing Item Data (${inv.invoice_number})...`, qty: 1, subTotal: inv.total || 0 });
           }
-          groupedInvoices.push({ invoiceNo: inv.invoice_number, date: inv.date, dueDate: inv.due_date, balance: inv.balance, items: invoiceItems });
+          groupedInvoices.push({ 
+            invoiceNo: inv.invoice_number, 
+            date: inv.date, 
+            dueDate: inv.due_date, 
+            total: inv.total,
+            balance: inv.balance, 
+            items: invoiceItems 
+          });
         });
         this.state.statementData.push({ customerName: invData.customerName, invoices: groupedInvoices });
       }
@@ -479,7 +498,7 @@ class ZohoLedgerApp {
   renderExplorer() {
     const mods = Object.keys(this.state.dataStore).filter(m => Object.values(this.state.dataStore[m]).some(d => d.records.length > 0));
     if (mods.length === 0) {
-      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] uppercase font-black">Sync Data to Explore</div>';
+      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] uppercase font-black tracking-widest">No Active Module Data</div>';
       this.targets.explorerTabs.innerHTML = ''; return;
     }
     if (!this.state.explorerActiveModule || !mods.includes(this.state.explorerActiveModule)) this.state.explorerActiveModule = mods[0];
@@ -521,53 +540,62 @@ class ZohoLedgerApp {
           <div class="flex items-center space-x-4">
             <div>
               <h1 class="text-2xl font-black uppercase tracking-tighter leading-none">${org.name || 'Organization'}</h1>
-              <p class="text-[9px] text-neutral-500 font-bold uppercase mt-1">Outstanding Ledger Report</p>
+              <p class="text-[9px] text-neutral-500 font-bold uppercase mt-2">Outstanding Client Ledger</p>
             </div>
           </div>
           <div class="text-right">
-            <h2 class="text-3xl font-black theme-accent-text tracking-tighter leading-none">LEDGER</h2>
-            <div class="mt-4 text-[8px] font-black text-neutral-400 uppercase leading-relaxed">
+            <h2 class="text-3xl font-black theme-accent-text tracking-tighter leading-none">STATEMENT</h2>
+            <div class="mt-4 text-[8px] font-black text-neutral-400 uppercase tracking-widest">
               <p>Issue Date: <span class="text-black">${new Date().toLocaleDateString()}</span></p>
             </div>
           </div>
         </div>
         <table class="w-full text-left border-collapse table-fixed">
           <thead>
-            <tr class="theme-accent-bg text-[8px] font-black uppercase">
-              <th class="py-2 px-2 w-[25px]">#</th>
-              <th class="py-2 px-2 w-[160px]">Description</th>
-              <th class="py-2 px-2 w-[40px] text-center">Qty</th>
-              <th class="py-2 px-2 w-[90px] text-right">Amount</th>
-              <th class="py-2 px-2 w-[70px] text-center">Reference</th>
-              <th class="py-2 px-2 w-[90px] text-right">Balance</th>
+            <tr class="theme-accent-bg text-[8px] font-black uppercase tracking-widest">
+              <th class="py-2.5 px-3 w-[25px]">#</th>
+              <th class="py-2.5 px-3 w-[160px]">Description</th>
+              <th class="py-2.5 px-3 w-[45px] text-center">Qty</th>
+              <th class="py-2.5 px-3 w-[95px] text-right">Amount</th>
+              <th class="py-2.5 px-3 w-[70px] text-center">Ref</th>
+              <th class="py-2.5 px-3 w-[95px] text-right">Balance</th>
             </tr>
           </thead>
           <tbody class="text-[9px]">
     `;
     let globalCounter = 1;
     this.state.statementData.forEach(cust => {
-      html += `<tr class="theme-row-bg border-b-2 theme-border-color"><td colspan="6" class="py-2 px-3 font-black text-[11px] uppercase">Client: ${cust.customerName}</td></tr>`;
+      html += `<tr class="theme-row-bg border-b-2 theme-border-color"><td colspan="6" class="py-3 px-3 font-black text-[11px] uppercase tracking-tighter">Client: ${cust.customerName}</td></tr>`;
       cust.invoices.forEach(inv => {
-        html += `<tr class="border-b border-neutral-200">
-          <td colspan="4" class="py-1 px-3 font-bold text-neutral-400 uppercase italic">Invoice: ${inv.invoiceNo} (${inv.date})</td>
-          <td colspan="2" class="py-1 px-2 text-right font-black uppercase">Outstanding: ${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        // FIX: Start running balance with invoice balance
+        let runningBalance = inv.balance;
+        
+        html += `<tr class="border-b border-neutral-200 bg-neutral-50/50">
+          <td colspan="4" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Invoice: ${inv.invoiceNo} (${inv.date})</td>
+          <td colspan="2" class="py-2 px-3 text-right font-black uppercase text-indigo-600">Initial O/S: ${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
         </tr>`;
+
         inv.items.forEach(item => {
+          // Display current balance before reducing it
+          const displayBalance = runningBalance;
+          runningBalance -= item.subTotal;
+          if (runningBalance < 0.01 && runningBalance > -0.01) runningBalance = 0; // Handle JS float precision
+
           html += `<tr class="item-row border-b border-neutral-100">
-            <td class="py-1.5 px-2 text-[8px] opacity-30">${globalCounter++}</td>
-            <td class="py-1.5 px-2 font-bold truncate" contenteditable="true">${item.itemName}</td>
-            <td class="py-1.5 px-2 text-center" contenteditable="true">${item.qty}</td>
-            <td class="py-1.5 px-2 text-right font-semibold" contenteditable="true">${item.subTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-            <td class="py-1.5 px-2 text-center text-[8px] font-mono" contenteditable="true">${inv.invoiceNo}</td>
-            <td class="py-1.5 px-2 text-right font-black opacity-10" contenteditable="true">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+            <td class="py-2 px-3 text-[8px] opacity-25 font-mono">${globalCounter++}</td>
+            <td class="py-2 px-3 font-bold truncate" contenteditable="true">${item.itemName}</td>
+            <td class="py-2 px-3 text-center" contenteditable="true">${item.qty}</td>
+            <td class="py-2 px-3 text-right font-semibold" contenteditable="true">${item.subTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+            <td class="py-2 px-3 text-center text-[8px] font-mono opacity-50" contenteditable="true">${inv.invoiceNo}</td>
+            <td class="py-2 px-3 text-right font-black ${displayBalance <= 0 ? 'text-green-600' : 'text-neutral-800'}" contenteditable="true">${displayBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
           </tr>`;
         });
       });
     });
     html += `</tbody></table>
-        <div class="mt-20 pt-8 border-t-[3pt] theme-border-color flex justify-between">
-          <div><p class="text-[7px] font-black text-neutral-400 uppercase">Statement Authenticity Key</p><div class="mt-4 font-mono text-[9px] text-neutral-300">#${Math.random().toString(36).substr(2, 12).toUpperCase()}</div></div>
-          <div class="text-right"><p class="text-[7px] font-black text-neutral-400 uppercase">Authorized Signature</p><p class="mt-4 text-sm font-black italic">${org.name || 'Financial Services'}</p></div>
+        <div class="mt-20 pt-10 border-t-[4pt] theme-border-color flex justify-between">
+          <div><p class="text-[7.5px] font-black text-neutral-400 uppercase tracking-widest">Authentication Integrity Key</p><div class="mt-4 font-mono text-[9px] text-neutral-300">#${Math.random().toString(36).substr(2, 14).toUpperCase()}</div></div>
+          <div class="text-right"><p class="text-[7.5px] font-black text-neutral-400 uppercase tracking-widest">Authorized Signature</p><p class="mt-4 text-sm font-black italic tracking-tighter uppercase">${org.name || 'Financial Operations'}</p></div>
         </div>
       </div>`;
     this.targets.renderArea.innerHTML = html;
@@ -586,7 +614,7 @@ class ZohoLedgerApp {
       this.views.loadingBar.classList.add('view-hidden');
       this.views.loadingOverlay.classList.add('view-hidden');
       this.views.loadingProgress.style.width = '0%';
-    }, 800);
+    }, 1000);
   }
 
   filterCustomers(term) {
@@ -600,24 +628,24 @@ class ZohoLedgerApp {
     const res = await fetch(this.proxyPrefix + encodeURIComponent(url), {
       headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
     });
-    if (res.status === 401) throw new Error("OAuth Authentication Failure");
-    if (!res.ok) throw new Error('Zoho API Refused Request');
+    if (res.status === 401) throw new Error("Auth Expired");
+    if (!res.ok) throw new Error('API Rejection');
     return res.json();
   }
 
   downloadPDF() {
     const el = document.getElementById('pdf-content');
     if (!el) return;
-    this.showLoading(80, "FINALIZING RENDER ENGINE...");
+    this.showLoading(85, "PRE-RENDERING DOCUMENT...");
     html2pdf().set({
-      margin: 0, filename: `Ledger_${Date.now()}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 3, useCORS: true },
+      margin: 0, filename: `Ledger_Report_${Date.now()}.pdf`,
+      image: { type: 'jpeg', quality: 1.0 },
+      html2canvas: { scale: 3.5, useCORS: true, letterRendering: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     }).from(el).save().then(() => this.hideLoading());
   }
 
-  log(m) { this.targets.log.innerText = `SYS_STATUS: ${m.toUpperCase()}`; }
+  log(m) { this.targets.log.innerText = `READY: ${m.toUpperCase()}`; }
   showLandingError(m) { this.targets.landingErrorText.innerText = m; this.views.landingError.classList.remove('view-hidden'); }
   logout() { localStorage.clear(); window.location.reload(); }
 }
