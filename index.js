@@ -1,7 +1,7 @@
 
 /**
  * BIZSENSE STATEMENT PRO - ENGINE CORE
- * Updated: Refined Ledger Rendering with Invoice Footers and Client Summaries.
+ * Updated: Refined Running Balance logic (Cumulative Addition Top-to-Bottom).
  */
 
 class ZohoLedgerApp {
@@ -564,7 +564,6 @@ class ZohoLedgerApp {
     `;
     let globalCounter = 1;
     this.state.statementData.forEach(cust => {
-      // Calculate Client Total O/S
       const clientTotalOS = cust.invoices.reduce((sum, inv) => sum + inv.balance, 0);
 
       html += `<tr class="theme-row-bg border-b-2 theme-border-color">
@@ -573,17 +572,16 @@ class ZohoLedgerApp {
       </tr>`;
       
       cust.invoices.forEach(inv => {
-        let runningBalance = inv.balance;
+        // RESET runningBalance to 0 for addition from top to bottom
+        let runningBalance = 0;
         
-        // Simplified Invoice Header (No Total here)
         html += `<tr class="border-b border-neutral-200 bg-neutral-50/50">
           <td colspan="6" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Invoice: ${inv.invoiceNo} (${inv.date})</td>
         </tr>`;
 
         inv.items.forEach(item => {
-          const displayBalance = runningBalance;
-          runningBalance -= item.subTotal;
-          if (runningBalance < 0.01 && runningBalance > -0.01) runningBalance = 0; 
+          // ADDITION FROM TOP TO BOTTOM logic
+          runningBalance += item.subTotal;
 
           html += `<tr class="item-row border-b border-neutral-100">
             <td class="py-2 px-3 text-[8px] opacity-25 font-mono">${globalCounter++}</td>
@@ -591,11 +589,10 @@ class ZohoLedgerApp {
             <td class="py-2 px-3 text-center" contenteditable="true">${item.qty}</td>
             <td class="py-2 px-3 text-right font-semibold" contenteditable="true">${item.subTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
             <td class="py-2 px-3 text-center text-[8px] font-mono opacity-50" contenteditable="true">${inv.invoiceNo}</td>
-            <td class="py-2 px-3 text-right font-black ${displayBalance <= 0 ? 'text-green-600' : 'text-neutral-800'}" contenteditable="true">${displayBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+            <td class="py-2 px-3 text-right font-black text-neutral-800" contenteditable="true">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
           </tr>`;
         });
 
-        // Invoice Footer Row with Total
         html += `<tr class="border-t border-neutral-300">
           <td colspan="5" class="py-2 px-3 text-right font-bold text-neutral-500 uppercase">Inv. Outstanding Total:</td>
           <td class="py-2 px-3 text-right font-black text-[10px] text-indigo-600">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
