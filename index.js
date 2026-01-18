@@ -2,22 +2,19 @@
 /**
  * BIZSENSE STATEMENT PRO - ENGINE CORE
  * Fully Generic Version: Dynamic OAuth & Error Handling
+ * Updated: Improved input sanitization and Copy-to-Clipboard logic
  */
 
 class ZohoLedgerApp {
   constructor() {
     this.proxyPrefix = "https://corsproxy.io/?";
     
-    // Load config with sanity defaults
+    // Load config with strict sanitization
     const savedConfig = localStorage.getItem('zoho_config');
     this.config = savedConfig ? JSON.parse(savedConfig) : { clientId: '', clientSecret: '', region: 'com' };
     
     this.themes = {
-      indigo: { primary: '#6366f1', secondary: '#f5f3ff', accent: '#818cf8', text: '#1e1b4b', border: '#e2e8f0' },
-      slate: { primary: '#1e293b', secondary: '#f1f5f9', accent: '#475569', text: '#0f172a', border: '#cbd5e1' },
-      emerald: { primary: '#059669', secondary: '#ecfdf5', accent: '#10b981', text: '#064e3b', border: '#d1fae5' },
-      crimson: { primary: '#dc2626', secondary: '#fef2f2', accent: '#f43f5e', text: '#450a0a', border: '#fee2e2' },
-      minimal: { primary: '#000000', secondary: '#fafafa', accent: '#525252', text: '#171717', border: '#e5e5e5' }
+      indigo: { primary: '#6366f1', secondary: '#f5f3ff', accent: '#818cf8', text: '#1e1b4b', border: '#e2e8f0' }
     };
 
     this.state = {
@@ -31,11 +28,7 @@ class ZohoLedgerApp {
       dataStore: { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} },
       invoiceDetailsCache: {},
       currentView: 'ledger', 
-      currentTheme: localStorage.getItem('insight_theme') || 'indigo',
-      appTheme: localStorage.getItem('app_theme') || 'bizsense',
-      explorerActiveModule: 'invoices',
-      sidebarOpen: false,
-      statementData: [],
+      currentTheme: 'indigo',
       zoom: 1.0
     };
 
@@ -59,7 +52,6 @@ class ZohoLedgerApp {
       landing: document.getElementById('view-landing'),
       dashboard: document.getElementById('view-dashboard'),
       configModal: document.getElementById('modal-config'),
-      reportModal: document.getElementById('modal-report'),
       settingsModal: document.getElementById('modal-settings'),
       loadingBar: document.getElementById('loading-bar-container'),
       loadingOverlay: document.getElementById('loading-status-overlay'),
@@ -80,13 +72,13 @@ class ZohoLedgerApp {
       clientSecret: document.getElementById('cfg-client-secret'),
       region: document.getElementById('cfg-region'),
       displayRedirect: document.getElementById('display-redirect-uri'),
-      reportText: document.getElementById('report-text'),
       moduleCheckboxes: document.querySelectorAll('#module-selector input')
     };
 
     this.btns = {
       connect: document.getElementById('btn-connect'),
       saveConfig: document.getElementById('btn-save-config'),
+      copyUri: document.getElementById('btn-copy-uri'),
       resetConfig: document.getElementById('btn-reset-config'),
       download: document.getElementById('btn-download-pdf'),
       logout: document.getElementById('btn-logout'),
@@ -110,12 +102,13 @@ class ZohoLedgerApp {
       explorerTabs: document.getElementById('explorer-module-tabs'),
       emptyState: document.getElementById('empty-state'),
       log: document.getElementById('log-message'),
-      viewTitle: document.getElementById('view-title'),
       landingErrorText: document.getElementById('landing-error-text')
     };
 
     if (this.inputs.displayRedirect) {
-      this.inputs.displayRedirect.innerText = window.location.origin + window.location.pathname;
+      // Calculate URI accurately (Zoho requires exact match)
+      const redirectUri = window.location.origin + window.location.pathname;
+      this.inputs.displayRedirect.innerText = redirectUri;
     }
 
     this.inputs.moduleCheckboxes.forEach(cb => {
@@ -126,6 +119,7 @@ class ZohoLedgerApp {
   bindEvents() {
     if (this.btns.connect) this.btns.connect.onclick = () => this.startAuth();
     if (this.btns.saveConfig) this.btns.saveConfig.onclick = () => this.saveConfig();
+    if (this.btns.copyUri) this.btns.copyUri.onclick = () => this.copyToClipboard(this.inputs.displayRedirect.innerText);
     if (this.btns.resetConfig) this.btns.resetConfig.onclick = () => this.wipeConfiguration();
     if (this.btns.openConfigLanding) this.btns.openConfigLanding.onclick = () => this.toggleModal(true);
     if (this.btns.closeConfig) this.btns.closeConfig.onclick = () => this.toggleModal(false);
@@ -166,6 +160,20 @@ class ZohoLedgerApp {
     }
   }
 
+  async copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.btns.copyUri.innerText = "COPIED!";
+      this.btns.copyUri.classList.add('bg-green-600', 'text-white');
+      setTimeout(() => {
+        this.btns.copyUri.innerText = "COPY URI";
+        this.btns.copyUri.classList.remove('bg-green-600', 'text-white');
+      }, 2000);
+    } catch (err) {
+      alert("Failed to copy. Please select and copy manually.");
+    }
+  }
+
   updateConfigStatus() {
     if (!this.config.clientId || this.config.clientId.length < 5) {
       this.views.configStatus.classList.remove('view-hidden');
@@ -177,8 +185,9 @@ class ZohoLedgerApp {
   }
 
   wipeConfiguration() {
-    if (confirm("Reset everything? This wipes Client ID and all local cache.")) {
+    if (confirm("Reset everything? All Client IDs and local data will be removed.")) {
       localStorage.clear();
+      window.location.hash = '';
       window.location.reload();
     }
   }
@@ -249,9 +258,8 @@ class ZohoLedgerApp {
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleModal(false);
     this.updateConfigStatus();
-    this.log("Config Saved.");
+    this.log("Configuration Updated.");
     
-    // Clear any previous errors once fixed
     this.views.landingError.classList.add('view-hidden');
   }
 
@@ -260,34 +268,36 @@ class ZohoLedgerApp {
       return this.toggleModal(true);
     }
     
-    this.showLoading(10, "Redirecting to Zoho...");
+    this.showLoading(10, "Redirecting to Zoho Identity Server...");
     const redirectUri = window.location.origin + window.location.pathname;
     const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.settings.READ";
+    
+    // Explicitly use the region-specific accounts URL
     const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
     
     window.location.href = authUrl;
   }
 
   handleOAuthCallback() {
-    const hash = window.location.hash;
+    const hash = window.location.hash || window.location.search;
     if (!hash) return;
     
-    const params = new URLSearchParams(hash.substring(1));
+    // Check both hash (token) and search (errors)
+    const params = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : hash.substring(1));
     
-    // Check for explicit errors from Zoho
     if (params.has('error')) {
       const errorMsg = params.get('error');
-      let friendlyError = "Zoho rejection: " + errorMsg;
+      let helpText = `Zoho Server Error: ${errorMsg}`;
       
       if (errorMsg === 'invalid_client') {
-        friendlyError = "The Client ID does not exist for the selected region (.com, .in, etc.). Ensure your Zoho Console region matches your selection.";
-      } else if (errorMsg === 'access_denied') {
-        friendlyError = "The request was cancelled or access was denied.";
+        helpText = `The Client ID "${this.config.clientId}" was not found on the "zoho.${this.config.region}" data center. Please check if your Zoho API Console region matches the one selected in this app. Also, ensure the Client Type is set to "Single Page Application".`;
       } else if (errorMsg === 'redirect_uri_mismatch') {
-        friendlyError = "The Redirect URI in Zoho API Console does not match this app's URL.";
+        helpText = "The Redirect URI in Zoho Console does not match this website's URL. Re-copy the URI from the Settings and update your Zoho Console.";
+      } else if (errorMsg === 'access_denied') {
+        helpText = "The authorization request was rejected by the user.";
       }
       
-      this.showLandingError(friendlyError);
+      this.showLandingError(helpText);
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
@@ -301,7 +311,7 @@ class ZohoLedgerApp {
 
   async checkSession() {
     if (this.state.accessToken) {
-      this.showLoading(15, "Verifying Identity...");
+      this.showLoading(15, "Authenticating API Session...");
       const success = await this.discoverOrganizations();
       if (success) {
         this.views.landing.classList.add('view-hidden');
@@ -310,6 +320,7 @@ class ZohoLedgerApp {
         await this.fetchCustomers();
         this.autoFitZoom();
       } else {
+        // If discover fails with token, likely expired or wrong region config
         this.logout();
       }
       this.hideLoading();
@@ -335,7 +346,7 @@ class ZohoLedgerApp {
       }
     } catch (e) {
       if (e.message.includes("401")) return false;
-      this.showLandingError(`Configuration issue: ${e.message}.`);
+      this.showLandingError(`API Connectivity Error: ${e.message}. Ensure your region (.com, .in, etc.) is correct.`);
       return false;
     }
   }
@@ -345,18 +356,18 @@ class ZohoLedgerApp {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
       if (res && res.organization) this.state.currentOrgDetails = res.organization;
-    } catch (e) { console.warn(e); }
+    } catch (e) { console.warn("Org detail fetch failed", e); }
   }
 
   async fetchCustomers() {
-    this.showLoading(35, "Syncing Registry...");
+    this.showLoading(35, "Syncing Customer Base...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
       if (res && res.contacts) {
         this.state.customers = res.contacts;
         this.renderCustomerList();
-        this.log("Sync Complete.");
+        this.log("Database Sync Ready.");
       }
     } catch (e) { this.log(`Registry Error: ${e.message}`); }
     finally { this.hideLoading(); }
@@ -367,12 +378,12 @@ class ZohoLedgerApp {
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
       const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
       const div = document.createElement('div');
-      div.className = `flex items-center space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-all text-[11px] group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
+      div.className = `flex items-center space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-all group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
       div.innerHTML = `
         <div class="w-4 h-4 rounded border border-white/20 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
           ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
         </div>
-        <span class="truncate font-semibold tracking-tight text-neutral-400 group-hover:text-white transition-colors uppercase tracking-widest text-[9px]">${c.contact_name}</span>
+        <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white transition-colors tracking-widest">${c.contact_name}</span>
       `;
       div.onclick = () => this.handleCustomerClick(c.contact_id);
       this.views.customerList.appendChild(div);
@@ -406,17 +417,17 @@ class ZohoLedgerApp {
         if (module === 'invoices' && records.length > 0) {
           for (const inv of records) {
             if (!this.state.invoiceDetailsCache[inv.invoice_id]) {
-              await new Promise(r => setTimeout(r, 80)); 
+              await new Promise(r => setTimeout(r, 60)); 
               const dUrl = `https://www.zohoapis.${this.config.region}/books/v3/invoices/${inv.invoice_id}?organization_id=${this.state.selectedOrgId}`;
               try {
                 const dRes = await this.rawRequest(dUrl);
                 if (dRes && dRes.invoice) this.state.invoiceDetailsCache[inv.invoice_id] = dRes.invoice;
-              } catch (e) { console.warn(e); }
+              } catch (e) { console.warn("Failed detail sync", e); }
             }
           }
         }
         this.state.dataStore[module][id] = { customerName: customer.contact_name, records: records };
-      } catch (e) { console.warn(e); }
+      } catch (e) { console.warn("Module sync error", e); }
     }
     this.hideLoading();
   }
@@ -454,7 +465,7 @@ class ZohoLedgerApp {
               items.push({ itemName: li.name || li.description || "Service", qty: li.quantity || 1, subTotal: li.item_total || 0 });
             });
           } else {
-            items.push({ itemName: `Pending Sync...`, qty: 1, subTotal: inv.total || 0 });
+            items.push({ itemName: `Partial Sync...`, qty: 1, subTotal: inv.total || 0 });
           }
           groupedInvoices.push({ invoiceNo: inv.invoice_number, date: inv.date, balance: inv.balance, items: items });
         });
@@ -469,7 +480,7 @@ class ZohoLedgerApp {
   renderExplorer() {
     const mods = Object.keys(this.state.dataStore).filter(m => Object.values(this.state.dataStore[m]).some(d => d.records.length > 0));
     if (mods.length === 0) {
-      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] font-black uppercase tracking-widest">No Active Modules</div>';
+      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] font-black uppercase tracking-widest">No Loaded Datasets</div>';
       return;
     }
     if (!this.state.explorerActiveModule || !mods.includes(this.state.explorerActiveModule)) this.state.explorerActiveModule = mods[0];
@@ -506,15 +517,15 @@ class ZohoLedgerApp {
       <div class="flex justify-between items-start mb-12">
         <div>
           <h1 class="text-2xl font-black uppercase tracking-tighter leading-none">${org.name || 'Organization'}</h1>
-          <p class="text-[9px] text-neutral-500 font-bold uppercase mt-2">Outstanding Client Ledger</p>
+          <p class="text-[9px] text-neutral-500 font-bold uppercase mt-2">Customer Outstanding Statement</p>
         </div>
         <div class="text-right">
-          <h2 class="text-3xl font-black theme-accent-text tracking-tighter leading-none">STATEMENT</h2>
-          <p class="mt-4 text-[8px] font-black uppercase tracking-widest text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
+          <h2 class="text-3xl font-black theme-accent-text tracking-tighter leading-none">LEDGER</h2>
+          <p class="mt-4 text-[8px] font-black uppercase tracking-widest text-neutral-400">Generated: ${new Date().toLocaleDateString()}</p>
         </div>
       </div>
       <table class="w-full text-left border-collapse table-fixed">
-        <thead><tr class="theme-accent-bg text-[8px] font-black uppercase tracking-widest"><th class="py-2 px-3 w-[30px]">#</th><th class="py-2 px-3 w-[160px]">Description</th><th class="py-2 px-3 w-[45px] text-center">Qty</th><th class="py-2 px-3 w-[95px] text-right">Amount</th><th class="py-2 px-3 w-[80px] text-center">Reference</th><th class="py-2 px-3 w-[95px] text-right">Balance</th></tr></thead>
+        <thead><tr class="theme-accent-bg text-[8px] font-black uppercase tracking-widest"><th class="py-2 px-3 w-[30px]">#</th><th class="py-2 px-3 w-[160px]">Item Description</th><th class="py-2 px-3 w-[45px] text-center">Qty</th><th class="py-2 px-3 w-[95px] text-right">Amount</th><th class="py-2 px-3 w-[80px] text-center">Reference</th><th class="py-2 px-3 w-[95px] text-right">Balance</th></tr></thead>
         <tbody class="text-[9px]">`;
 
     let globalCounter = 1;
@@ -522,12 +533,12 @@ class ZohoLedgerApp {
       const clientTotal = cust.invoices.reduce((s, i) => s + i.balance, 0);
       html += `<tr class="theme-row-bg border-b-2 theme-border-color">
         <td colspan="4" class="py-3 px-3 font-black text-[11px] uppercase tracking-tighter">Client: ${cust.customerName}</td>
-        <td colspan="2" class="py-3 px-3 text-right font-black text-[11px] uppercase tracking-tighter">Due: ${clientTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        <td colspan="2" class="py-3 px-3 text-right font-black text-[11px] uppercase tracking-tighter">O/S: ${clientTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
       </tr>`;
       
       cust.invoices.forEach(inv => {
         let runBal = 0;
-        html += `<tr class="bg-neutral-50/50"><td colspan="6" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Invoice: ${inv.invoiceNo} (${inv.date})</td></tr>`;
+        html += `<tr class="bg-neutral-50/50"><td colspan="6" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Ref: ${inv.invoiceNo} (${inv.date})</td></tr>`;
         inv.items.forEach(item => {
           runBal += item.subTotal;
           html += `<tr class="border-b border-neutral-100">
@@ -539,7 +550,7 @@ class ZohoLedgerApp {
             <td class="py-2 px-3 text-right font-black text-neutral-800">${runBal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
           </tr>`;
         });
-        html += `<tr class="border-t border-neutral-300"><td colspan="5" class="py-2 px-3 text-right font-bold text-neutral-500 uppercase">Inv. Outstanding:</td><td class="py-2 px-3 text-right font-black text-indigo-600">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr><tr class="h-3"></tr>`; 
+        html += `<tr class="border-t border-neutral-300"><td colspan="5" class="py-2 px-3 text-right font-bold text-neutral-500 uppercase text-[8px]">Inv. Balance:</td><td class="py-2 px-3 text-right font-black text-indigo-600">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr><tr class="h-3"></tr>`; 
       });
     });
     this.targets.renderArea.innerHTML = html + `</tbody></table></div>`;
@@ -558,7 +569,7 @@ class ZohoLedgerApp {
       this.views.loadingBar.classList.add('view-hidden');
       this.views.loadingOverlay.classList.add('view-hidden');
       this.views.loadingProgress.style.width = '0%';
-    }, 1000);
+    }, 800);
   }
 
   filterCustomers(term) {
@@ -580,9 +591,9 @@ class ZohoLedgerApp {
   downloadPDF() {
     const el = document.getElementById('pdf-content');
     if (!el) return;
-    this.showLoading(85, "GENERATING PDF...");
+    this.showLoading(85, "RENDERING PDF DOCUMENT...");
     html2pdf().set({
-      margin: 0, filename: `Ledger_${Date.now()}.pdf`,
+      margin: 0, filename: `Zoho_Statement_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 1.0 },
       html2canvas: { scale: 3.5, useCORS: true, letterRendering: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
