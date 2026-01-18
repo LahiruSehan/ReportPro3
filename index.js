@@ -1,15 +1,14 @@
 
 /**
  * BIZSENSE STATEMENT PRO - ENGINE CORE
- * Fully Generic Version: Dynamic OAuth & Error Handling
- * Updated: Improved input sanitization and Copy-to-Clipboard logic
+ * Fully Generic Version: Advanced Session Management
  */
 
 class ZohoLedgerApp {
   constructor() {
     this.proxyPrefix = "https://corsproxy.io/?";
     
-    // Load config with strict sanitization
+    // 1. Initial Config Load
     const savedConfig = localStorage.getItem('zoho_config');
     this.config = savedConfig ? JSON.parse(savedConfig) : { clientId: '', clientSecret: '', region: 'com' };
     
@@ -29,22 +28,24 @@ class ZohoLedgerApp {
       invoiceDetailsCache: {},
       currentView: 'ledger', 
       currentTheme: 'indigo',
-      zoom: 1.0
+      zoom: 1.0,
+      isInitializing: true
     };
 
+    // 2. Immediate Callback Check (Run before DOM for speed)
+    this.handleOAuthCallback();
+    
+    // 3. Start App
     this.init();
   }
 
   init() {
-    document.addEventListener('DOMContentLoaded', () => {
-      this.cacheDOM();
-      this.bindEvents();
-      this.applyTheme(this.state.currentTheme);
-      this.handleOAuthCallback();
-      this.updateConfigStatus();
-      this.checkSession();
-      window.addEventListener('resize', () => { if(this.state.currentView === 'ledger') this.autoFitZoom(); });
-    });
+    this.cacheDOM();
+    this.bindEvents();
+    this.applyTheme(this.state.currentTheme);
+    this.updateConfigStatus();
+    this.checkSession();
+    window.addEventListener('resize', () => { if(this.state.currentView === 'ledger') this.autoFitZoom(); });
   }
 
   cacheDOM() {
@@ -106,9 +107,7 @@ class ZohoLedgerApp {
     };
 
     if (this.inputs.displayRedirect) {
-      // Calculate URI accurately (Zoho requires exact match)
-      const redirectUri = window.location.origin + window.location.pathname;
-      this.inputs.displayRedirect.innerText = redirectUri;
+      this.inputs.displayRedirect.innerText = window.location.origin + window.location.pathname;
     }
 
     this.inputs.moduleCheckboxes.forEach(cb => {
@@ -160,6 +159,121 @@ class ZohoLedgerApp {
     }
   }
 
+  handleOAuthCallback() {
+    const hash = window.location.hash;
+    const search = window.location.search;
+    
+    // Priority 1: Check for tokens in hash (Implicit Flow)
+    if (hash && hash.includes('access_token')) {
+      const params = new URLSearchParams(hash.substring(1));
+      const token = params.get('access_token');
+      if (token) {
+        this.state.accessToken = token;
+        localStorage.setItem('zoho_access_token', token);
+        // Clean the URL for security/aesthetics
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+      }
+    } 
+    // Priority 2: Check for errors in search (Query parameters)
+    else if (search && search.includes('error')) {
+      const params = new URLSearchParams(search);
+      const errorMsg = params.get('error');
+      let helpText = `OAuth Error: ${errorMsg}`;
+      
+      if (errorMsg === 'invalid_client') {
+        helpText = `Client ID mismatch. Ensure your Zoho API Console region matches the one selected in this app. Only "Single Page Application" client types are supported.`;
+      } else if (errorMsg === 'access_denied') {
+        helpText = "Access request was cancelled.";
+      }
+      
+      this.showLandingError(helpText);
+      window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+    }
+  }
+
+  async checkSession() {
+    if (this.state.accessToken) {
+      this.showLoading(20, "Establishing Secure Connection...");
+      try {
+        const success = await this.discoverOrganizations();
+        if (success) {
+          this.views.landing.classList.add('view-hidden');
+          this.views.dashboard.classList.remove('view-hidden');
+          await this.fetchOrganizationDetails();
+          await this.fetchCustomers();
+          this.autoFitZoom();
+          this.log("Session Verified.");
+        } else {
+          // Failure handled in discoverOrganizations (shows error on landing)
+          this.hideLoading();
+        }
+      } catch (err) {
+        this.showLandingError(`Initialization Failure: ${err.message}`);
+        this.hideLoading();
+      }
+    }
+    this.state.isInitializing = false;
+  }
+
+  async discoverOrganizations() {
+    try {
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations`;
+      const res = await this.rawRequest(url);
+      
+      if (res && res.organizations && res.organizations.length > 0) {
+        this.state.organizations = res.organizations;
+        this.inputs.orgSelect.innerHTML = '';
+        res.organizations.forEach(org => {
+          const opt = document.createElement('option');
+          opt.value = org.organization_id;
+          opt.innerText = org.name;
+          this.inputs.orgSelect.appendChild(opt);
+        });
+        
+        if (!this.state.selectedOrgId) {
+          this.state.selectedOrgId = res.organizations[0].organization_id;
+        }
+        this.inputs.orgSelect.value = this.state.selectedOrgId;
+        return true;
+      } else {
+        throw new Error("No organizations found associated with this Zoho account.");
+      }
+    } catch (e) {
+      if (e.message.includes("401") || e.message.includes("Invalid Token")) {
+        this.showLandingError("Session expired or token invalid. Please Authorize again.");
+        this.logout(false); // don't reload to avoid loops
+      } else {
+        this.showLandingError(`Data Center Mismatch? Failed to fetch organizations from zoho.${this.config.region}. Error: ${e.message}`);
+      }
+      return false;
+    }
+  }
+
+  async rawRequest(url) {
+    const fullUrl = this.proxyPrefix + encodeURIComponent(url);
+    try {
+      const res = await fetch(fullUrl, {
+        method: 'GET',
+        headers: { 
+          'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (res.status === 401) throw new Error("401 Unauthorized (Invalid Session)");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `HTTP ${res.status}`);
+      }
+      
+      return await res.json();
+    } catch (err) {
+      console.error("API Fetch Error:", err);
+      throw err;
+    }
+  }
+
   async copyToClipboard(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -170,7 +284,7 @@ class ZohoLedgerApp {
         this.btns.copyUri.classList.remove('bg-green-600', 'text-white');
       }, 2000);
     } catch (err) {
-      alert("Failed to copy. Please select and copy manually.");
+      alert("Manual copy required: " + text);
     }
   }
 
@@ -185,7 +299,7 @@ class ZohoLedgerApp {
   }
 
   wipeConfiguration() {
-    if (confirm("Reset everything? All Client IDs and local data will be removed.")) {
+    if (confirm("This will clear ALL settings and active sessions. Continue?")) {
       localStorage.clear();
       window.location.hash = '';
       window.location.reload();
@@ -258,8 +372,7 @@ class ZohoLedgerApp {
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleModal(false);
     this.updateConfigStatus();
-    this.log("Configuration Updated.");
-    
+    this.log("Settings Saved.");
     this.views.landingError.classList.add('view-hidden');
   }
 
@@ -268,87 +381,13 @@ class ZohoLedgerApp {
       return this.toggleModal(true);
     }
     
-    this.showLoading(10, "Redirecting to Zoho Identity Server...");
+    this.showLoading(15, "Initiating OAuth Handshake...");
     const redirectUri = window.location.origin + window.location.pathname;
     const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.settings.READ";
     
-    // Explicitly use the region-specific accounts URL
     const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
     
     window.location.href = authUrl;
-  }
-
-  handleOAuthCallback() {
-    const hash = window.location.hash || window.location.search;
-    if (!hash) return;
-    
-    // Check both hash (token) and search (errors)
-    const params = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : hash.substring(1));
-    
-    if (params.has('error')) {
-      const errorMsg = params.get('error');
-      let helpText = `Zoho Server Error: ${errorMsg}`;
-      
-      if (errorMsg === 'invalid_client') {
-        helpText = `The Client ID "${this.config.clientId}" was not found on the "zoho.${this.config.region}" data center. Please check if your Zoho API Console region matches the one selected in this app. Also, ensure the Client Type is set to "Single Page Application".`;
-      } else if (errorMsg === 'redirect_uri_mismatch') {
-        helpText = "The Redirect URI in Zoho Console does not match this website's URL. Re-copy the URI from the Settings and update your Zoho Console.";
-      } else if (errorMsg === 'access_denied') {
-        helpText = "The authorization request was rejected by the user.";
-      }
-      
-      this.showLandingError(helpText);
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    if (params.has('access_token')) {
-      this.state.accessToken = params.get('access_token');
-      localStorage.setItem('zoho_access_token', this.state.accessToken);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }
-
-  async checkSession() {
-    if (this.state.accessToken) {
-      this.showLoading(15, "Authenticating API Session...");
-      const success = await this.discoverOrganizations();
-      if (success) {
-        this.views.landing.classList.add('view-hidden');
-        this.views.dashboard.classList.remove('view-hidden');
-        await this.fetchOrganizationDetails();
-        await this.fetchCustomers();
-        this.autoFitZoom();
-      } else {
-        // If discover fails with token, likely expired or wrong region config
-        this.logout();
-      }
-      this.hideLoading();
-    }
-  }
-
-  async discoverOrganizations() {
-    try {
-      const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations`;
-      const res = await this.rawRequest(url);
-      if (res && res.organizations) {
-        this.state.organizations = res.organizations;
-        this.inputs.orgSelect.innerHTML = '';
-        res.organizations.forEach(org => {
-          const opt = document.createElement('option');
-          opt.value = org.organization_id;
-          opt.innerText = org.name;
-          this.inputs.orgSelect.appendChild(opt);
-        });
-        if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
-        this.inputs.orgSelect.value = this.state.selectedOrgId;
-        return true;
-      }
-    } catch (e) {
-      if (e.message.includes("401")) return false;
-      this.showLandingError(`API Connectivity Error: ${e.message}. Ensure your region (.com, .in, etc.) is correct.`);
-      return false;
-    }
   }
 
   async fetchOrganizationDetails() {
@@ -356,20 +395,20 @@ class ZohoLedgerApp {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
       if (res && res.organization) this.state.currentOrgDetails = res.organization;
-    } catch (e) { console.warn("Org detail fetch failed", e); }
+    } catch (e) { console.warn("Detail fetch skip", e); }
   }
 
   async fetchCustomers() {
-    this.showLoading(35, "Syncing Customer Base...");
+    this.showLoading(40, "Synchronizing Customers...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
       if (res && res.contacts) {
         this.state.customers = res.contacts;
         this.renderCustomerList();
-        this.log("Database Sync Ready.");
+        this.log("Registry Online.");
       }
-    } catch (e) { this.log(`Registry Error: ${e.message}`); }
+    } catch (e) { this.log(`API Error: ${e.message}`); }
     finally { this.hideLoading(); }
   }
 
@@ -407,7 +446,7 @@ class ZohoLedgerApp {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
     
-    this.showLoading(45, `Mapping: ${customer.contact_name}`);
+    this.showLoading(50, `Pulling Data: ${customer.contact_name}`);
     for (const module of this.state.activeModules) {
       try {
         const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
@@ -422,7 +461,7 @@ class ZohoLedgerApp {
               try {
                 const dRes = await this.rawRequest(dUrl);
                 if (dRes && dRes.invoice) this.state.invoiceDetailsCache[inv.invoice_id] = dRes.invoice;
-              } catch (e) { console.warn("Failed detail sync", e); }
+              } catch (e) { console.warn("Detail sync skip", e); }
             }
           }
         }
@@ -465,7 +504,7 @@ class ZohoLedgerApp {
               items.push({ itemName: li.name || li.description || "Service", qty: li.quantity || 1, subTotal: li.item_total || 0 });
             });
           } else {
-            items.push({ itemName: `Partial Sync...`, qty: 1, subTotal: inv.total || 0 });
+            items.push({ itemName: `Pending detail sync...`, qty: 1, subTotal: inv.total || 0 });
           }
           groupedInvoices.push({ invoiceNo: inv.invoice_number, date: inv.date, balance: inv.balance, items: items });
         });
@@ -480,7 +519,7 @@ class ZohoLedgerApp {
   renderExplorer() {
     const mods = Object.keys(this.state.dataStore).filter(m => Object.values(this.state.dataStore[m]).some(d => d.records.length > 0));
     if (mods.length === 0) {
-      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] font-black uppercase tracking-widest">No Loaded Datasets</div>';
+      this.targets.explorerArea.innerHTML = '<div class="h-40 flex items-center justify-center text-neutral-600 text-[10px] font-black uppercase tracking-widest">No Active Records</div>';
       return;
     }
     if (!this.state.explorerActiveModule || !mods.includes(this.state.explorerActiveModule)) this.state.explorerActiveModule = mods[0];
@@ -517,15 +556,15 @@ class ZohoLedgerApp {
       <div class="flex justify-between items-start mb-12">
         <div>
           <h1 class="text-2xl font-black uppercase tracking-tighter leading-none">${org.name || 'Organization'}</h1>
-          <p class="text-[9px] text-neutral-500 font-bold uppercase mt-2">Customer Outstanding Statement</p>
+          <p class="text-[9px] text-neutral-500 font-bold uppercase mt-2">Outstanding Ledger Analysis</p>
         </div>
         <div class="text-right">
-          <h2 class="text-3xl font-black theme-accent-text tracking-tighter leading-none">LEDGER</h2>
-          <p class="mt-4 text-[8px] font-black uppercase tracking-widest text-neutral-400">Generated: ${new Date().toLocaleDateString()}</p>
+          <h2 class="text-3xl font-black theme-accent-text tracking-tighter leading-none">STATEMENT</h2>
+          <p class="mt-4 text-[8px] font-black uppercase tracking-widest text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
         </div>
       </div>
       <table class="w-full text-left border-collapse table-fixed">
-        <thead><tr class="theme-accent-bg text-[8px] font-black uppercase tracking-widest"><th class="py-2 px-3 w-[30px]">#</th><th class="py-2 px-3 w-[160px]">Item Description</th><th class="py-2 px-3 w-[45px] text-center">Qty</th><th class="py-2 px-3 w-[95px] text-right">Amount</th><th class="py-2 px-3 w-[80px] text-center">Reference</th><th class="py-2 px-3 w-[95px] text-right">Balance</th></tr></thead>
+        <thead><tr class="theme-accent-bg text-[8px] font-black uppercase tracking-widest"><th class="py-2 px-3 w-[30px]">#</th><th class="py-2 px-3 w-[160px]">Service Item</th><th class="py-2 px-3 w-[45px] text-center">Qty</th><th class="py-2 px-3 w-[95px] text-right">Amount</th><th class="py-2 px-3 w-[80px] text-center">Reference</th><th class="py-2 px-3 w-[95px] text-right">Balance</th></tr></thead>
         <tbody class="text-[9px]">`;
 
     let globalCounter = 1;
@@ -533,12 +572,12 @@ class ZohoLedgerApp {
       const clientTotal = cust.invoices.reduce((s, i) => s + i.balance, 0);
       html += `<tr class="theme-row-bg border-b-2 theme-border-color">
         <td colspan="4" class="py-3 px-3 font-black text-[11px] uppercase tracking-tighter">Client: ${cust.customerName}</td>
-        <td colspan="2" class="py-3 px-3 text-right font-black text-[11px] uppercase tracking-tighter">O/S: ${clientTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        <td colspan="2" class="py-3 px-3 text-right font-black text-[11px] uppercase tracking-tighter">TOTAL DUE: ${clientTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
       </tr>`;
       
       cust.invoices.forEach(inv => {
         let runBal = 0;
-        html += `<tr class="bg-neutral-50/50"><td colspan="6" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Ref: ${inv.invoiceNo} (${inv.date})</td></tr>`;
+        html += `<tr class="bg-neutral-50/50"><td colspan="6" class="py-2 px-3 font-bold text-neutral-400 uppercase italic">Invoice: ${inv.invoiceNo} (${inv.date})</td></tr>`;
         inv.items.forEach(item => {
           runBal += item.subTotal;
           html += `<tr class="border-b border-neutral-100">
@@ -550,7 +589,7 @@ class ZohoLedgerApp {
             <td class="py-2 px-3 text-right font-black text-neutral-800">${runBal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
           </tr>`;
         });
-        html += `<tr class="border-t border-neutral-300"><td colspan="5" class="py-2 px-3 text-right font-bold text-neutral-500 uppercase text-[8px]">Inv. Balance:</td><td class="py-2 px-3 text-right font-black text-indigo-600">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr><tr class="h-3"></tr>`; 
+        html += `<tr class="border-t border-neutral-300"><td colspan="5" class="py-2 px-3 text-right font-bold text-neutral-500 uppercase text-[8px]">Inv Outstanding:</td><td class="py-2 px-3 text-right font-black text-indigo-600">${inv.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr><tr class="h-3"></tr>`; 
       });
     });
     this.targets.renderArea.innerHTML = html + `</tbody></table></div>`;
@@ -579,21 +618,12 @@ class ZohoLedgerApp {
     });
   }
 
-  async rawRequest(url) {
-    const res = await fetch(this.proxyPrefix + encodeURIComponent(url), {
-      headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
-    });
-    if (res.status === 401) throw new Error("401");
-    if (!res.ok) throw new Error('Zoho API Rejection');
-    return res.json();
-  }
-
   downloadPDF() {
     const el = document.getElementById('pdf-content');
     if (!el) return;
-    this.showLoading(85, "RENDERING PDF DOCUMENT...");
+    this.showLoading(85, "GENERATING FILE...");
     html2pdf().set({
-      margin: 0, filename: `Zoho_Statement_${Date.now()}.pdf`,
+      margin: 0, filename: `Ledger_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 1.0 },
       html2canvas: { scale: 3.5, useCORS: true, letterRendering: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -601,16 +631,24 @@ class ZohoLedgerApp {
   }
 
   log(m) { this.targets.log.innerText = `SYS: ${m.toUpperCase()}`; }
+  
   showLandingError(m) { 
-    this.views.landingError.classList.remove('view-hidden');
-    this.targets.landingErrorText.innerText = m;
+    if (this.views.landingError) {
+      this.views.landingError.classList.remove('view-hidden');
+      this.targets.landingErrorText.innerText = m;
+    }
     this.hideLoading();
   }
-  logout() { 
+
+  logout(reload = true) { 
     localStorage.removeItem('zoho_access_token');
-    window.location.hash = '';
-    window.location.reload(); 
+    this.state.accessToken = null;
+    if (reload) {
+      window.location.hash = '';
+      window.location.reload(); 
+    }
   }
 }
 
+// Global initialization
 window.app = new ZohoLedgerApp();
