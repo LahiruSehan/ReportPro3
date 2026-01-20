@@ -9,6 +9,7 @@
   <link rel="icon" type="image/png" href="https://i.ibb.co/7mmBhMJ/LOGO.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     
@@ -16,56 +17,36 @@
       --theme-primary: #6366f1;
       --theme-secondary: #f5f3ff;
       --theme-accent: #818cf8;
-      --theme-text-dark: #1e1b4b;
-      --theme-border: #e2e8f0;
       --app-bg: #020205;
       --app-card: rgba(255, 255, 255, 0.03);
       --app-text: #ffffff;
       --app-border: rgba(255, 255, 255, 0.05);
     }
 
-    [data-app-theme="light"] {
-      --app-bg: #f8fafc;
-      --app-card: #ffffff;
-      --app-text: #0f172a;
-      --app-border: #e2e8f0;
-    }
-
-    body { background-color: var(--app-bg); color: var(--app-text); font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; transition: 0.3s; }
+    body { background-color: var(--app-bg); color: var(--app-text); font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; }
     
     .view-hidden { display: none !important; }
     .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
-    select, input[type="text"], input[type="password"] { background: var(--app-card) !important; color: var(--app-text) !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; transition: 0.2s border-color; }
-    select:focus, input:focus { border-color: var(--theme-primary) !important; }
+    select, input[type="text"], input[type="password"] { background: var(--app-card) !important; color: var(--app-text) !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
     
     .statement-view { 
       background: white; color: #111; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; 
       box-shadow: 0 40px 100px rgba(0,0,0,0.3); font-size: 10px; position: relative; transform-origin: top center;
     }
     
-    .theme-accent-bg { background-color: var(--theme-primary); color: white; }
-    .theme-accent-text { color: var(--theme-primary); }
-    .theme-border-color { border-color: var(--theme-primary); }
-    .theme-row-bg { background-color: var(--theme-secondary); }
-
+    [contenteditable="true"]:hover { background: #f0f4ff; outline: 1px dashed #6366f1; cursor: text; }
+    
     .zoom-controls { position: fixed; bottom: 4rem; right: 2rem; z-index: 100; display: flex; flex-direction: column; gap: 0.75rem; }
-    .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; transition: 0.2s transform; }
-    .zoom-btn:active { transform: scale(0.9); }
+    .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; }
 
-    #loading-bar-container { position: fixed; top: 0; left: 0; width: 100%; height: 8px; z-index: 1000; overflow: hidden; background: rgba(0,0,0,0.6); }
+    #loading-bar-container { position: fixed; top: 0; left: 0; width: 100%; height: 6px; z-index: 1000; overflow: hidden; background: rgba(0,0,0,0.6); }
     #loading-bar { height: 100%; width: 0%; background: #6366f1; transition: 0.3s; }
-    #loading-status-overlay { position: fixed; top: 8px; left: 0; width: 100%; height: 50px; background: #6366f1; z-index: 999; display: flex; align-items: center; padding: 0 1.5rem; color: white; font-weight: 900; font-size: 11px; text-transform: uppercase; }
+    #loading-status-overlay { position: fixed; top: 6px; left: 0; width: 100%; height: 40px; background: #6366f1; z-index: 999; display: flex; align-items: center; padding: 0 1.5rem; color: white; font-weight: 900; font-size: 10px; text-transform: uppercase; }
 
     .modal-overlay { z-index: 400; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
-    
-    .step-badge { width: 20px; height: 20px; border-radius: 50%; background: var(--theme-primary); color: white; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: 900; flex-shrink: 0; }
-    
-    .copy-btn { padding: 4px 8px; background: rgba(255,255,255,0.1); border-radius: 6px; font-size: 9px; font-weight: 800; color: #818cf8; transition: all 0.2s; }
-    .copy-btn:hover { background: #6366f1; color: white; }
-    
-    .checklist-item { display: flex; align-items: center; space-x: 2; color: #a3a3a3; font-size: 10px; margin-bottom: 4px; }
-    .checklist-item svg { color: #6366f1; width: 12px; height: 12px; margin-right: 6px; }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -74,77 +55,41 @@
     <div id="loading-bar"></div>
   </div>
   <div id="loading-status-overlay" class="view-hidden">
-    <span id="loading-bar-text">SYSTEM READY...</span>
+    <span id="loading-bar-text">INITIALIZING...</span>
   </div>
 
   <!-- Connection Hub Modal -->
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
-    <div class="glass-card p-6 md:p-10 w-full max-w-xl space-y-6 relative border-indigo-500/30 shadow-2xl overflow-y-auto max-h-[95vh]">
-      <button id="btn-close-config" class="absolute top-6 right-6 text-neutral-500 text-3xl hover:text-white transition-colors">&times;</button>
+    <div class="glass-card p-6 md:p-10 w-full max-w-xl space-y-6 relative border-indigo-500/30 shadow-2xl">
+      <button id="btn-close-config" class="absolute top-6 right-6 text-neutral-500 text-3xl hover:text-white">&times;</button>
+      <h3 class="text-xl font-black uppercase tracking-tight">API Handshake</h3>
       
-      <div class="flex items-center space-x-4 mb-2">
-        <div class="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-600/30">
-          <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6">
-        </div>
-        <div>
-          <h3 class="text-xl font-black uppercase tracking-tight">API Configuration</h3>
-          <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Zoho Books Integration Hub</p>
-        </div>
-      </div>
-
       <div class="space-y-4">
-        <!-- Step 1 -->
-        <div class="flex items-start space-x-4 p-4 bg-white/5 rounded-2xl border border-white/5">
-          <span class="step-badge mt-1">1</span>
-          <div class="flex-grow">
-            <p class="text-white font-black mb-2 uppercase text-[10px] tracking-widest">Zoho API Console Requirements</p>
-            <div class="space-y-1">
-              <div class="checklist-item"><svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Go to <a href="https://api-console.zoho.com" target="_blank" class="text-indigo-400 font-bold underline">api-console.zoho.com</a></div>
-              <div class="checklist-item"><svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Click <b>ADD CLIENT</b></div>
-              <div class="checklist-item"><svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Choose <b>Single Page Application</b> (Required)</div>
-            </div>
-          </div>
+        <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
+          <p class="text-white font-black mb-2 uppercase text-[10px] tracking-widest">Authorized Redirect URI</p>
+          <code class="block p-3 bg-black/50 rounded-xl border border-white/10 font-mono text-indigo-400 text-[10px] break-all select-all" id="display-redirect-uri"></code>
         </div>
 
-        <!-- Step 2 -->
-        <div class="flex items-start space-x-4 p-4 bg-white/5 rounded-2xl border border-white/5">
-          <span class="step-badge mt-1">2</span>
-          <div class="w-full">
-            <div class="flex justify-between items-center mb-2">
-              <p class="text-white font-black uppercase text-[10px] tracking-widest">Authorized Redirect URI</p>
-              <button id="btn-copy-uri" class="copy-btn">COPY URI</button>
-            </div>
-            <code class="block p-3 bg-black/50 rounded-xl border border-white/10 font-mono text-indigo-400 text-[10px] break-all select-all" id="display-redirect-uri"></code>
-          </div>
-        </div>
-
-        <!-- Inputs -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          <div class="col-span-1 md:col-span-2">
-            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Zoho Region (Must match where you created the app)</label>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Zoho Data Center</label>
             <select id="cfg-region" class="w-full text-xs font-bold">
               <option value="com">Global / US (zoho.com)</option>
               <option value="in">India (zoho.in)</option>
               <option value="eu">Europe (zoho.eu)</option>
               <option value="com.au">Australia (zoho.com.au)</option>
-              <option value="jp">Japan (zoho.jp)</option>
-              <option value="com.cn">China (zoho.com.cn)</option>
             </select>
           </div>
-          <div>
-            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Client ID</label>
+          <div class="col-span-2">
+            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Client ID (SPA Type Required)</label>
             <input id="cfg-client-id" type="text" placeholder="1000.XXXX..." class="w-full text-xs font-mono">
-          </div>
-          <div>
-            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Client Secret (Not needed for SPA)</label>
-            <input id="cfg-client-secret" type="password" placeholder="••••••••" class="w-full text-xs">
           </div>
         </div>
       </div>
 
       <div class="flex gap-4 pt-4">
-        <button id="btn-reset-config" class="flex-1 py-4 bg-red-600/10 text-red-500 rounded-2xl font-black uppercase text-[10px] hover:bg-red-500/20 transition-all">Clear App</button>
-        <button id="btn-save-config" class="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 transition-all">Save & Apply</button>
+        <button id="btn-reset-config" class="flex-1 py-4 bg-red-600/10 text-red-500 rounded-2xl font-black uppercase text-[10px]">Purge Cache</button>
+        <button id="btn-save-config" class="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl">Apply Changes</button>
       </div>
     </div>
   </div>
@@ -152,75 +97,43 @@
   <!-- Landing Screen -->
   <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center">
     <div class="glass-card p-10 md:p-20 max-w-2xl w-full flex flex-col items-center shadow-2xl relative overflow-hidden">
-      <div class="absolute -top-32 -left-32 w-64 h-64 bg-indigo-600/10 blur-[100px] rounded-full"></div>
-      
-      <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-24 md:h-32 mb-10 relative z-10">
+      <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-24 mb-10">
       <h1 class="text-5xl md:text-7xl font-black mb-4 uppercase tracking-tighter leading-none">BIZSENSE<br><span class="text-indigo-500">PRO</span></h1>
-      <p class="text-neutral-500 mb-12 text-sm md:text-lg font-medium max-w-sm">Enterprise-grade statement engine for Zoho Books customers.</p>
-
-      <!-- Config Warning -->
-      <div id="config-status-badge" class="view-hidden mb-8 px-6 py-3 bg-indigo-500/10 text-indigo-400 text-[11px] font-black rounded-2xl uppercase border border-indigo-500/20 flex items-center space-x-3">
-        <span class="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-pulse"></span>
-        <span>Ready for Configuration</span>
+      
+      <div id="landing-error" class="view-hidden my-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs text-left w-full">
+        <p class="font-black uppercase mb-1">Authorization Error</p>
+        <p id="landing-error-text" class="opacity-80"></p>
       </div>
       
-      <!-- Critical Error Feedback -->
-      <div id="landing-error" class="view-hidden mb-10 w-full max-w-md">
-        <div class="p-6 bg-red-500/10 border border-red-500/20 rounded-3xl text-red-400 text-xs text-left">
-          <div class="flex items-center space-x-3 mb-4">
-            <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-            <p class="font-black uppercase tracking-widest">Configuration Error</p>
-          </div>
-          <p id="landing-error-text" class="leading-relaxed mb-6 font-medium text-neutral-300"></p>
-          
-          <div class="grid grid-cols-1 gap-2 mb-6">
-             <div class="checklist-item"><svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Ensure "Single Page Application" Client Type</div>
-             <div class="checklist-item"><svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Check Region (US vs India vs Europe)</div>
-             <div class="checklist-item"><svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Redirect URI must match exactly</div>
-          </div>
-
-          <button onclick="window.app.toggleModal(true)" class="w-full bg-red-500 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest shadow-xl shadow-red-500/20">Open Configuration Hub</button>
-        </div>
+      <div class="flex flex-col md:flex-row gap-5 w-full max-w-md mt-6">
+        <button id="btn-connect" class="flex-[2] py-6 bg-indigo-600 text-white rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl hover:bg-indigo-700">Authorize Access</button>
+        <button id="btn-open-config-landing" class="flex-1 py-6 bg-white/5 text-neutral-300 rounded-3xl font-black uppercase text-[11px] border border-white/10">Settings</button>
       </div>
-      
-      <div class="flex flex-col md:flex-row gap-5 w-full relative z-10 max-w-md">
-        <button id="btn-connect" class="flex-[2] py-6 bg-indigo-600 text-white rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl shadow-indigo-600/30 hover:bg-indigo-700 transition-all flex items-center justify-center space-x-3 group">
-          <span>Authorize Access</span>
-          <svg class="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-        </button>
-        <button id="btn-open-config-landing" class="flex-1 py-6 bg-white/5 text-neutral-300 rounded-3xl font-black uppercase text-[11px] tracking-widest border border-white/10 hover:bg-white/10 transition-all">Settings</button>
-      </div>
-      
-      <p class="mt-16 text-[10px] text-neutral-700 font-black uppercase tracking-[0.4em]">Powered by Zoho Books API v3</p>
     </div>
   </div>
 
   <!-- Dashboard -->
   <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
-    <!-- Navbar -->
     <header class="p-3 md:p-4 glass-card m-2 md:m-4 flex items-center justify-between">
-      <div class="flex items-center space-x-4 md:space-x-6">
+      <div class="flex items-center space-x-6">
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
-        <select id="select-organization" class="bg-transparent border-none text-[10px] md:text-xs font-black uppercase truncate max-w-[150px]"></select>
-        <div class="hidden md:flex items-center bg-black/40 rounded-xl p-1 border border-white/5">
-          <button id="tab-ledger" class="px-4 py-2 text-[9px] font-black uppercase bg-indigo-600 text-white rounded-lg transition-all">Ledger</button>
-          <button id="tab-explorer" class="px-4 py-2 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all">Explorer</button>
-        </div>
+        <select id="select-organization" class="bg-transparent border-none text-[10px] md:text-xs font-black uppercase"></select>
       </div>
-      <div class="flex items-center space-x-2 md:space-x-4">
-        <button id="btn-project-settings" class="p-2 text-neutral-500 hover:text-white transition-colors" title="Settings"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 002.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></button>
-        <button id="btn-logout" class="p-2 text-neutral-500 hover:text-red-500 transition-colors" title="Logout"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"/></svg></button>
+      <div class="flex items-center space-x-4">
+        <button id="btn-switch-identity" class="px-4 py-2 bg-white/5 border border-white/10 text-[9px] font-black uppercase rounded-lg hover:bg-white/10">Switch Identity</button>
+        <button id="btn-project-settings" class="p-2 text-neutral-500 hover:text-white" title="Sync Settings"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></button>
+        <button id="btn-logout" class="p-2 text-neutral-500 hover:text-red-500" title="Secure Logout"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"/></svg></button>
       </div>
     </header>
 
-    <div class="flex flex-grow overflow-hidden px-2 md:px-4 pb-2 md:pb-4 gap-2 md:gap-4">
+    <div class="flex flex-grow overflow-hidden px-2 md:px-4 pb-2 md:pb-4 gap-4">
       <aside class="hidden lg:flex w-80 flex-col gap-4">
         <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden">
           <div class="flex justify-between items-center mb-4">
             <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
             <div class="flex gap-1">
-              <button id="btn-select-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded hover:bg-white/10">ALL</button>
-              <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded hover:bg-white/10">NONE</button>
+              <button id="btn-select-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">ALL</button>
+              <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">NONE</button>
             </div>
           </div>
           <input type="text" id="customer-search" placeholder="Search customer..." class="w-full mb-4 text-xs">
@@ -230,60 +143,63 @@
 
       <main class="flex-grow glass-card flex flex-col overflow-hidden relative">
         <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-          <span class="text-[9px] md:text-[10px] font-black uppercase text-neutral-500 tracking-widest">Document Editor</span>
-          <button id="btn-download-pdf" disabled class="px-4 md:px-6 py-2 bg-indigo-600 text-white text-[9px] md:text-[10px] font-black uppercase rounded-xl disabled:opacity-30">Export Statement</button>
+          <div class="flex gap-2">
+            <button id="btn-download-pdf" disabled class="px-4 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30">PDF</button>
+            <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30">Excel</button>
+          </div>
+          <div class="flex items-center gap-3">
+             <label class="text-[9px] font-black uppercase text-neutral-500">Business Logo</label>
+             <input type="file" id="logo-upload" accept="image/*" class="view-hidden">
+             <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Upload</button>
+          </div>
         </div>
 
-        <div id="area-ledger" class="flex-grow overflow-auto bg-[#040408] p-4 md:p-12 relative">
+        <div id="area-ledger" class="flex-grow overflow-auto bg-[#040408] p-4 md:p-12 relative custom-scrollbar">
           <div class="zoom-controls">
             <button id="btn-zoom-in" class="zoom-btn font-bold">+</button>
             <button id="btn-zoom-out" class="zoom-btn font-bold">-</button>
             <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
           </div>
           <div id="statement-render-target" class="mx-auto"></div>
-          <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20 select-none">
+          <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20">
             <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            <p class="font-black uppercase tracking-[0.4em] text-xs">Awaiting Customer Selection</p>
+            <p class="font-black uppercase tracking-[0.4em] text-xs">Ready for Selection</p>
           </div>
         </div>
-
-        <div id="area-explorer" class="view-hidden flex-grow overflow-auto p-4 md:p-6 bg-[#040408]">
-          <div id="explorer-module-tabs" class="mb-4 flex gap-2 overflow-x-auto pb-2"></div>
-          <div id="explorer-render-target"></div>
-        </div>
         
-        <div class="h-8 border-t border-white/5 bg-black/60 flex items-center px-4 md:px-6 font-mono text-[8px] md:text-[9px] text-neutral-700">
-          <span id="log-message" class="uppercase">BIZSENSE_ENGINE_READY</span>
+        <div class="h-8 border-t border-white/5 bg-black/60 flex items-center px-6 font-mono text-[9px] text-neutral-700">
+          <span id="log-message" class="uppercase">ENGINE_STABLE</span>
         </div>
       </main>
     </div>
   </div>
 
-  <!-- Project Settings Modal -->
+  <!-- Settings Modal -->
   <div id="modal-settings" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
     <div class="glass-card p-8 w-full max-w-lg space-y-6 shadow-2xl">
-      <h3 class="text-xl font-black uppercase tracking-tight">Active Data Tables</h3>
+      <h3 class="text-xl font-black uppercase tracking-tight">Dataset Sync Controller</h3>
+      <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Select tables to itemize in the ledger</p>
       <div id="module-selector" class="grid grid-cols-2 gap-3">
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
           <input type="checkbox" value="invoices" checked class="accent-indigo-500 w-4 h-4">
           <span class="text-xs font-bold uppercase tracking-widest">Invoices</span>
         </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
           <input type="checkbox" value="estimates" class="accent-indigo-500 w-4 h-4">
           <span class="text-xs font-bold uppercase tracking-widest">Estimates</span>
         </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
           <input type="checkbox" value="salesorders" class="accent-indigo-500 w-4 h-4">
           <span class="text-xs font-bold uppercase tracking-widest">Sales Orders</span>
         </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
           <input type="checkbox" value="creditnotes" class="accent-indigo-500 w-4 h-4">
           <span class="text-xs font-bold uppercase tracking-widest">Credit Notes</span>
         </label>
       </div>
       <div class="flex gap-4 pt-4">
-        <button id="btn-close-settings" class="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl font-black uppercase text-[10px]">Close</button>
-        <button id="btn-apply-settings" class="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px]">Sync Database</button>
+        <button id="btn-close-settings" class="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl font-black uppercase text-[10px]">Cancel</button>
+        <button id="btn-apply-settings" class="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg">Force Resync</button>
       </div>
     </div>
   </div>
