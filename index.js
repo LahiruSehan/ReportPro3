@@ -1,7 +1,7 @@
 
 /**
  * BIZSENSE STATEMENT PRO - ENTERPRISE CORE
- * Universal Ledger & Advanced Session Control
+ * Universal Ledger & Advanced A4 Rendering Engine
  */
 
 class ZohoLedgerApp {
@@ -19,9 +19,10 @@ class ZohoLedgerApp {
       dataStore: { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} },
       invoiceDetailsCache: {},
       customLogo: localStorage.getItem('biz_logo') || null,
-      zoom: 0.75,
+      zoom: 0.55,
       activeView: 'ledger',
-      explorerModule: 'invoices'
+      explorerModule: 'invoices',
+      currency: 'LKR'
     };
 
     this.handleOAuthCallback();
@@ -39,7 +40,6 @@ class ZohoLedgerApp {
       this.bindEvents();
       this.updateConfigStatus();
       this.checkSession();
-      // Wait for initial render then fit
       setTimeout(() => this.autoFitZoom(), 1000);
       window.addEventListener('resize', () => this.autoFitZoom());
     });
@@ -137,8 +137,8 @@ class ZohoLedgerApp {
       this.syncAllActiveCustomers();
     };
 
-    this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
-    this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
+    this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.05);
+    this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.05);
     this.btns.zoomFit.onclick = () => this.autoFitZoom();
     this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
     this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
@@ -146,15 +146,13 @@ class ZohoLedgerApp {
   }
 
   async handleOrgSwitch(orgId) {
-    this.showLoading(20, "Switching Project & Purging Logo...");
+    this.showLoading(20, "Switching Account...");
     this.state.selectedOrgId = orgId;
     localStorage.setItem('zoho_selected_org_id', orgId);
     
-    // Clear Logo on Org Switch as per request
     this.state.customLogo = null;
     localStorage.removeItem('biz_logo');
     
-    // Total reset of data state
     this.state.dataStore = { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} };
     this.state.invoiceDetailsCache = {};
     
@@ -163,7 +161,7 @@ class ZohoLedgerApp {
     await this.syncAllActiveCustomers();
     
     this.hideLoading();
-    this.log(`Switched to: ${this.state.currentOrgDetails?.name}`);
+    this.log(`Active Project: ${this.state.currentOrgDetails?.name}`);
   }
 
   switchView(view) {
@@ -197,16 +195,10 @@ class ZohoLedgerApp {
 
   handleOAuthCallback() {
     const hash = window.location.hash;
-    const search = window.location.search;
-    
     if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.substring(1));
       this.state.accessToken = params.get('access_token');
       localStorage.setItem('zoho_access_token', this.state.accessToken);
-      window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
-    } else if (search && search.includes('error')) {
-      const params = new URLSearchParams(search);
-      this.showLandingError(`OAuth Failure: ${params.get('error')}`);
       window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
     }
   }
@@ -282,13 +274,12 @@ class ZohoLedgerApp {
   }
 
   async switchIdentity() {
-    this.showLoading(10, "Clearing Identity Cache...");
-    // Persistent clear but keep config
+    this.showLoading(10, "Resetting Identity...");
     localStorage.removeItem('zoho_access_token');
     localStorage.removeItem('zoho_selected_org_id');
     localStorage.removeItem('biz_logo');
     this.state.accessToken = null;
-    this.startAuth(true); // Force Zoho account selection
+    this.startAuth(true); 
   }
 
   async fetchCustomers() {
@@ -355,7 +346,7 @@ class ZohoLedgerApp {
   async syncCustomerData(id) {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
-    this.showLoading(50, `Syncing Dataset: ${customer.contact_name}`);
+    this.showLoading(50, `Updating Ledger: ${customer.contact_name}`);
     
     for (const module of this.state.activeModules) {
       try {
@@ -363,19 +354,17 @@ class ZohoLedgerApp {
         const res = await this.rawRequest(url);
         this.state.dataStore[module][id] = { customerName: customer.contact_name, records: res[module] || [] };
         
-        // Detailed expansion for Invoices & Credit Notes
         if (module === 'invoices' || module === 'creditnotes') {
           const key = module === 'invoices' ? 'invoice_id' : 'creditnote_id';
           for (const rec of this.state.dataStore[module][id].records) {
             const rid = rec[key];
             if (!this.state.invoiceDetailsCache[rid]) {
               const dRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/${module}/${rid}?organization_id=${this.state.selectedOrgId}`);
-              this.state.invoiceDetailsCache[rid] = dRes[module.slice(0, -1)]; // invoice or creditnote
+              this.state.invoiceDetailsCache[rid] = dRes[module.slice(0, -1)];
             }
           }
         }
       } catch (e) { 
-        console.warn(`${module} sync failed for customer.`);
         this.state.dataStore[module][id] = { customerName: customer.contact_name, records: [] };
       }
     }
@@ -411,7 +400,7 @@ class ZohoLedgerApp {
 
     if (allRecords.length === 0) {
       this.targets.explorerThead.innerHTML = '';
-      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black uppercase text-[10px] tracking-widest">No data mapped for this module</td></tr>';
+      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black uppercase text-[10px] tracking-widest">No mapping found</td></tr>';
       return;
     }
 
@@ -431,145 +420,168 @@ class ZohoLedgerApp {
     this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = false;
 
     const org = this.state.currentOrgDetails || {};
-    let html = `<div class="statement-view font-inter" id="pdf-content">
+    
+    // Header for first page
+    let content = `
       <div class="flex justify-between items-start mb-12">
         <div class="flex-grow">
-          ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-14 mb-4 object-contain">` : '<div class="h-14 w-40 bg-neutral-100 rounded mb-4 flex items-center justify-center text-[8px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Business Identity Required</div>'}
-          <h1 class="text-2xl font-black uppercase tracking-tighter text-indigo-900" contenteditable="true">${org.name || 'Organization Entity'}</h1>
-          <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1" contenteditable="true">Consolidated Accounts Ledger</p>
+          ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-16 mb-6 object-contain">` : '<div class="h-16 w-48 bg-neutral-100 rounded mb-6 flex items-center justify-center text-[9px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Logo Placeholder</div>'}
+          <h1 class="text-3xl font-black uppercase tracking-tighter text-indigo-900" contenteditable="true">${org.name || 'Organization Name'}</h1>
+          <p class="text-[11px] text-indigo-500 font-black uppercase tracking-widest mt-1">Generated by BizSense InsightPRO Statement Generator</p>
         </div>
         <div class="text-right flex-shrink-0">
-          <h2 class="text-4xl font-black tracking-tighter leading-none" style="color:var(--theme-primary)" contenteditable="true">STATEMENT</h2>
-          <p class="mt-4 text-[9px] font-black uppercase tracking-[0.2em] text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
-          <div class="mt-2 text-[8px] font-mono text-neutral-300 uppercase">${org.email || ''}</div>
+          <h2 class="text-5xl font-black tracking-tighter leading-none text-indigo-600" contenteditable="true">LEDGER</h2>
+          <p class="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
+          <p class="mt-1 text-[10px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
         </div>
       </div>
       
-      <table class="w-full text-left border-collapse table-fixed">
+      <table class="w-full text-left border-collapse table-fixed master-ledger-table">
         <thead>
-          <tr class="bg-indigo-600 text-white text-[8px] font-black uppercase tracking-widest">
-            <th class="py-2 px-4 w-[140px]">Service / Ledger Entry</th>
-            <th class="py-2 px-3 w-[45px] text-center">Qty</th>
-            <th class="py-2 px-3 w-[90px] text-right">Debit / Credit</th>
-            <th class="py-2 px-3 w-[80px] text-center">Reference</th>
-            <th class="py-2 px-4 w-[100px] text-right">Running Total</th>
+          <tr class="bg-indigo-600 text-white text-[9px] font-black uppercase tracking-[0.2em]">
+            <th class="py-3 px-5 w-[140px]">Entry Description</th>
+            <th class="py-3 px-3 w-[45px] text-center">Qty</th>
+            <th class="py-3 px-3 w-[100px] text-right">Debit / Credit</th>
+            <th class="py-3 px-3 w-[85px] text-center">Reference</th>
+            <th class="py-3 px-5 w-[110px] text-right">Running Total</th>
           </tr>
         </thead>
-        <tbody class="text-[9px]">`;
+        <tbody class="text-[10px] ledger-rows">`;
 
     this.state.selectedCustomerIds.forEach(id => {
       let clientRunTotal = 0;
-      const clientName = this.state.customers.find(c => c.contact_id === id)?.contact_name || 'Unknown Client';
+      const clientName = this.state.customers.find(c => c.contact_id === id)?.contact_name || 'Anonymous Client';
       
-      html += `<tr class="bg-neutral-900 text-white"><td colspan="5" class="py-3 px-4 font-black text-[12px] uppercase tracking-tighter">Client: ${clientName}</td></tr>`;
+      content += `<tr class="bg-indigo-900 text-white no-break"><td colspan="5" class="py-4 px-5 font-black text-[14px] uppercase tracking-tighter">Client Partition: ${clientName}</td></tr>`;
       
-      // Merge all active module data for this client
       const ledgerItems = [];
       this.state.activeModules.forEach(mod => {
         const modData = this.state.dataStore[mod][id];
         if (modData && modData.records) {
-          modData.records.forEach(r => {
-            ledgerItems.push({ ...r, _type: mod });
-          });
+          modData.records.forEach(r => ledgerItems.push({ ...r, _type: mod }));
         }
       });
 
-      // Sort chronological
       ledgerItems.sort((a,b) => new Date(a.date) - new Date(b.date));
 
       ledgerItems.forEach(item => {
         const details = this.state.invoiceDetailsCache[item.invoice_id || item.creditnote_id];
         const isCredit = item._type === 'creditnotes';
-        const docRef = item.invoice_number || item.creditnote_number || item.estimate_number || item.salesorder_number || 'N/A';
-        const dateStr = item.date;
-
-        html += `<tr class="bg-neutral-50 border-b border-neutral-100">
-          <td colspan="5" class="py-2 px-4 font-bold text-neutral-400 uppercase italic text-[8px]">${item._type.toUpperCase()} - Ref: ${docRef} (${dateStr})</td>
-        </tr>`;
+        const docRef = item.invoice_number || item.creditnote_number || item.estimate_number || item.salesorder_number || 'TRX-N/A';
 
         if (details && details.line_items) {
           details.line_items.forEach(li => {
-            const val = li.item_total;
-            const amt = isCredit ? -val : val;
+            const amt = isCredit ? -li.item_total : li.item_total;
             clientRunTotal += amt;
-            
-            html += `<tr class="border-b border-neutral-100">
-              <td class="py-2 px-4 font-bold truncate" contenteditable="true">${li.name || li.description}</td>
-              <td class="py-2 px-3 text-center" contenteditable="true">${li.quantity || 1}</td>
-              <td class="py-2 px-3 text-right ${isCredit ? 'text-red-500 font-bold' : ''}" contenteditable="true">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-              <td class="py-2 px-3 text-center opacity-50 font-mono text-[8px]">${docRef}</td>
-              <td class="py-2 px-4 text-right font-black text-neutral-800">${clientRunTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-            </tr>`;
+            content += this.createRowMarkup(li.name || li.description, li.quantity || 1, amt, docRef, clientRunTotal, isCredit, item._type);
           });
         } else {
-          // Fallback if details not cached
-          const val = item.total || item.balance || 0;
-          const amt = isCredit ? -val : val;
+          const amt = isCredit ? -(item.total || 0) : (item.total || 0);
           clientRunTotal += amt;
-          html += `<tr class="border-b border-neutral-100">
-            <td class="py-2 px-4 font-bold truncate">Summarized Entry</td>
-            <td class="py-2 px-3 text-center">1</td>
-            <td class="py-2 px-3 text-right ${isCredit ? 'text-red-500 font-bold' : ''}">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-            <td class="py-2 px-3 text-center opacity-50 font-mono text-[8px]">${docRef}</td>
-            <td class="py-2 px-4 text-right font-black text-neutral-800">${clientRunTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-          </tr>`;
+          content += this.createRowMarkup(`Aggregated ${item._type.toUpperCase()}`, 1, amt, docRef, clientRunTotal, isCredit, item._type);
         }
       });
 
-      // CLIENT FOOTER TOTAL
-      html += `<tr class="bg-indigo-50 border-t-2 border-indigo-600">
-        <td colspan="3" class="py-4 px-4 text-right font-black uppercase text-[9px] text-neutral-500">Total Outstanding for ${clientName}:</td>
-        <td colspan="2" class="py-4 px-4 text-right font-black text-[14px] uppercase tracking-tighter text-indigo-700">CURRENCY ${clientRunTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-      </tr><tr class="h-6"></tr>`;
+      content += `<tr class="bg-indigo-50 border-t-4 border-indigo-600 client-footer" data-client="${id}">
+        <td colspan="3" class="py-5 px-5 text-right font-black uppercase text-[10px] text-neutral-500">Total Outstanding [${this.state.currency}]:</td>
+        <td colspan="2" class="py-5 px-5 text-right font-black text-[18px] uppercase tracking-tighter text-indigo-700 total-cell">${clientRunTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+      </tr><tr class="h-10"></tr>`;
     });
 
-    this.targets.renderArea.innerHTML = html + `</tbody></table></div>`;
+    content += `</tbody></table>`;
+
+    // Wrap in A4 Page logic (simple CSS handles the overflow correctly for PDF)
+    this.targets.renderArea.innerHTML = `<div class="a4-page" id="pdf-content">${content}</div>`;
+    this.attachLedgerListeners();
+  }
+
+  createRowMarkup(desc, qty, amt, ref, runTotal, isCredit, type) {
+    return `<tr class="border-b border-neutral-100 hover:bg-neutral-50 transition-colors group ledger-item-row" data-type="${type}">
+      <td class="py-3 px-5 font-bold truncate flex items-center gap-2">
+        <button class="no-print row-del-btn opacity-0 group-hover:opacity-100 text-red-500 font-black hover:scale-125 transition-all">✕</button>
+        <span contenteditable="true" class="desc-cell">${desc}</span>
+      </td>
+      <td class="py-3 px-3 text-center" contenteditable="true" class="qty-cell">${qty}</td>
+      <td class="py-3 px-3 text-right font-bold ${isCredit ? 'text-red-500' : 'text-neutral-800'}" contenteditable="true" class="amt-cell">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+      <td class="py-3 px-3 text-center opacity-40 font-mono text-[9px]">${ref}</td>
+      <td class="py-3 px-5 text-right font-black text-indigo-900 run-total-cell">${runTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+    </tr>`;
+  }
+
+  attachLedgerListeners() {
+    // Delete handling
+    this.targets.renderArea.querySelectorAll('.row-del-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        const row = e.target.closest('tr');
+        row.remove();
+        this.recalculateAllLedgers();
+      };
+    });
+
+    // Edit handling
+    this.targets.renderArea.querySelectorAll('[contenteditable="true"]').forEach(cell => {
+      cell.oninput = () => this.recalculateAllLedgers();
+    });
+  }
+
+  recalculateAllLedgers() {
+    const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
+    let runningTotal = 0;
+    
+    rows.forEach(row => {
+      if (row.classList.contains('ledger-item-row')) {
+        const amtCell = row.querySelector('.amt-cell') || row.children[2];
+        const runTotalCell = row.querySelector('.run-total-cell') || row.children[4];
+        const val = parseFloat(amtCell.innerText.replace(/,/g, '')) || 0;
+        runningTotal += val;
+        runTotalCell.innerText = runningTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
+      } else if (row.classList.contains('client-footer')) {
+        const totalCell = row.querySelector('.total-cell');
+        totalCell.innerText = runningTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
+        // We don't reset runningTotal here if it's a "Consolidated Ledger" 
+        // If it was segmented per client, reset runningTotal = 0;
+      } else if (row.classList.contains('bg-indigo-900')) {
+        runningTotal = 0; // Reset for each new client partition
+      }
+    });
   }
 
   downloadExcel() {
-    this.showLoading(80, "Constructing Workbook...");
-    const data = [];
-    this.state.selectedCustomerIds.forEach(id => {
-      const clientName = this.state.customers.find(c => c.contact_id === id)?.contact_name || 'Unknown';
-      this.state.activeModules.forEach(mod => {
-        const records = this.state.dataStore[mod][id]?.records || [];
-        records.forEach(r => {
-           data.push({ Client: clientName, Type: mod, Date: r.date, Reference: r.invoice_number || r.creditnote_number || 'N/A', Total: r.total || r.balance });
-        });
-      });
-    });
-    const ws = XLSX.utils.json_to_sheet(data);
+    this.showLoading(80, "Workbook Export Initiated...");
+    const table = this.targets.renderArea.querySelector('table');
+    const ws = XLSX.utils.table_to_sheet(table);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Ledger");
-    XLSX.writeFile(wb, `BizSense_Ledger_${Date.now()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "Ledger_Export");
+    XLSX.writeFile(wb, `Ledger_LKR_${Date.now()}.xlsx`);
     this.hideLoading();
   }
 
   downloadPDF() {
     const el = document.getElementById('pdf-content');
-    this.showLoading(85, "Rendering High-Fidelity PDF...");
+    this.showLoading(85, "A4 Pagination Optimization...");
     html2pdf().set({
-      margin: 0, filename: `Ledger_${Date.now()}.pdf`,
+      margin: [10, 0, 10, 0],
+      filename: `Statement_LKR_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 1.0 },
-      html2canvas: { scale: 3.5, useCORS: true, letterRendering: true },
+      html2canvas: { scale: 3, useCORS: true, letterRendering: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     }).from(el).save().then(() => this.hideLoading());
   }
 
   setZoom(val) {
     this.state.zoom = Math.max(0.1, Math.min(3.0, val));
-    if(this.views.statementContainer) this.views.statementContainer.style.transform = `scale(${this.state.zoom})`;
+    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
+    pages.forEach(p => p.style.transform = `scale(${this.state.zoom})`);
   }
 
   autoFitZoom() {
     if(!this.views.areaLedger) return;
-    const wrapperW = this.views.areaLedger.clientWidth;
     const wrapperH = this.views.areaLedger.clientHeight;
-    // Aim for 75% of container height as requested to keep header visible
+    // recalibrated for 75% display of page height
     const targetH = wrapperH * 0.75;
     const standardA4H_px = 29.7 * 37.8; 
     const calculatedZoom = targetH / standardA4H_px;
-    this.setZoom(Math.max(0.3, calculatedZoom));
+    this.setZoom(Math.max(0.35, calculatedZoom));
   }
 
   showLoading(prog, txt) {
@@ -595,28 +607,22 @@ class ZohoLedgerApp {
   }
 
   toggleConfig(show) { this.views.configModal.classList.toggle('view-hidden', !show); }
-  
   saveConfig() {
     this.config = { clientId: document.getElementById('cfg-client-id').value.trim(), region: document.getElementById('cfg-region').value };
     localStorage.setItem('zoho_config', JSON.stringify(this.config));
     this.toggleConfig(false); 
     this.updateConfigStatus();
   }
-
   updateConfigStatus() {
     const valid = this.config.clientId && this.config.clientId.length > 5;
     this.btns.connect.disabled = !valid;
-    this.btns.connect.classList.toggle('opacity-50', !valid);
   }
-
   logout(reload = true) {
     localStorage.removeItem('zoho_access_token');
     localStorage.removeItem('zoho_selected_org_id');
     if(reload) window.location.reload();
   }
-
   log(m) { this.targets.log.innerText = `SYS: ${m.toUpperCase()}`; }
-  
   showLandingError(m) { 
     this.views.landingError.classList.remove('view-hidden'); 
     this.targets.errorText.innerText = m; 

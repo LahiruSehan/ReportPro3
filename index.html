@@ -30,12 +30,18 @@
     
     select, input[type="text"], input[type="password"] { background: var(--app-card) !important; color: var(--app-text) !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
     
-    .statement-view { 
-      background: white; color: #111; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; 
-      box-shadow: 0 40px 100px rgba(0,0,0,0.3); font-size: 10px; position: relative; transform-origin: top center;
+    /* A4 Pagination Preview Style */
+    .a4-page {
+      background: white; color: #111; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 2rem auto; 
+      box-shadow: 0 40px 100px rgba(0,0,0,0.5); position: relative; transform-origin: top center;
+      page-break-after: always;
+    }
+
+    .statement-view-container { 
+      padding-bottom: 5cm;
     }
     
-    [contenteditable="true"]:hover { background: #f0f4ff; outline: 1px dashed #6366f1; cursor: text; }
+    [contenteditable="true"]:hover { background: #f0f4ff; outline: 1px dashed #6366f1; cursor: text; border-radius: 2px; }
     
     .zoom-controls { position: fixed; bottom: 4rem; right: 2rem; z-index: 100; display: flex; flex-direction: column; gap: 0.75rem; }
     .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; }
@@ -50,6 +56,18 @@
     
     .explorer-table th { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid var(--app-border); font-size: 10px; text-transform: uppercase; color: #6366f1; font-weight: 900; }
     .explorer-table td { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.02); font-size: 11px; color: #cbd5e1; }
+
+    /* PDF Logic */
+    @media print {
+      body { background: none; }
+      .a4-page { margin: 0; box-shadow: none; }
+      .no-print { display: none !important; }
+    }
+
+    .row-actions { display: none; }
+    tr:hover .row-actions { display: flex; }
+
+    tr { break-inside: avoid; page-break-inside: avoid; }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -117,7 +135,7 @@
 
   <!-- Dashboard -->
   <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
-    <header class="p-3 md:p-4 glass-card m-2 md:m-4 flex items-center justify-between">
+    <header class="p-3 md:p-4 glass-card m-2 md:m-4 flex items-center justify-between no-print">
       <div class="flex items-center space-x-6">
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
         <div class="flex flex-col">
@@ -126,7 +144,6 @@
         </div>
       </div>
       
-      <!-- View Toggles -->
       <div class="flex items-center bg-black/40 rounded-xl p-1 border border-white/5">
         <button id="btn-view-ledger" class="px-4 py-2 text-[9px] font-black uppercase bg-indigo-600 text-white rounded-lg transition-all">Ledger</button>
         <button id="btn-view-explorer" class="px-4 py-2 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all">Explorer</button>
@@ -140,8 +157,7 @@
     </header>
 
     <div class="flex flex-grow overflow-hidden px-2 md:px-4 pb-2 md:pb-4 gap-4">
-      <!-- Registry Sidebar -->
-      <aside class="hidden lg:flex w-80 flex-col gap-4">
+      <aside class="hidden lg:flex w-80 flex-col gap-4 no-print">
         <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden">
           <div class="flex justify-between items-center mb-4">
             <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
@@ -155,12 +171,9 @@
         </div>
       </aside>
 
-      <!-- Main Content Area -->
       <main class="flex-grow glass-card flex flex-col overflow-hidden relative">
-        
-        <!-- LEDGER VIEW -->
         <div id="view-ledger-container" class="flex flex-col flex-grow overflow-hidden">
-          <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+          <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01] no-print">
             <div class="flex gap-2">
               <button id="btn-download-pdf" disabled class="px-4 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30">Export PDF</button>
               <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30">Export Excel</button>
@@ -168,29 +181,26 @@
             <div class="flex items-center gap-3">
                <label class="text-[9px] font-black uppercase text-neutral-500">Business Logo</label>
                <input type="file" id="logo-upload" accept="image/*" class="view-hidden">
-               <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Upload Logo</button>
+               <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Update Logo</button>
             </div>
           </div>
 
           <div id="area-ledger" class="flex-grow overflow-auto bg-[#040408] p-4 md:p-12 relative custom-scrollbar">
-            <div class="zoom-controls">
+            <div class="zoom-controls no-print">
               <button id="btn-zoom-in" class="zoom-btn font-bold">+</button>
               <button id="btn-zoom-out" class="zoom-btn font-bold">-</button>
               <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
             </div>
-            <div id="statement-render-target" class="mx-auto"></div>
+            <div id="statement-render-target" class="mx-auto statement-view-container"></div>
             <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20">
               <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-              <p class="font-black uppercase tracking-[0.4em] text-xs">Awaiting Customer Selection</p>
+              <p class="font-black uppercase tracking-[0.4em] text-xs">Customer Selection Required</p>
             </div>
           </div>
         </div>
 
-        <!-- EXPLORER VIEW (Spreadsheet) -->
         <div id="view-explorer-container" class="view-hidden flex flex-col flex-grow overflow-hidden">
-          <div class="p-4 border-b border-white/5 flex gap-4 bg-black/40" id="explorer-tabs">
-            <!-- Tabs injected dynamically -->
-          </div>
+          <div class="p-4 border-b border-white/5 flex gap-4 bg-black/40" id="explorer-tabs"></div>
           <div class="flex-grow overflow-auto custom-scrollbar bg-[#040408]" id="explorer-table-container">
             <table class="w-full text-left explorer-table" id="explorer-master-table">
               <thead class="sticky top-0 bg-[#080810] z-10" id="explorer-thead"></thead>
@@ -199,7 +209,7 @@
           </div>
         </div>
         
-        <div class="h-8 border-t border-white/5 bg-black/60 flex items-center px-6 font-mono text-[9px] text-neutral-700 justify-between">
+        <div class="h-8 border-t border-white/5 bg-black/60 flex items-center px-6 font-mono text-[9px] text-neutral-700 justify-between no-print">
           <span id="log-message" class="uppercase">ENGINE_STABLE</span>
           <span id="data-stats" class="text-[8px] uppercase font-black text-indigo-900">0 RECORDS MAPPED</span>
         </div>
