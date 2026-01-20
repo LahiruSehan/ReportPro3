@@ -68,6 +68,11 @@
     tr:hover .row-actions { display: flex; }
 
     tr { break-inside: avoid; page-break-inside: avoid; }
+    
+    .invoice-group-header {
+      background: #f8fafc;
+      border-left: 4px solid #6366f1;
+    }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -150,7 +155,6 @@
       </div>
 
       <div class="flex items-center space-x-4">
-        <button id="btn-switch-identity" class="px-4 py-2 bg-white/5 border border-white/10 text-[9px] font-black uppercase rounded-lg hover:bg-white/10">Switch Identity</button>
         <button id="btn-project-settings" class="p-2 text-neutral-500 hover:text-white" title="Sync Settings"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></button>
         <button id="btn-logout" class="p-2 text-neutral-500 hover:text-red-500" title="Secure Logout"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"/></svg></button>
       </div>
