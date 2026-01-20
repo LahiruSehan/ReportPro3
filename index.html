@@ -28,23 +28,43 @@
     .view-hidden { display: none !important; }
     .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
-    select, input[type="text"], input[type="password"] { background: var(--app-card) !important; color: var(--app-text) !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
+    /* Global Select Styles */
+    select, input[type="text"], input[type="password"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
     
+    /* Header Specific Select Fix */
+    #select-organization {
+      background: rgba(255,255,255,0.05) !important;
+      color: white !important;
+      border: 1px solid rgba(255,255,255,0.1) !important;
+      padding: 4px 8px !important;
+      cursor: pointer;
+      appearance: auto;
+    }
+    #select-organization option {
+      background: #020205;
+      color: white;
+    }
+
     /* A4 Pagination Preview Style */
     .a4-page {
-      background: white; color: #111; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 2rem auto; 
+      background: white; color: #111; padding: 1.5cm; min-height: 29.7cm; width: 21cm; margin: 0 auto; 
       box-shadow: 0 40px 100px rgba(0,0,0,0.5); position: relative; transform-origin: top center;
-      page-break-after: always;
     }
 
     .statement-view-container { 
       padding-bottom: 5cm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      min-height: 100%;
     }
     
     [contenteditable="true"]:hover { background: #f0f4ff; outline: 1px dashed #6366f1; cursor: text; border-radius: 2px; }
     
     .zoom-controls { position: fixed; bottom: 4rem; right: 2rem; z-index: 100; display: flex; flex-direction: column; gap: 0.75rem; }
-    .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; }
+    .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; transition: transform 0.2s; }
+    .zoom-btn:hover { transform: scale(1.1); }
 
     #loading-bar-container { position: fixed; top: 0; left: 0; width: 100%; height: 6px; z-index: 1000; overflow: hidden; background: rgba(0,0,0,0.6); }
     #loading-bar { height: 100%; width: 0%; background: #6366f1; transition: 0.3s; }
@@ -57,10 +77,19 @@
     .explorer-table th { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid var(--app-border); font-size: 10px; text-transform: uppercase; color: #6366f1; font-weight: 900; }
     .explorer-table td { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.02); font-size: 11px; color: #cbd5e1; }
 
+    /* PDF Generation Helper */
+    #pdf-export-temp {
+      position: absolute;
+      left: -10000px;
+      top: -10000px;
+      width: 210mm;
+      background: white;
+    }
+
     /* PDF Logic */
     @media print {
       body { background: none; }
-      .a4-page { margin: 0; box-shadow: none; }
+      .a4-page { margin: 0; box-shadow: none; transform: none !important; }
       .no-print { display: none !important; }
     }
 
@@ -83,6 +112,9 @@
   <div id="loading-status-overlay" class="view-hidden">
     <span id="loading-bar-text">INITIALIZING...</span>
   </div>
+
+  <!-- PDF Export Hidden Container -->
+  <div id="pdf-export-temp" class="view-hidden"></div>
 
   <!-- Connection Hub Modal -->
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
@@ -145,7 +177,7 @@
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
         <div class="flex flex-col">
           <label class="text-[8px] font-black uppercase text-indigo-400 mb-1">Active Project</label>
-          <select id="select-organization" class="bg-transparent border-none text-[10px] md:text-xs font-black uppercase p-0"></select>
+          <select id="select-organization" class="font-black uppercase"></select>
         </div>
       </div>
       
@@ -195,7 +227,7 @@
               <button id="btn-zoom-out" class="zoom-btn font-bold">-</button>
               <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
             </div>
-            <div id="statement-render-target" class="mx-auto statement-view-container"></div>
+            <div id="statement-render-target" class="statement-view-container"></div>
             <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20">
               <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
               <p class="font-black uppercase tracking-[0.4em] text-xs">Customer Selection Required</p>
