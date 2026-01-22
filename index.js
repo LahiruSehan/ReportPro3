@@ -342,17 +342,26 @@ class ZohoLedgerApp {
 
       let txs = [];
       // 1. Invoices (Adding to balance)
-      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ 
-        date: i.date, type: 'Invoice', ref: i.invoice_number, due: i.due_date, amt: parseFloat(i.total), pay: 0, raw: i, sort: new Date(i.date) 
-      }));
+      (this.state.dataStore.invoices[id]?.records || []).forEach(i => {
+        if (['draft', 'void', 'trash'].includes(i.status)) return;
+        txs.push({ 
+          date: i.date, type: 'Invoice', ref: i.invoice_number, due: i.due_date, amt: parseFloat(i.total), pay: 0, raw: i, sort: new Date(i.date) 
+        });
+      });
       // 2. Payments (Reducing balance)
-      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ 
-        date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), raw: p, sort: new Date(p.date) 
-      }));
+      (this.state.dataStore.payments[id]?.records || []).forEach(p => {
+        if (['draft', 'void', 'trash'].includes(p.status)) return;
+        txs.push({ 
+          date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), raw: p, sort: new Date(p.date) 
+        });
+      });
       // 3. Credit Notes (Reducing balance - Standard Zoho Behavior)
-      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ 
-        date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), raw: c, sort: new Date(c.date) 
-      }));
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => {
+        if (['draft', 'void', 'trash'].includes(c.status)) return;
+        txs.push({ 
+          date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), raw: c, sort: new Date(c.date) 
+        });
+      });
 
       txs.sort((a,b) => a.sort - b.sort);
 
@@ -505,9 +514,18 @@ class ZohoLedgerApp {
       data.push({ Date: '', Transactions: 'OPENING BALANCE', Details: 'Balance brought forward', Amount: '', Payments: '', Balance: opening });
       
       let txs = [];
-      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, amt: parseFloat(i.total), pay: 0, sort: new Date(i.date) }));
-      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), sort: new Date(p.date) }));
-      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), sort: new Date(c.date) }));
+      (this.state.dataStore.invoices[id]?.records || []).forEach(i => {
+        if (['draft', 'void', 'trash'].includes(i.status)) return;
+        txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, amt: parseFloat(i.total), pay: 0, sort: new Date(i.date) });
+      });
+      (this.state.dataStore.payments[id]?.records || []).forEach(p => {
+        if (['draft', 'void', 'trash'].includes(p.status)) return;
+        txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), sort: new Date(p.date) });
+      });
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => {
+        if (['draft', 'void', 'trash'].includes(c.status)) return;
+        txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), sort: new Date(c.date) });
+      });
       
       txs.sort((a,b) => a.sort - b.sort).forEach(t => {
         balance += t.amt;
