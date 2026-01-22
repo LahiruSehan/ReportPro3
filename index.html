@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en" data-app-theme="bizsense">
 <head>
@@ -15,14 +14,12 @@
     
     :root {
       --theme-primary: #6366f1;
+      --theme-secondary: #f5f3ff;
+      --theme-accent: #818cf8;
       --app-bg: #020205;
       --app-card: rgba(255, 255, 255, 0.03);
       --app-text: #ffffff;
       --app-border: rgba(255, 255, 255, 0.05);
-      --soa-header-bg: #f3f4f6;
-      --soa-header-text: #1f2937;
-      --soa-border: #e5e7eb;
-      --soa-text: #374151;
     }
 
     body { background-color: var(--app-bg); color: var(--app-text); font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; }
@@ -30,10 +27,12 @@
     .view-hidden { display: none !important; }
     .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
-    select, input[type="text"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
+    /* Global Select Styles */
+    select, input[type="text"], input[type="password"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
     
+    /* Header Specific Select Fix - Ensured high contrast */
     #select-organization {
-      background: #1e1b4b !important;
+      background: #1e1b4b !important; /* Deep indigo */
       color: #ffffff !important;
       border: 1px solid rgba(99, 102, 241, 0.5) !important;
       padding: 6px 12px !important;
@@ -42,12 +41,16 @@
       border-radius: 8px;
       appearance: auto;
     }
+    #select-organization option {
+      background: #1e1b4b;
+      color: white;
+    }
 
-    /* A4 Pagination Preview Style - Paper Mimicry */
+    /* A4 Pagination Preview Style */
     .a4-page {
       background: white; 
-      color: var(--soa-text); 
-      padding: 1.2cm 1.5cm; 
+      color: #111; 
+      padding: 1.5cm; 
       min-height: 29.7cm; 
       width: 21cm; 
       margin: 1cm auto; 
@@ -55,8 +58,6 @@
       position: relative; 
       transform-origin: top center;
       transition: transform 0.2s ease;
-      font-size: 11px;
-      line-height: 1.4;
     }
 
     .statement-view-container { 
@@ -67,17 +68,24 @@
       width: 100%;
     }
     
+    [contenteditable="true"]:hover { background: #f0f4ff; outline: 1px dashed #6366f1; cursor: text; border-radius: 2px; }
+    
     .zoom-controls { position: fixed; bottom: 4rem; right: 2rem; z-index: 100; display: flex; flex-direction: column; gap: 0.75rem; }
     .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; transition: transform 0.2s; }
+    .zoom-btn:hover { transform: scale(1.1); }
 
     #loading-bar-container { position: fixed; top: 0; left: 0; width: 100%; height: 6px; z-index: 1000; overflow: hidden; background: rgba(0,0,0,0.6); }
     #loading-bar { height: 100%; width: 0%; background: #6366f1; transition: 0.3s; }
     #loading-status-overlay { position: fixed; top: 6px; left: 0; width: 100%; height: 40px; background: #6366f1; z-index: 999; display: flex; align-items: center; padding: 0 1.5rem; color: white; font-weight: 900; font-size: 10px; text-transform: uppercase; }
 
+    .modal-overlay { z-index: 400; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
     .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    
+    .explorer-table th { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid var(--app-border); font-size: 10px; text-transform: uppercase; color: #6366f1; font-weight: 900; }
+    .explorer-table td { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.02); font-size: 11px; color: #cbd5e1; }
 
-    /* PDF Generation Helper */
+    /* PDF Generation Helper - Hidden but rendered */
     #pdf-export-temp {
       position: absolute;
       left: -9999px;
@@ -93,52 +101,11 @@
       .no-print { display: none !important; }
     }
 
-    /* Native SOA Table Styling */
-    .soa-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    .soa-table th { 
-      background-color: #f3f4f6; 
-      color: #374151; 
-      font-weight: 600; 
-      text-transform: uppercase; 
-      font-size: 9px; 
-      padding: 10px 8px;
-      border-top: 1px solid #d1d5db;
-      border-bottom: 1px solid #d1d5db;
-    }
-    .soa-table td { 
-      padding: 10px 8px; 
-      font-size: 10.5px; 
-      border-bottom: 1px solid #f3f4f6;
-      vertical-align: top;
-      color: #4b5563;
-    }
-    .soa-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .summary-box {
-      width: 250px;
-      margin-left: auto;
-      margin-top: 30px;
-      font-size: 11px;
-    }
-    .summary-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 0;
-    }
-    .summary-row.total {
-      border-top: 2px solid #374151;
-      margin-top: 10px;
-      padding-top: 10px;
-      font-weight: 700;
-      font-size: 13px;
-      color: #111827;
-    }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    .invoice-group-header { background: #f8fafc; border-left: 4px solid #6366f1; }
+    
+    /* Force page breaks in PDF */
+    .page-break { page-break-after: always; break-after: page; }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -150,10 +117,65 @@
     <span id="loading-bar-text">INITIALIZING...</span>
   </div>
 
+  <!-- PDF Export Hidden Container -->
   <div id="pdf-export-temp" class="view-hidden"></div>
 
+  <!-- Connection Hub Modal -->
+  <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
+    <div class="glass-card p-6 md:p-10 w-full max-w-xl space-y-6 relative border-indigo-500/30 shadow-2xl">
+      <button id="btn-close-config" class="absolute top-6 right-6 text-neutral-500 text-3xl hover:text-white">&times;</button>
+      <h3 class="text-xl font-black uppercase tracking-tight">API Handshake</h3>
+      
+      <div class="space-y-4">
+        <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
+          <p class="text-white font-black mb-2 uppercase text-[10px] tracking-widest">Authorized Redirect URI</p>
+          <code class="block p-3 bg-black/50 rounded-xl border border-white/10 font-mono text-indigo-400 text-[10px] break-all select-all" id="display-redirect-uri"></code>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Zoho Data Center</label>
+            <select id="cfg-region" class="w-full text-xs font-bold">
+              <option value="com">Global / US (zoho.com)</option>
+              <option value="in">India (zoho.in)</option>
+              <option value="eu">Europe (zoho.eu)</option>
+              <option value="com.au">Australia (zoho.com.au)</option>
+            </select>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Client ID (SPA Type Required)</label>
+            <input id="cfg-client-id" type="text" placeholder="1000.XXXX..." class="w-full text-xs font-mono">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-4 pt-4">
+        <button id="btn-reset-config" class="flex-1 py-4 bg-red-600/10 text-red-500 rounded-2xl font-black uppercase text-[10px]">Purge Cache</button>
+        <button id="btn-save-config" class="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl">Apply Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Landing Screen -->
+  <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center">
+    <div class="glass-card p-10 md:p-20 max-w-2xl w-full flex flex-col items-center shadow-2xl relative overflow-hidden">
+      <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-24 mb-10">
+      <h1 class="text-5xl md:text-7xl font-black mb-4 uppercase tracking-tighter leading-none">BIZSENSE<br><span class="text-indigo-500">PRO</span></h1>
+      
+      <div id="landing-error" class="view-hidden my-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs text-left w-full">
+        <p class="font-black uppercase mb-1">Authorization Error</p>
+        <p id="landing-error-text" class="opacity-80"></p>
+      </div>
+      
+      <div class="flex flex-col md:flex-row gap-5 w-full max-w-md mt-6">
+        <button id="btn-connect" class="flex-[2] py-6 bg-indigo-600 text-white rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl hover:bg-indigo-700">Authorize Access</button>
+        <button id="btn-open-config-landing" class="flex-1 py-6 bg-white/5 text-neutral-300 rounded-3xl font-black uppercase text-[11px] border border-white/10">Settings</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Dashboard -->
-  <div id="view-dashboard" class="flex flex-col h-screen overflow-hidden">
+  <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
     <header class="p-3 md:p-4 glass-card m-2 md:m-4 flex items-center justify-between no-print">
       <div class="flex items-center space-x-6">
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
@@ -164,11 +186,12 @@
       </div>
       
       <div class="flex items-center bg-black/40 rounded-xl p-1 border border-white/5">
-        <button id="btn-view-ledger" class="px-4 py-2 text-[9px] font-black uppercase bg-indigo-600 text-white rounded-lg transition-all">Statement View</button>
-        <button id="btn-view-explorer" class="px-4 py-2 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all">Data Explorer</button>
+        <button id="btn-view-ledger" class="px-4 py-2 text-[9px] font-black uppercase bg-indigo-600 text-white rounded-lg transition-all">Ledger</button>
+        <button id="btn-view-explorer" class="px-4 py-2 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all">Explorer</button>
       </div>
 
       <div class="flex items-center space-x-4">
+        <button id="btn-project-settings" class="p-2 text-neutral-500 hover:text-white" title="Sync Settings"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></button>
         <button id="btn-logout" class="p-2 text-neutral-500 hover:text-red-500" title="Secure Logout"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"/></svg></button>
       </div>
     </header>
@@ -177,9 +200,10 @@
       <aside class="hidden lg:flex w-80 flex-col gap-4 no-print">
         <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden">
           <div class="flex justify-between items-center mb-4">
-            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Customer List</h4>
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
             <div class="flex gap-1">
-              <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">RESET</button>
+              <button id="btn-select-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">ALL</button>
+              <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">NONE</button>
             </div>
           </div>
           <input type="text" id="customer-search" placeholder="Search customer..." class="w-full mb-4 text-xs">
@@ -195,20 +219,22 @@
               <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30">Export Excel</button>
             </div>
             <div class="flex items-center gap-3">
-               <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Upload Identity Logo</button>
+               <label class="text-[9px] font-black uppercase text-neutral-500">Business Logo</label>
                <input type="file" id="logo-upload" accept="image/*" class="view-hidden">
+               <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Update Logo</button>
             </div>
           </div>
 
-          <div id="area-ledger" class="flex-grow overflow-auto bg-[#f0f2f5] p-4 md:p-12 relative custom-scrollbar">
+          <div id="area-ledger" class="flex-grow overflow-auto bg-[#040408] p-4 md:p-12 relative custom-scrollbar">
             <div class="zoom-controls no-print">
               <button id="btn-zoom-in" class="zoom-btn font-bold">+</button>
               <button id="btn-zoom-out" class="zoom-btn font-bold">-</button>
               <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
             </div>
             <div id="statement-render-target" class="statement-view-container"></div>
-            <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-30">
-              <p class="font-black uppercase tracking-[0.4em] text-xs text-neutral-900">Select Customer to View Statement</p>
+            <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20">
+              <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              <p class="font-black uppercase tracking-[0.4em] text-xs">Customer Selection Required</p>
             </div>
           </div>
         </div>
@@ -222,30 +248,41 @@
             </table>
           </div>
         </div>
+        
+        <div class="h-8 border-t border-white/5 bg-black/60 flex items-center px-6 font-mono text-[9px] text-neutral-700 justify-between no-print">
+          <span id="log-message" class="uppercase">ENGINE_STABLE</span>
+          <span id="data-stats" class="text-[8px] uppercase font-black text-indigo-900">0 RECORDS MAPPED</span>
+        </div>
       </main>
     </div>
   </div>
 
-  <div id="view-landing" class="fixed inset-0 bg-[#020205] flex items-center justify-center p-6 text-center z-[500] view-hidden">
-    <div class="glass-card p-20 max-w-2xl w-full flex flex-col items-center shadow-2xl">
-      <h1 class="text-6xl font-black mb-8 uppercase tracking-tighter leading-none">BIZSENSE<br><span class="text-indigo-500">PRO</span></h1>
-      <button id="btn-connect" class="py-6 px-12 bg-indigo-600 text-white rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl hover:bg-indigo-700">Connect Zoho Books</button>
-      <div id="landing-error" class="view-hidden mt-6 text-red-500 text-xs"></div>
-    </div>
-  </div>
-
-  <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
-    <div class="glass-card p-10 w-full max-w-xl space-y-6 relative border-indigo-500/30">
-      <h3 class="text-xl font-black uppercase">Configuration</h3>
-      <input id="cfg-client-id" type="text" placeholder="Zoho Client ID" class="w-full text-xs">
-      <select id="cfg-region" class="w-full text-xs font-bold">
-        <option value="com">zoho.com</option>
-        <option value="in">zoho.in</option>
-        <option value="eu">zoho.eu</option>
-        <option value="com.au">zoho.com.au</option>
-      </select>
-      <div class="flex gap-4">
-        <button id="btn-save-config" class="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px]">Initialize</button>
+  <!-- Settings Modal -->
+  <div id="modal-settings" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
+    <div class="glass-card p-8 w-full max-w-lg space-y-6 shadow-2xl">
+      <h3 class="text-xl font-black uppercase tracking-tight">Dataset Control</h3>
+      <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Select Zoho modules to analyze</p>
+      <div id="module-selector" class="grid grid-cols-2 gap-3">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
+          <input type="checkbox" value="invoices" checked class="accent-indigo-500 w-4 h-4">
+          <span class="text-xs font-bold uppercase tracking-widest">Invoices</span>
+        </label>
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
+          <input type="checkbox" value="estimates" class="accent-indigo-500 w-4 h-4">
+          <span class="text-xs font-bold uppercase tracking-widest">Estimates</span>
+        </label>
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
+          <input type="checkbox" value="salesorders" class="accent-indigo-500 w-4 h-4">
+          <span class="text-xs font-bold uppercase tracking-widest">Sales Orders</span>
+        </label>
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
+          <input type="checkbox" value="creditnotes" class="accent-indigo-500 w-4 h-4">
+          <span class="text-xs font-bold uppercase tracking-widest">Credit Notes</span>
+        </label>
+      </div>
+      <div class="flex gap-4 pt-4">
+        <button id="btn-close-settings" class="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl font-black uppercase text-[10px]">Cancel</button>
+        <button id="btn-apply-settings" class="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg">Refresh Sync</button>
       </div>
     </div>
   </div>
