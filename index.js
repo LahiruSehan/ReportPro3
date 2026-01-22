@@ -1,7 +1,6 @@
 
 /**
  * BIZSENSE STATEMENT PRO - NATIVE ZOHO SOA REPLICATION ENGINE
- * Strict Accounting Logic Implementation
  */
 
 class ZohoLedgerApp {
@@ -315,29 +314,6 @@ class ZohoLedgerApp {
     this.hideLoading();
   }
 
-  /**
-   * REUSABLE CORE LOGIC: Filter valid transactions based on Zoho SOA Rules
-   */
-  filterValidTransactions(records, type) {
-    if (!records) return [];
-    const invalidStatuses = ['draft', 'void', 'trash'];
-    const positiveStatuses = ['open', 'closed', 'confirmed', 'sent', 'paid', 'partially_paid', 'unpaid', 'overdue', 'success'];
-
-    return records.filter(r => {
-      const status = (r.status || '').toLowerCase();
-      // Rule 1: Always ignore draft, void, or trash
-      if (invalidStatuses.includes(status)) return false;
-
-      // Rule 2: For Credit Notes and Payments, only include if explicitly confirmed/active
-      if (type === 'creditnote' || type === 'payment') {
-        return ['open', 'closed', 'confirmed', 'success'].includes(status);
-      }
-      
-      // Rule 3: For Invoices, include anything that isn't draft/void
-      return true;
-    });
-  }
-
   updateUIVisuals() {
     if (this.state.activeView === 'ledger') this.renderStatementUI();
     else this.renderExplorer();
@@ -365,24 +341,16 @@ class ZohoLedgerApp {
       let totalReceived = 0;
 
       let txs = [];
-      
-      // APPLY REUSABLE FILTERING LOGIC
-      const validInvoices = this.filterValidTransactions(this.state.dataStore.invoices[id]?.records, 'invoice');
-      const validPayments = this.filterValidTransactions(this.state.dataStore.payments[id]?.records, 'payment');
-      const validCreditNotes = this.filterValidTransactions(this.state.dataStore.creditnotes[id]?.records, 'creditnote');
-
       // 1. Invoices (Adding to balance)
-      validInvoices.forEach(i => txs.push({ 
+      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ 
         date: i.date, type: 'Invoice', ref: i.invoice_number, due: i.due_date, amt: parseFloat(i.total), pay: 0, raw: i, sort: new Date(i.date) 
       }));
-      
       // 2. Payments (Reducing balance)
-      validPayments.forEach(p => txs.push({ 
+      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ 
         date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), raw: p, sort: new Date(p.date) 
       }));
-      
-      // 3. Credit Notes (Reducing balance)
-      validCreditNotes.forEach(c => txs.push({ 
+      // 3. Credit Notes (Reducing balance - Standard Zoho Behavior)
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ 
         date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), raw: c, sort: new Date(c.date) 
       }));
 
@@ -537,13 +505,9 @@ class ZohoLedgerApp {
       data.push({ Date: '', Transactions: 'OPENING BALANCE', Details: 'Balance brought forward', Amount: '', Payments: '', Balance: opening });
       
       let txs = [];
-      const validInvoices = this.filterValidTransactions(this.state.dataStore.invoices[id]?.records, 'invoice');
-      const validPayments = this.filterValidTransactions(this.state.dataStore.payments[id]?.records, 'payment');
-      const validCreditNotes = this.filterValidTransactions(this.state.dataStore.creditnotes[id]?.records, 'creditnote');
-
-      validInvoices.forEach(i => txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, amt: parseFloat(i.total), pay: 0, sort: new Date(i.date) }));
-      validPayments.forEach(p => txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), sort: new Date(p.date) }));
-      validCreditNotes.forEach(c => txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), sort: new Date(c.date) }));
+      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, amt: parseFloat(i.total), pay: 0, sort: new Date(i.date) }));
+      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), sort: new Date(p.date) }));
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), sort: new Date(c.date) }));
       
       txs.sort((a,b) => a.sort - b.sort).forEach(t => {
         balance += t.amt;
