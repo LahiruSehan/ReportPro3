@@ -1,6 +1,6 @@
 
 /**
- * BIZSENSE STATEMENT PRO - ENTERPRISE SOA ENGINE (LEGACY STRICT)
+ * BIZSENSE STATEMENT PRO - NATIVE ZOHO SOA REPLICATION ENGINE
  */
 
 class ZohoLedgerApp {
@@ -114,7 +114,7 @@ class ZohoLedgerApp {
   }
 
   async handleOrgSwitch(orgId) {
-    this.showLoading(20, "Re-Indexing Organization...");
+    this.showLoading(20, "Switching Project...");
     this.state.selectedOrgId = orgId;
     localStorage.setItem('zoho_selected_org_id', orgId);
     
@@ -217,7 +217,7 @@ class ZohoLedgerApp {
           this.state.currentOrgDetails = res.organization;
           this.state.currency = res.organization.currency_code || 'LKR';
       }
-    } catch (e) { console.warn("Detail fetch failed", e); }
+    } catch (e) { console.warn("Org detail fetch failed", e); }
   }
 
   async rawRequest(url) {
@@ -225,7 +225,7 @@ class ZohoLedgerApp {
       headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
     });
     if (res.status === 401) throw new Error("Session Expired");
-    if (!res.ok) throw new Error("API Error");
+    if (!res.ok) throw new Error("API Connection Issue");
     return res.json();
   }
 
@@ -284,7 +284,7 @@ class ZohoLedgerApp {
   async syncCustomerData(id) {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
-    this.showLoading(50, `Syncing SOA: ${customer.contact_name}`);
+    this.showLoading(50, `Syncing Statement: ${customer.contact_name}`);
     
     try {
         const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
@@ -341,102 +341,124 @@ class ZohoLedgerApp {
       let totalReceived = 0;
 
       let txs = [];
-      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, due: i.due_date, amt: parseFloat(i.total), pay: 0, raw: i, sort: new Date(i.date) }));
-      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), raw: p, sort: new Date(p.date) }));
-      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: 0, informational: true, raw: c, sort: new Date(c.date) }));
+      // 1. Invoices (Adding to balance)
+      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ 
+        date: i.date, type: 'Invoice', ref: i.invoice_number, due: i.due_date, amt: parseFloat(i.total), pay: 0, raw: i, sort: new Date(i.date) 
+      }));
+      // 2. Payments (Reducing balance)
+      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ 
+        date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), raw: p, sort: new Date(p.date) 
+      }));
+      // 3. Credit Notes (Reducing balance - Standard Zoho Behavior)
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ 
+        date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), raw: c, sort: new Date(c.date) 
+      }));
 
       txs.sort((a,b) => a.sort - b.sort);
 
-      let rows = `<tr><td></td><td><b>OPENING BALANCE</b></td><td>Balance brought forward</td><td></td><td></td><td align="right"><b>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td></tr>`;
+      // Opening Balance Row
+      let rowsHtml = `
+        <tr>
+          <td></td>
+          <td><b>OPENING BALANCE</b></td>
+          <td>Balance brought forward</td>
+          <td align="right"></td>
+          <td align="right"></td>
+          <td align="right"><b>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td>
+        </tr>
+      `;
 
       txs.forEach(t => {
-        if (!t.informational) {
-            runningBalance += t.amt;
-            runningBalance -= t.pay;
-            totalInvoiced += t.amt;
-            totalReceived += t.pay;
-        }
+        runningBalance += t.amt;
+        runningBalance -= t.pay;
+        totalInvoiced += t.amt;
+        totalReceived += t.pay;
 
         let details = '';
         if (t.type === 'Invoice') {
             const cache = this.state.invoiceDetailsCache[t.raw.invoice_id];
             details = `<div>Invoice ${t.ref} (Due: ${t.due})</div>`;
-            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.7">• ${li.name} × ${li.quantity}</div>`);
+            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.6">• ${li.name} × ${li.quantity}</div>`);
         } else if (t.type === 'Payment Received') {
-            details = `<div>Payment Received</div><div style="font-size:9px; opacity:0.7">Ref: ${t.ref}</div>`;
+            details = `<div>Payment Received</div><div style="font-size:9px; opacity:0.6">Ref: ${t.ref}</div>`;
         } else if (t.type === 'Credit Note') {
             const cache = this.state.invoiceDetailsCache[t.raw.creditnote_id];
-            details = `<div style="color:#ef4444">Credit Note ${t.ref} (Informational)</div>`;
-            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.7">• ${li.name} × ${li.quantity}</div>`);
+            details = `<div>Credit Note ${t.ref}</div>`;
+            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.6">• ${li.name} × ${li.quantity}</div>`);
         }
 
-        rows += `<tr>
+        rowsHtml += `
+          <tr>
             <td>${t.date}</td>
-            <td><b>${t.type.toUpperCase()}</b>${t.informational ? ' <span style="font-size:8px; opacity:0.5">(NON-SOA)</span>' : ''}</td>
+            <td><b>${t.type.toUpperCase()}</b></td>
             <td>${details}</td>
             <td align="right">${t.amt > 0 ? t.amt.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}</td>
             <td align="right">${t.pay > 0 ? t.pay.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}</td>
-            <td align="right"><b>${t.informational ? '---' : runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td>
-        </tr>`;
+            <td align="right"><b>${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td>
+          </tr>
+        `;
       });
 
       finalHtml += `
         <div class="a4-page" id="pdf-content">
-          <div style="display:flex; justify-content:space-between; margin-bottom:40px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:50px;">
             <div>
-                ${this.state.customLogo ? `<img src="${this.state.customLogo}" style="height:60px; margin-bottom:20px;">` : `<div style="height:60px; font-weight:900; color:#cbd5e1; font-size:12px;">COMPANY LOGO</div>`}
-                <div style="font-size:10px; color:#6b7280; font-weight:700;">${org.name || 'Organization Name'}</div>
-                <div style="font-size:9px; color:#9ca3af;">${org.address || ''}</div>
+                ${this.state.customLogo ? `<img src="${this.state.customLogo}" style="height:55px; margin-bottom:15px;">` : `<div style="height:55px; font-weight:900; color:#cbd5e1; font-size:12px; margin-bottom:15px;">IDENTITY LOGO</div>`}
+                <div style="font-size:11px; font-weight:700; color:#1f2937; margin-bottom:2px;">${org.name || 'Organization Name'}</div>
+                <div style="font-size:9px; color:#6b7280; line-height:1.2;">${org.address || ''}</div>
             </div>
             <div style="text-align:right">
-                <h1 style="font-size:24px; font-weight:900; color:#374151; letter-spacing:-1px;">Statement of Accounts</h1>
-                <div style="font-size:10px; color:#6b7280;">Statement Date: ${new Date().toLocaleDateString()}</div>
-                <div style="font-size:10px; color:#6b7280;">Currency: ${this.state.currency}</div>
+                <h1 style="font-size:22px; font-weight:700; color:#111827; margin:0 0 5px 0;">Statement of Accounts</h1>
+                <div style="font-size:10px; color:#4b5563;">Period: Up to ${new Date().toLocaleDateString()}</div>
+                <div style="font-size:10px; color:#4b5563;">Currency: ${this.state.currency}</div>
             </div>
           </div>
 
-          <div style="margin-bottom:30px;">
-            <div style="font-size:9px; font-weight:900; color:#9ca3af; text-transform:uppercase; margin-bottom:5px;">To:</div>
-            <div style="font-size:14px; font-weight:900; color:#1f2937;">${customer.contact_name}</div>
-            <div style="font-size:10px; color:#6b7280;">${customer.email || ''}</div>
+          <div style="margin-bottom:40px;">
+            <div style="font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase; margin-bottom:8px;">To:</div>
+            <div style="font-size:14px; font-weight:800; color:#111827; margin-bottom:4px;">${customer.contact_name}</div>
+            <div style="font-size:10px; color:#4b5563;">${customer.email || ''}</div>
           </div>
 
-          <table class="w-full soa-table">
+          <table class="soa-table">
             <thead>
               <tr>
-                <th align="left" width="15%">Date</th>
-                <th align="left" width="20%">Transaction</th>
-                <th align="left" width="35%">Details</th>
+                <th align="left" width="12%">Date</th>
+                <th align="left" width="18%">Transactions</th>
+                <th align="left" width="40%">Details</th>
                 <th align="right" width="10%">Amount</th>
                 <th align="right" width="10%">Payments</th>
                 <th align="right" width="10%">Balance</th>
               </tr>
             </thead>
             <tbody>
-              ${rows}
+              ${rowsHtml}
             </tbody>
           </table>
 
-          <div style="margin-top:40px; display:flex; justify-content:flex-end;">
-            <div style="width:300px; background:#f9fafb; padding:20px; border-radius:8px; border:1px solid #e5e7eb;">
-                <h4 style="font-size:9px; font-weight:900; text-transform:uppercase; margin-bottom:15px; color:#9ca3af; border-bottom:1px solid #e5e7eb; padding-bottom:5px;">Account Summary</h4>
-                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:8px;">
-                    <span>Opening Balance:</span>
-                    <span>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:8px;">
-                    <span>Invoiced Amount (+):</span>
-                    <span>${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:8px;">
-                    <span>Payments Received (-):</span>
-                    <span style="color:#10b981;">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:900; margin-top:10px; border-top:2px solid #374151; padding-top:10px; color:#111827;">
-                    <span>Balance Due:</span>
-                    <span>${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                </div>
+          <div class="summary-box">
+            <div style="border-bottom:1px solid #d1d5db; padding-bottom:10px; margin-bottom:15px; font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase;">Account Summary</div>
+            <div class="summary-row">
+                <span>Opening Balance:</span>
+                <span>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
             </div>
+            <div class="summary-row">
+                <span>Invoiced Amount:</span>
+                <span>${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="summary-row">
+                <span>Amount Received:</span>
+                <span>${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="summary-row total">
+                <span>Balance Due:</span>
+                <span>${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+          </div>
+          
+          <div style="margin-top:auto; padding-top:60px; text-align:right;">
+            <p style="font-size:10px; color:#9ca3af; font-weight:600; text-transform:uppercase;">Authorized Signature</p>
+            <div style="margin-top:40px; border-bottom:1px solid #d1d5db; width:180px; margin-left:auto;"></div>
           </div>
         </div>`;
     });
@@ -445,7 +467,7 @@ class ZohoLedgerApp {
   }
 
   downloadPDF() {
-    this.showLoading(85, "Rendering SOA PDF...");
+    this.showLoading(85, "Capturing Native SOA PDF...");
     const original = document.getElementById('pdf-content');
     if (!original) return;
     const tempContainer = document.getElementById('pdf-export-temp');
@@ -460,7 +482,7 @@ class ZohoLedgerApp {
     tempContainer.style.display = 'block';
 
     const opt = {
-      margin: 10,
+      margin: [10, 10],
       filename: `SOA_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true, letterRendering: true },
@@ -474,22 +496,23 @@ class ZohoLedgerApp {
   }
 
   downloadExcel() {
-    this.showLoading(80, "Building Excel...");
+    this.showLoading(80, "Aggregating Excel SOA...");
     const data = [];
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const opening = parseFloat(customer.opening_balance) || 0;
       let balance = opening;
-      data.push({ Date: '', Transaction: 'OPENING BALANCE', Details: 'Balance brought forward', Amount: '', Payments: '', Balance: opening, Customer: customer.contact_name });
+      data.push({ Date: '', Transactions: 'OPENING BALANCE', Details: 'Balance brought forward', Amount: '', Payments: '', Balance: opening });
       
       let txs = [];
       (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, amt: parseFloat(i.total), pay: 0, sort: new Date(i.date) }));
       (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), sort: new Date(p.date) }));
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), sort: new Date(c.date) }));
       
       txs.sort((a,b) => a.sort - b.sort).forEach(t => {
         balance += t.amt;
         balance -= t.pay;
-        data.push({ Date: t.date, Transaction: t.type, Details: t.ref, Amount: t.amt || '', Payments: t.pay || '', Balance: balance, Customer: customer.contact_name });
+        data.push({ Date: t.date, Transactions: t.type, Details: t.ref, Amount: t.amt || '', Payments: t.pay || '', Balance: balance });
       });
     });
     const ws = XLSX.utils.json_to_sheet(data);
@@ -577,7 +600,7 @@ class ZohoLedgerApp {
 
     if (allRecords.length === 0) {
       this.targets.explorerThead.innerHTML = '';
-      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black text-[10px]">No Data Mapped</td></tr>';
+      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black text-[10px]">Registry Empty</td></tr>';
       return;
     }
 

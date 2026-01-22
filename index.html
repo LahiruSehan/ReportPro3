@@ -15,15 +15,14 @@
     
     :root {
       --theme-primary: #6366f1;
-      --theme-secondary: #f5f3ff;
-      --theme-accent: #818cf8;
       --app-bg: #020205;
       --app-card: rgba(255, 255, 255, 0.03);
       --app-text: #ffffff;
       --app-border: rgba(255, 255, 255, 0.05);
       --soa-header-bg: #f3f4f6;
-      --soa-header-text: #374151;
-      --soa-border: #d1d5db;
+      --soa-header-text: #1f2937;
+      --soa-border: #e5e7eb;
+      --soa-text: #374151;
     }
 
     body { background-color: var(--app-bg); color: var(--app-text); font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; }
@@ -31,7 +30,7 @@
     .view-hidden { display: none !important; }
     .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
-    select, input[type="text"], input[type="password"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
+    select, input[type="text"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
     
     #select-organization {
       background: #1e1b4b !important;
@@ -44,11 +43,11 @@
       appearance: auto;
     }
 
-    /* A4 Pagination Preview Style */
+    /* A4 Pagination Preview Style - Paper Mimicry */
     .a4-page {
       background: white; 
-      color: #111; 
-      padding: 1.5cm; 
+      color: var(--soa-text); 
+      padding: 1.2cm 1.5cm; 
       min-height: 29.7cm; 
       width: 21cm; 
       margin: 1cm auto; 
@@ -56,6 +55,8 @@
       position: relative; 
       transform-origin: top center;
       transition: transform 0.2s ease;
+      font-size: 11px;
+      line-height: 1.4;
     }
 
     .statement-view-container { 
@@ -66,8 +67,6 @@
       width: 100%;
     }
     
-    [contenteditable="true"]:hover { background: #f9fafb; outline: 1px dashed #9ca3af; cursor: text; border-radius: 2px; }
-    
     .zoom-controls { position: fixed; bottom: 4rem; right: 2rem; z-index: 100; display: flex; flex-direction: column; gap: 0.75rem; }
     .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; transition: transform 0.2s; }
 
@@ -75,7 +74,6 @@
     #loading-bar { height: 100%; width: 0%; background: #6366f1; transition: 0.3s; }
     #loading-status-overlay { position: fixed; top: 6px; left: 0; width: 100%; height: 40px; background: #6366f1; z-index: 999; display: flex; align-items: center; padding: 0 1.5rem; color: white; font-weight: 900; font-size: 10px; text-transform: uppercase; }
 
-    .modal-overlay { z-index: 400; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
     .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
 
@@ -95,24 +93,51 @@
       .no-print { display: none !important; }
     }
 
-    tr { break-inside: avoid; page-break-inside: avoid; }
-    
-    /* Legacy SOA Table Styling */
+    /* Native SOA Table Styling */
+    .soa-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
     .soa-table th { 
-      background-color: var(--soa-header-bg); 
-      color: var(--soa-header-text); 
-      font-weight: 700; 
+      background-color: #f3f4f6; 
+      color: #374151; 
+      font-weight: 600; 
       text-transform: uppercase; 
-      font-size: 10px; 
-      padding: 12px 10px;
-      border-top: 2px solid var(--soa-border);
-      border-bottom: 2px solid var(--soa-border);
+      font-size: 9px; 
+      padding: 10px 8px;
+      border-top: 1px solid #d1d5db;
+      border-bottom: 1px solid #d1d5db;
     }
     .soa-table td { 
-      padding: 10px; 
-      font-size: 11px; 
-      border-bottom: 1px solid #e5e7eb;
+      padding: 10px 8px; 
+      font-size: 10.5px; 
+      border-bottom: 1px solid #f3f4f6;
       vertical-align: top;
+      color: #4b5563;
+    }
+    .soa-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .summary-box {
+      width: 250px;
+      margin-left: auto;
+      margin-top: 30px;
+      font-size: 11px;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+    }
+    .summary-row.total {
+      border-top: 2px solid #374151;
+      margin-top: 10px;
+      padding-top: 10px;
+      font-weight: 700;
+      font-size: 13px;
+      color: #111827;
     }
   </style>
 </head>
@@ -139,8 +164,8 @@
       </div>
       
       <div class="flex items-center bg-black/40 rounded-xl p-1 border border-white/5">
-        <button id="btn-view-ledger" class="px-4 py-2 text-[9px] font-black uppercase bg-indigo-600 text-white rounded-lg transition-all">SOA View</button>
-        <button id="btn-view-explorer" class="px-4 py-2 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all">Explorer</button>
+        <button id="btn-view-ledger" class="px-4 py-2 text-[9px] font-black uppercase bg-indigo-600 text-white rounded-lg transition-all">Statement View</button>
+        <button id="btn-view-explorer" class="px-4 py-2 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all">Data Explorer</button>
       </div>
 
       <div class="flex items-center space-x-4">
@@ -152,12 +177,12 @@
       <aside class="hidden lg:flex w-80 flex-col gap-4 no-print">
         <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden">
           <div class="flex justify-between items-center mb-4">
-            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Customers</h4>
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Customer List</h4>
             <div class="flex gap-1">
               <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">RESET</button>
             </div>
           </div>
-          <input type="text" id="customer-search" placeholder="Filter by name..." class="w-full mb-4 text-xs">
+          <input type="text" id="customer-search" placeholder="Search customer..." class="w-full mb-4 text-xs">
           <div id="customer-list" class="flex-grow overflow-y-auto space-y-1 custom-scrollbar"></div>
         </div>
       </aside>
@@ -170,20 +195,20 @@
               <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30">Export Excel</button>
             </div>
             <div class="flex items-center gap-3">
-               <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Set Company Logo</button>
+               <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Upload Identity Logo</button>
                <input type="file" id="logo-upload" accept="image/*" class="view-hidden">
             </div>
           </div>
 
-          <div id="area-ledger" class="flex-grow overflow-auto bg-[#e5e7eb] p-4 md:p-12 relative custom-scrollbar">
+          <div id="area-ledger" class="flex-grow overflow-auto bg-[#f0f2f5] p-4 md:p-12 relative custom-scrollbar">
             <div class="zoom-controls no-print">
               <button id="btn-zoom-in" class="zoom-btn font-bold">+</button>
               <button id="btn-zoom-out" class="zoom-btn font-bold">-</button>
               <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
             </div>
             <div id="statement-render-target" class="statement-view-container"></div>
-            <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20">
-              <p class="font-black uppercase tracking-[0.4em] text-xs text-neutral-900">Please Select a Customer to Generate SOA</p>
+            <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-30">
+              <p class="font-black uppercase tracking-[0.4em] text-xs text-neutral-900">Select Customer to View Statement</p>
             </div>
           </div>
         </div>
@@ -204,14 +229,14 @@
   <div id="view-landing" class="fixed inset-0 bg-[#020205] flex items-center justify-center p-6 text-center z-[500] view-hidden">
     <div class="glass-card p-20 max-w-2xl w-full flex flex-col items-center shadow-2xl">
       <h1 class="text-6xl font-black mb-8 uppercase tracking-tighter leading-none">BIZSENSE<br><span class="text-indigo-500">PRO</span></h1>
-      <button id="btn-connect" class="py-6 px-12 bg-indigo-600 text-white rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl hover:bg-indigo-700">Authorize Zoho Books</button>
-      <div id="landing-error" class="view-hidden mt-6 text-red-500 text-xs" id="landing-error-text"></div>
+      <button id="btn-connect" class="py-6 px-12 bg-indigo-600 text-white rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl hover:bg-indigo-700">Connect Zoho Books</button>
+      <div id="landing-error" class="view-hidden mt-6 text-red-500 text-xs"></div>
     </div>
   </div>
 
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
     <div class="glass-card p-10 w-full max-w-xl space-y-6 relative border-indigo-500/30">
-      <h3 class="text-xl font-black uppercase">Zoho Credentials</h3>
+      <h3 class="text-xl font-black uppercase">Configuration</h3>
       <input id="cfg-client-id" type="text" placeholder="Zoho Client ID" class="w-full text-xs">
       <select id="cfg-region" class="w-full text-xs font-bold">
         <option value="com">zoho.com</option>
@@ -220,7 +245,7 @@
         <option value="com.au">zoho.com.au</option>
       </select>
       <div class="flex gap-4">
-        <button id="btn-save-config" class="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px]">Save & Close</button>
+        <button id="btn-save-config" class="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px]">Initialize</button>
       </div>
     </div>
   </div>
