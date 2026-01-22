@@ -1,6 +1,7 @@
+
 /**
- * BIZSENSE STATEMENT PRO - ENTERPRISE CORE
- * Advanced Item-Level Ledger & Ultra-Detailed Analytics Engine
+ * BIZSENSE STATEMENT PRO - ENTERPRISE SOA ENGINE
+ * Transaction-level Statement of Accounts with Nested Item Details
  */
 
 class ZohoLedgerApp {
@@ -13,9 +14,10 @@ class ZohoLedgerApp {
       selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
       currentOrgDetails: null,
       customers: [],
+      customerFullDetails: {}, // Cache for opening balances and specific contact info
       selectedCustomerIds: new Set(),
-      activeModules: new Set(JSON.parse(localStorage.getItem('active_modules')) || ['invoices', 'creditnotes', 'estimates', 'salesorders']), 
-      dataStore: { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} },
+      activeModules: new Set(JSON.parse(localStorage.getItem('active_modules')) || ['invoices', 'creditnotes', 'payments']), 
+      dataStore: { invoices: {}, creditnotes: {}, payments: {} },
       invoiceDetailsCache: {},
       customLogo: localStorage.getItem('biz_logo') || null,
       zoom: 0.75,
@@ -107,7 +109,9 @@ class ZohoLedgerApp {
 
     const redirectUri = window.location.origin + window.location.pathname;
     if (this.inputs.displayRedirect) this.inputs.displayRedirect.innerText = redirectUri;
-    this.inputs.moduleCheckboxes.forEach(cb => cb.checked = this.state.activeModules.has(cb.value));
+    this.inputs.moduleCheckboxes.forEach(cb => {
+        if (this.state.activeModules.has(cb.value)) cb.checked = true;
+    });
   }
 
   bindEvents() {
@@ -144,14 +148,14 @@ class ZohoLedgerApp {
   }
 
   async handleOrgSwitch(orgId) {
-    this.showLoading(20, "Switching Project Context...");
+    this.showLoading(20, "Re-indexing Project Context...");
     this.state.selectedOrgId = orgId;
     localStorage.setItem('zoho_selected_org_id', orgId);
     
-    // Total reset for clean project switch
-    this.state.dataStore = { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} };
+    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
     this.state.invoiceDetailsCache = {};
     this.state.selectedCustomerIds = new Set();
+    this.state.customerFullDetails = {};
     this.state.customLogo = localStorage.getItem('biz_logo') || null;
 
     try {
@@ -208,7 +212,7 @@ class ZohoLedgerApp {
 
   async checkSession() {
     if (this.state.accessToken) {
-      this.showLoading(20, "Securing API Pipeline...");
+      this.showLoading(20, "Establishing Data Pipeline...");
       try {
         const success = await this.discoverOrganizations();
         if (success) {
@@ -268,16 +272,16 @@ class ZohoLedgerApp {
 
   startAuth(force = false) {
     if (!this.config.clientId) return this.toggleConfig(true);
-    this.showLoading(15, "Initializing Handshake...");
+    this.showLoading(15, "Authenticating Secure Tunnel...");
     const redirectUri = window.location.origin + window.location.pathname;
-    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.settings.READ";
+    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ";
     const prompt = force ? '&prompt=select_account' : '&prompt=consent';
     const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}${prompt}`;
     window.location.href = authUrl;
   }
 
   async fetchCustomers() {
-    this.showLoading(40, "Indexing Customer Registry...");
+    this.showLoading(40, "Indexing Master Registry...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
@@ -340,17 +344,27 @@ class ZohoLedgerApp {
   async syncCustomerData(id) {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
-    this.showLoading(50, `Updating Ledger: ${customer.contact_name}`);
+    this.showLoading(50, `Mapping SOA Data: ${customer.contact_name}`);
     
-    for (const module of this.state.activeModules) {
+    // Fetch Customer Full Details for Opening Balance
+    try {
+        const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
+        this.state.customerFullDetails[id] = cRes.contact;
+    } catch(e) { console.warn("SOA Context fetch failed", e); }
+
+    const modulesToSync = ['invoices', 'creditnotes', 'customerpayments']; 
+    
+    for (const module of modulesToSync) {
       try {
         const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
         const res = await this.rawRequest(url);
-        this.state.dataStore[module][id] = { customerName: customer.contact_name, records: res[module] || [] };
+        const storageKey = module === 'customerpayments' ? 'payments' : module;
+        this.state.dataStore[storageKey][id] = { customerName: customer.contact_name, records: res[module] || [] };
         
+        // Deep cache item level details for SOA multi-line rendering
         if (module === 'invoices' || module === 'creditnotes') {
           const key = module === 'invoices' ? 'invoice_id' : 'creditnote_id';
-          for (const rec of this.state.dataStore[module][id].records) {
+          for (const rec of this.state.dataStore[storageKey][id].records) {
             const rid = rec[key];
             if (!this.state.invoiceDetailsCache[rid]) {
               const dRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/${module}/${rid}?organization_id=${this.state.selectedOrgId}`);
@@ -359,14 +373,14 @@ class ZohoLedgerApp {
           }
         }
       } catch (e) { 
-        this.state.dataStore[module][id] = { customerName: customer.contact_name, records: [] };
+        console.error(`Module ${module} sync fail`, e);
       }
     }
     this.hideLoading();
   }
 
   async syncAllActiveCustomers() {
-    this.state.dataStore = { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} };
+    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
     for (const id of Array.from(this.state.selectedCustomerIds)) {
       await this.syncCustomerData(id);
     }
@@ -375,7 +389,8 @@ class ZohoLedgerApp {
 
   renderExplorer() {
     this.targets.explorerTabs.innerHTML = '';
-    this.state.activeModules.forEach(mod => {
+    const available = ['invoices', 'creditnotes', 'payments'];
+    available.forEach(mod => {
       const btn = document.createElement('button');
       btn.className = `px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${this.state.explorerModule === mod ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-neutral-500'}`;
       btn.innerText = mod;
@@ -394,7 +409,7 @@ class ZohoLedgerApp {
 
     if (allRecords.length === 0) {
       this.targets.explorerThead.innerHTML = '';
-      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black uppercase text-[10px] tracking-widest">No mapping found</td></tr>';
+      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black uppercase text-[10px] tracking-widest">No matching transactional data</td></tr>';
       return;
     }
 
@@ -413,116 +428,190 @@ class ZohoLedgerApp {
     this.targets.emptyState.classList.add('view-hidden');
     this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = false;
 
-    // Fixed: Dynamically grab the active project name from the dropdown
     const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'Project Context N/A';
     
-    // Page Builder Structure
     let html = '';
-    let rowsHtml = '';
-    let globalRunningTotal = 0;
 
-    // Build Rows first to determine pagination needs
     this.state.selectedCustomerIds.forEach(id => {
-      let clientRunTotal = 0;
-      const clientName = this.state.customers.find(c => c.contact_id === id)?.contact_name || 'Anonymous Client';
+      const customer = this.state.customerFullDetails[id] || {};
+      const clientName = customer.contact_name || 'Valued Client';
+      const openingBalance = parseFloat(customer.opening_balance) || 0;
+      let runningBalance = openingBalance;
       
-      rowsHtml += `<tr class="bg-indigo-900 text-white"><td colspan="5" class="py-4 px-5 font-black text-[14px] uppercase tracking-tighter">Client Partition: ${clientName}</td></tr>`;
+      let totalInvoiced = 0;
+      let totalReceived = 0;
+
+      // Aggregating all transactions for the timeline
+      let transactions = [];
       
-      const ledgerItems = [];
-      this.state.activeModules.forEach(mod => {
-        const modData = this.state.dataStore[mod][id];
-        if (modData && modData.records) {
-          modData.records.forEach(r => ledgerItems.push({ ...r, _type: mod }));
-        }
-      });
-
-      ledgerItems.sort((a,b) => new Date(a.date) - new Date(b.date));
-
-      const groupedByRef = {};
-      const sortedRefs = [];
-      ledgerItems.forEach(item => {
-        const ref = item.invoice_number || item.creditnote_number || item.estimate_number || item.salesorder_number || 'TRX-N/A';
-        if (!groupedByRef[ref]) {
-          groupedByRef[ref] = { info: item, lines: [] };
-          sortedRefs.push(ref);
-        }
-        const details = this.state.invoiceDetailsCache[item.invoice_id || item.creditnote_id];
-        if (details && details.line_items) groupedByRef[ref].lines.push(...details.line_items);
-        else groupedByRef[ref].lines.push({ name: `Aggregated ${item._type.toUpperCase()}`, quantity: 1, item_total: item.total || item.balance || 0 });
-      });
-
-      sortedRefs.forEach(ref => {
-        const group = groupedByRef[ref];
-        const isCredit = group.info._type === 'creditnotes';
-        rowsHtml += `<tr class="invoice-group-header">
-          <td colspan="5" class="py-2 px-5 font-bold text-indigo-700 uppercase italic text-[9px] border-b border-indigo-100">
-            ${group.info._type.toUpperCase()} DOCUMENT - ${ref} (${group.info.date})
-          </td>
-        </tr>`;
-
-        group.lines.forEach(li => {
-          const amt = isCredit ? -li.item_total : li.item_total;
-          clientRunTotal += amt;
-          rowsHtml += this.createRowMarkup(li.name || li.description, li.quantity || 1, amt, ref, clientRunTotal, isCredit, group.info._type);
+      // 1. Invoices
+      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+        transactions.push({
+          date: inv.date,
+          type: 'Invoice',
+          ref: inv.invoice_number,
+          due_date: inv.due_date,
+          amount: parseFloat(inv.total) || 0,
+          payment: 0,
+          raw: inv,
+          sortDate: new Date(inv.date)
         });
       });
 
-      rowsHtml += `<tr class="bg-indigo-50 border-t-4 border-indigo-600 client-footer" data-client="${id}">
-        <td colspan="3" class="py-5 px-5 text-right font-black uppercase text-[10px] text-neutral-500">Statement Outstanding [${this.state.currency}]:</td>
-        <td colspan="2" class="py-5 px-5 text-right font-black text-[18px] uppercase tracking-tighter text-indigo-700 total-cell">${clientRunTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-      </tr><tr class="h-10"></tr>`;
-    });
+      // 2. Payments
+      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
+        transactions.push({
+          date: pay.date,
+          type: 'Payment Received',
+          ref: pay.payment_number,
+          amount: 0,
+          payment: parseFloat(pay.amount) || 0,
+          raw: pay,
+          sortDate: new Date(pay.date)
+        });
+      });
 
-    // Create a multi-page A4 structure
-    // We wrap everything in A4 pages. Since standard browser paging is hard, 
-    // we use a single long A4 div for the preview, but ensure backgrounds stack.
-    html = `
-      <div class="a4-page" id="pdf-content">
-        <div class="flex justify-between items-start mb-12">
-          <div class="flex-grow">
-            ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-16 mb-6 object-contain">` : '<div class="h-16 w-48 bg-neutral-100 rounded mb-6 flex items-center justify-center text-[9px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
-            <h1 class="text-3xl font-black uppercase tracking-tighter text-indigo-900" contenteditable="true">Project: ${projectName}</h1>
-            <p class="text-[11px] text-indigo-500 font-black uppercase tracking-widest mt-1">Generated by BizSense InsightPRO Statement Generator</p>
-          </div>
-          <div class="text-right flex-shrink-0">
-            <h2 class="text-5xl font-black tracking-tighter leading-none text-indigo-600" contenteditable="true">LEDGER</h2>
-            <p class="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
-            <p class="mt-1 text-[10px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
-          </div>
-        </div>
+      // 3. Credit Notes
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
+        transactions.push({
+          date: cn.date,
+          type: 'Credit Note',
+          ref: cn.creditnote_number,
+          amount: -(parseFloat(cn.total) || 0), // Credit notes reduce debt
+          payment: 0,
+          raw: cn,
+          sortDate: new Date(cn.date)
+        });
+      });
+
+      // Sort chronological
+      transactions.sort((a,b) => a.sortDate - b.sortDate);
+
+      let rowsHtml = `
+        <tr class="bg-indigo-50 font-black italic">
+          <td class="py-3 px-5 border-b" colspan="2">OPENING BALANCE</td>
+          <td class="py-3 px-5 border-b text-left italic opacity-60">Balance brought forward</td>
+          <td class="py-3 px-5 border-b text-right" colspan="2">---</td>
+          <td class="py-3 px-5 border-b text-right">${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        </tr>
+      `;
+
+      transactions.forEach(tx => {
+        runningBalance += tx.amount;
+        runningBalance -= tx.payment;
         
-        <table class="w-full text-left border-collapse table-fixed master-ledger-table">
-          <thead>
-            <tr class="bg-indigo-600 text-white text-[9px] font-black uppercase tracking-[0.2em]">
-              <th class="py-3 px-5 w-[160px]">Service Item Description</th>
-              <th class="py-3 px-3 w-[45px] text-center">Qty</th>
-              <th class="py-3 px-3 w-[100px] text-right">Debit / Credit</th>
-              <th class="py-3 px-3 w-[85px] text-center">Reference</th>
-              <th class="py-3 px-5 w-[110px] text-right">Running Total</th>
-            </tr>
-          </thead>
-          <tbody class="text-[10px] ledger-rows">
-            ${rowsHtml}
-          </tbody>
-        </table>
-      </div>`;
+        totalInvoiced += (tx.amount > 0 ? tx.amount : 0);
+        totalReceived += tx.payment;
+
+        let detailsHtml = '';
+        if (tx.type === 'Invoice') {
+          const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
+          detailsHtml = `<div class="font-bold text-indigo-700">Invoice ${tx.ref} (Due: ${tx.due_date})</div>`;
+          if (det && det.line_items) {
+            det.line_items.forEach(li => {
+              detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">• ${li.name} × ${li.quantity} ${li.unit || ''}</div>`;
+            });
+          }
+        } else if (tx.type === 'Payment Received') {
+          detailsHtml = `<div class="font-bold text-emerald-700 uppercase">Payment Received</div>`;
+          detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">Ref: ${tx.ref}</div>`;
+          if (tx.raw.invoices && tx.raw.invoices.length > 0) {
+            detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">Against ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
+          }
+        } else if (tx.type === 'Credit Note') {
+          const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
+          detailsHtml = `<div class="font-bold text-red-700">Credit Note ${tx.ref}</div>`;
+          if (det && det.line_items) {
+            det.line_items.forEach(li => {
+              detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">• ${li.name} × ${li.quantity} (Returned)</div>`;
+            });
+          }
+        }
+
+        rowsHtml += `
+          <tr class="border-b border-neutral-100 ledger-item-row group">
+            <td class="py-4 px-5 align-top font-bold text-neutral-400">${tx.date}</td>
+            <td class="py-4 px-5 align-top font-black text-indigo-900 uppercase">${tx.type}</td>
+            <td class="py-4 px-5 align-top text-left text-[11px] leading-tight details-cell">${detailsHtml}</td>
+            <td class="py-4 px-5 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
+              ${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
+            </td>
+            <td class="py-4 px-5 align-top text-right font-bold text-emerald-600">
+              ${tx.payment !== 0 ? tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
+            </td>
+            <td class="py-4 px-5 align-top text-right font-black text-indigo-900">
+              ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+            </td>
+          </tr>
+        `;
+      });
+
+      html += `
+        <div class="a4-page" id="pdf-content">
+          <div class="flex justify-between items-start mb-12">
+            <div class="flex-grow">
+              ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-16 mb-6 object-contain">` : '<div class="h-16 w-48 bg-neutral-100 rounded mb-6 flex items-center justify-center text-[9px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
+              <h1 class="text-2xl font-black uppercase tracking-tighter text-indigo-900">Project: ${projectName}</h1>
+              <p class="text-[10px] text-indigo-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
+              
+              <div class="mt-8">
+                <p class="text-[8px] font-black uppercase text-neutral-400 mb-1 tracking-widest">Customer Details</p>
+                <p class="text-xl font-black uppercase text-indigo-600">${clientName}</p>
+                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.email || ''}</p>
+                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.mobile || customer.phone || ''}</p>
+              </div>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <h2 class="text-5xl font-black tracking-tighter leading-none text-indigo-600">SOA</h2>
+              <p class="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
+              <p class="mt-1 text-[10px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
+              
+              <div class="mt-10 bg-indigo-600 text-white p-5 rounded-2xl shadow-xl">
+                <p class="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Current Balance Due</p>
+                <p class="text-3xl font-black uppercase tracking-tighter">${this.state.currency} ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+              </div>
+            </div>
+          </div>
+          
+          <table class="w-full text-left border-collapse table-fixed master-ledger-table mb-12">
+            <thead>
+              <tr class="bg-indigo-600 text-white text-[9px] font-black uppercase tracking-[0.2em]">
+                <th class="py-4 px-5 w-[100px]">Date</th>
+                <th class="py-4 px-5 w-[140px]">Transaction</th>
+                <th class="py-4 px-5 w-[240px]">Details</th>
+                <th class="py-4 px-5 w-[110px] text-right">Amount</th>
+                <th class="py-4 px-5 w-[110px] text-right">Payments</th>
+                <th class="py-4 px-5 w-[120px] text-right">Balance</th>
+              </tr>
+            </thead>
+            <tbody class="text-[10px] ledger-rows">
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="mt-auto border-t-2 border-indigo-100 pt-8 flex justify-between items-end">
+            <div class="space-y-4">
+              <h4 class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Account Summary</h4>
+              <div class="grid grid-cols-2 gap-x-12 gap-y-2 text-[11px] font-bold text-neutral-600 uppercase">
+                <span>Opening Balance:</span><span class="text-right">${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Invoiced Amount:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Amount Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span class="pt-2 border-t font-black text-indigo-900 text-sm">Balance Due:</span>
+                <span class="pt-2 border-t font-black text-indigo-900 text-sm text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-[11px] font-black uppercase text-indigo-500 italic">Official Account Statement</p>
+              <div class="mt-6 h-12 w-48 border-b-2 border-indigo-200 ml-auto"></div>
+              <p class="mt-2 text-[8px] font-black uppercase tracking-widest text-neutral-400">Authorized Signatory</p>
+            </div>
+          </div>
+        </div>`;
+    });
 
     this.targets.renderArea.innerHTML = html;
     this.attachLedgerListeners();
     this.autoFitZoom();
-  }
-
-  createRowMarkup(desc, qty, amt, ref, runTotal, isCredit, type) {
-    return `<tr class="border-b border-neutral-100 hover:bg-neutral-50 transition-colors group ledger-item-row" data-type="${type}">
-      <td class="py-3 px-5 font-bold truncate flex items-center gap-2">
-        <button class="no-print row-del-btn opacity-0 group-hover:opacity-100 text-red-500 font-black hover:scale-125 transition-all">✕</button>
-        <span contenteditable="true" class="desc-cell">${desc}</span>
-      </td>
-      <td class="py-3 px-3 text-center" contenteditable="true" class="qty-cell">${qty}</td>
-      <td class="py-3 px-3 text-right font-bold ${isCredit ? 'text-red-500' : 'text-neutral-800'}" contenteditable="true" class="amt-cell">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-      <td class="py-3 px-3 text-center opacity-40 font-mono text-[9px]">${ref}</td>
-      <td class="py-3 px-5 text-right font-black text-indigo-900 run-total-cell">${runTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-    </tr>`;
   }
 
   attachLedgerListeners() {
@@ -541,69 +630,87 @@ class ZohoLedgerApp {
   recalculateAllLedgers() {
     const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
     let runningTotal = 0;
+    
+    // Attempting to maintain balance after manual row removal
     rows.forEach(row => {
-      if (row.classList.contains('ledger-item-row')) {
-        const amtCell = row.querySelector('.amt-cell') || row.children[2];
-        const runTotalCell = row.querySelector('.run-total-cell') || row.children[4];
-        const val = parseFloat(amtCell.innerText.replace(/,/g, '')) || 0;
-        runningTotal += val;
-        runTotalCell.innerText = runningTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
-      } else if (row.classList.contains('client-footer')) {
-        const totalCell = row.querySelector('.total-cell');
-        totalCell.innerText = runningTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
-      } else if (row.classList.contains('bg-indigo-900')) {
-        runningTotal = 0;
-      }
+        if (row.classList.contains('ledger-item-row')) {
+            const amtCell = row.children[3];
+            const payCell = row.children[4];
+            const runTotalCell = row.children[5];
+            
+            const amtRaw = amtCell.innerText.replace(/,/g, '');
+            const payRaw = payCell.innerText.replace(/,/g, '');
+            
+            const amt = parseFloat(amtRaw) || 0;
+            const pay = parseFloat(payRaw) || 0;
+            
+            // Invoices/Incomes are positive in column 3, CNs are negative in col 3.
+            // Payments are in column 4.
+            runningTotal += amt; 
+            runningTotal -= pay;
+            
+            runTotalCell.innerText = runningTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
+        }
     });
   }
 
   downloadExcel() {
-    this.showLoading(80, "Data Aggregation...");
+    this.showLoading(80, "Aggregating SOA Workbook...");
     const data = [];
-    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'Unknown Project';
+    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'N/A';
 
     this.state.selectedCustomerIds.forEach(id => {
-      const clientName = this.state.customers.find(c => c.contact_id === id)?.contact_name || 'Unknown';
-      this.state.activeModules.forEach(mod => {
-        const records = this.state.dataStore[mod][id]?.records || [];
-        records.forEach(r => {
-          const details = this.state.invoiceDetailsCache[r.invoice_id || r.creditnote_id];
-          const docRef = r.invoice_number || r.creditnote_number || r.estimate_number || r.salesorder_number || 'N/A';
-          const multiplier = mod === 'creditnotes' ? -1 : 1;
-          if (details && details.line_items) {
-            details.line_items.forEach(li => {
-              data.push({
-                'Project': projectName,
-                'Customer': clientName,
-                'Module': mod.toUpperCase(),
-                'Date': r.date,
-                'Reference': docRef,
-                'Description': li.name || li.description || '',
-                'Qty': li.quantity || 1,
-                'Total (LKR)': multiplier * (li.item_total || 0),
-                'Status': r.status || ''
-              });
-            });
-          }
+      const customer = this.state.customerFullDetails[id] || {};
+      const clientName = customer.contact_name || 'N/A';
+      const openingBalance = parseFloat(customer.opening_balance) || 0;
+      let runningBalance = openingBalance;
+
+      // Header row
+      data.push({
+        'Date': '', 'Transaction': 'OPENING BALANCE', 'Details': 'Balance brought forward', 
+        'Amount': 0, 'Payments': 0, 'Balance': openingBalance, 'Customer': clientName
+      });
+
+      // Prepare transactions
+      let transactions = [];
+      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+        transactions.push({ date: inv.date, type: 'Invoice', ref: inv.invoice_number, amount: parseFloat(inv.total) || 0, pay: 0, sortDate: new Date(inv.date) });
+      });
+      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
+        transactions.push({ date: pay.date, type: 'Payment', ref: pay.payment_number, amount: 0, pay: parseFloat(pay.amount) || 0, sortDate: new Date(pay.date) });
+      });
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
+        transactions.push({ date: cn.date, type: 'Credit Note', ref: cn.creditnote_number, amount: -(parseFloat(cn.total) || 0), pay: 0, sortDate: new Date(cn.date) });
+      });
+
+      transactions.sort((a,b) => a.sortDate - b.sortDate).forEach(tx => {
+        runningBalance += tx.amount;
+        runningBalance -= tx.pay;
+        data.push({
+          'Date': tx.date,
+          'Transaction': tx.type,
+          'Details': tx.ref,
+          'Amount': Math.abs(tx.amount),
+          'Payments': tx.pay,
+          'Balance': runningBalance,
+          'Customer': clientName,
+          'Project': projectName
         });
       });
     });
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Statement_Ledger");
-    XLSX.writeFile(wb, `InsightPRO_Excel_${Date.now()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "SOA_Detailed");
+    XLSX.writeFile(wb, `InsightPRO_SOA_${Date.now()}.xlsx`);
     this.hideLoading();
   }
 
   downloadPDF() {
-    this.showLoading(85, "Rendering Multi-Page High-Res PDF...");
-    
-    // Fixed: Capture the correctly rendered preview
+    this.showLoading(85, "Generating HD Multi-Page PDF...");
     const original = document.getElementById('pdf-content');
     if (!original) return;
     
-    // Create a pristine temp container that isn't transformed or scaled
     const tempContainer = document.getElementById('pdf-export-temp');
     tempContainer.innerHTML = '';
     
@@ -612,11 +719,6 @@ class ZohoLedgerApp {
     clone.style.margin = '0';
     clone.style.boxShadow = 'none';
     clone.style.width = '210mm';
-    // Ensure the table height doesn't break incorrectly
-    clone.querySelectorAll('tr').forEach(tr => {
-      tr.style.pageBreakInside = 'avoid';
-      tr.style.breakInside = 'avoid-page';
-    });
     
     tempContainer.appendChild(clone);
     tempContainer.classList.remove('view-hidden');
@@ -624,15 +726,9 @@ class ZohoLedgerApp {
 
     const opt = {
       margin: [10, 0, 10, 0],
-      filename: `BIZSENSE_STATEMENT_${Date.now()}.pdf`,
+      filename: `SOA_STATEMENT_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { 
-        scale: 2, 
-        useCORS: true, 
-        letterRendering: true,
-        scrollX: 0,
-        scrollY: 0
-      },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
@@ -642,35 +738,24 @@ class ZohoLedgerApp {
       tempContainer.style.display = 'none';
       tempContainer.innerHTML = '';
       this.hideLoading();
-    }).catch(err => {
-      console.error("PDF Fail", err);
-      this.hideLoading();
     });
   }
 
   setZoom(val) {
     this.state.zoom = Math.max(0.1, Math.min(3.0, val));
     const pages = this.targets.renderArea.querySelectorAll('.a4-page');
-    pages.forEach(p => {
-      p.style.transform = `scale(${this.state.zoom})`;
-    });
-    // Adjust visual height for scrolling scaled content
+    pages.forEach(p => { p.style.transform = `scale(${this.state.zoom})`; });
     const standardA4H_px = 29.7 * 37.8;
-    const actualHeight = original => {
-      if (!original) return standardA4H_px;
-      return original.scrollHeight * this.state.zoom;
-    };
-    const mainPage = pages[0];
-    this.targets.renderArea.style.height = `${actualHeight(mainPage) + 150}px`;
+    const actualHeight = original => original ? original.scrollHeight * this.state.zoom : standardA4H_px;
+    this.targets.renderArea.style.height = `${actualHeight(pages[0]) + 200}px`;
   }
 
   autoFitZoom() {
     if(!this.views.areaLedger) return;
     const wrapperW = this.views.areaLedger.clientWidth;
-    const targetW = wrapperW * 0.85; // Fill 85% of width
+    const targetW = wrapperW * 0.85;
     const standardA4W_px = 21 * 37.8;
-    const calculatedZoom = targetW / standardA4W_px;
-    this.setZoom(Math.max(0.3, calculatedZoom));
+    this.setZoom(targetW / standardA4W_px);
   }
 
   showLoading(prog, txt) {
@@ -703,8 +788,7 @@ class ZohoLedgerApp {
     this.updateConfigStatus();
   }
   updateConfigStatus() {
-    const valid = this.config.clientId && this.config.clientId.length > 5;
-    this.btns.connect.disabled = !valid;
+    this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
   }
   logout(reload = true) {
     localStorage.removeItem('zoho_access_token');
@@ -723,7 +807,7 @@ class ZohoLedgerApp {
       this.syncAllActiveCustomers();
     } else {
       this.state.selectedCustomerIds.clear();
-      this.state.dataStore = { invoices: {}, estimates: {}, salesorders: {}, creditnotes: {} };
+      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
       this.updateUIVisuals();
     }
     this.renderCustomerList();
