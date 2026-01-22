@@ -1,7 +1,7 @@
 
 /**
- * BIZSENSE STATEMENT PRO - NATIVE ZOHO SOA REPLICATION ENGINE
- * Strict Accounting Logic Implementation
+ * BIZSENSE STATEMENT PRO - ENTERPRISE SOA ENGINE
+ * Transaction-level Statement of Accounts with Nested Item Details
  */
 
 class ZohoLedgerApp {
@@ -14,8 +14,9 @@ class ZohoLedgerApp {
       selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
       currentOrgDetails: null,
       customers: [],
-      customerFullDetails: {},
+      customerFullDetails: {}, // Cache for opening balances and specific contact info
       selectedCustomerIds: new Set(),
+      activeModules: new Set(JSON.parse(localStorage.getItem('active_modules')) || ['invoices', 'creditnotes', 'payments']), 
       dataStore: { invoices: {}, creditnotes: {}, payments: {} },
       invoiceDetailsCache: {},
       customLogo: localStorage.getItem('biz_logo') || null,
@@ -50,17 +51,18 @@ class ZohoLedgerApp {
       landing: document.getElementById('view-landing'),
       dashboard: document.getElementById('view-dashboard'),
       configModal: document.getElementById('modal-config'),
+      settingsModal: document.getElementById('modal-settings'),
       loadingBar: document.getElementById('loading-bar-container'),
       loadingOverlay: document.getElementById('loading-status-overlay'),
       loadingProgress: document.getElementById('loading-bar'),
       loadingText: document.getElementById('loading-bar-text'),
+      landingError: document.getElementById('landing-error'),
       customerList: document.getElementById('customer-list'),
       areaLedger: document.getElementById('area-ledger'),
       statementContainer: document.getElementById('statement-render-target'),
       ledgerView: document.getElementById('view-ledger-container'),
       explorerView: document.getElementById('view-explorer-container'),
-      pdfTemp: document.getElementById('pdf-export-temp'),
-      emptyState: document.getElementById('empty-state')
+      pdfTemp: document.getElementById('pdf-export-temp')
     };
     
     this.inputs = {
@@ -68,16 +70,25 @@ class ZohoLedgerApp {
       search: document.getElementById('customer-search'),
       clientId: document.getElementById('cfg-client-id'),
       region: document.getElementById('cfg-region'),
+      displayRedirect: document.getElementById('display-redirect-uri'),
+      moduleCheckboxes: document.querySelectorAll('#module-selector input'),
       logoUpload: document.getElementById('logo-upload')
     };
 
     this.btns = {
       connect: document.getElementById('btn-connect'),
       saveConfig: document.getElementById('btn-save-config'),
+      resetConfig: document.getElementById('btn-reset-config'),
       downloadPdf: document.getElementById('btn-download-pdf'),
       downloadExcel: document.getElementById('btn-download-excel'),
       logout: document.getElementById('btn-logout'),
+      selectAll: document.getElementById('btn-select-all'),
       clearAll: document.getElementById('btn-clear-all'),
+      openConfig: document.getElementById('btn-open-config-landing'),
+      closeConfig: document.getElementById('btn-close-config'),
+      openSettings: document.getElementById('btn-project-settings'),
+      closeSettings: document.getElementById('btn-close-settings'),
+      applySettings: document.getElementById('btn-apply-settings'),
       zoomIn: document.getElementById('btn-zoom-in'),
       zoomOut: document.getElementById('btn-zoom-out'),
       zoomFit: document.getElementById('btn-zoom-fit'),
@@ -87,24 +98,46 @@ class ZohoLedgerApp {
 
     this.targets = {
       renderArea: document.getElementById('statement-render-target'),
+      emptyState: document.getElementById('empty-state'),
       log: document.getElementById('log-message'),
       stats: document.getElementById('data-stats'),
+      errorText: document.getElementById('landing-error-text'),
       explorerTabs: document.getElementById('explorer-tabs'),
       explorerThead: document.getElementById('explorer-thead'),
       explorerTbody: document.getElementById('explorer-tbody')
     };
+
+    const redirectUri = window.location.origin + window.location.pathname;
+    if (this.inputs.displayRedirect) this.inputs.displayRedirect.innerText = redirectUri;
+    this.inputs.moduleCheckboxes.forEach(cb => {
+        if (this.state.activeModules.has(cb.value)) cb.checked = true;
+    });
   }
 
   bindEvents() {
     this.btns.connect.onclick = () => this.startAuth();
     this.btns.saveConfig.onclick = () => this.saveConfig();
+    this.btns.resetConfig.onclick = () => this.wipeConfiguration();
+    this.btns.openConfig.onclick = () => this.toggleConfig(true);
+    this.btns.closeConfig.onclick = () => this.toggleConfig(false);
     this.btns.logout.onclick = () => this.logout();
     this.btns.downloadPdf.onclick = () => this.downloadPDF();
     this.btns.downloadExcel.onclick = () => this.downloadExcel();
-    this.btns.clearAll.onclick = () => this.resetSelection();
+    this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
+    this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
+    this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
+    this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
     
     this.btns.toggleLedger.onclick = () => this.switchView('ledger');
     this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
+
+    this.btns.applySettings.onclick = () => {
+      this.state.activeModules.clear();
+      this.inputs.moduleCheckboxes.forEach(cb => { if(cb.checked) this.state.activeModules.add(cb.value); });
+      localStorage.setItem('active_modules', JSON.stringify(Array.from(this.state.activeModules)));
+      this.views.settingsModal.classList.add('view-hidden');
+      this.syncAllActiveCustomers();
+    };
 
     this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
     this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
@@ -115,7 +148,7 @@ class ZohoLedgerApp {
   }
 
   async handleOrgSwitch(orgId) {
-    this.showLoading(20, "Switching Project...");
+    this.showLoading(20, "Re-indexing Project Context...");
     this.state.selectedOrgId = orgId;
     localStorage.setItem('zoho_selected_org_id', orgId);
     
@@ -123,12 +156,19 @@ class ZohoLedgerApp {
     this.state.invoiceDetailsCache = {};
     this.state.selectedCustomerIds = new Set();
     this.state.customerFullDetails = {};
+    this.state.customLogo = localStorage.getItem('biz_logo') || null;
 
-    await this.fetchOrganizationDetails();
-    await this.fetchCustomers();
-    this.renderCustomerList();
-    this.updateUIVisuals();
-    this.hideLoading();
+    try {
+      await this.fetchOrganizationDetails();
+      await this.fetchCustomers();
+      this.renderCustomerList();
+      this.updateUIVisuals();
+      this.log(`Project Loaded: ${this.state.currentOrgDetails?.name}`);
+    } catch (err) {
+      this.log(`Load Error: ${err.message}`);
+    } finally {
+      this.hideLoading();
+    }
   }
 
   switchView(view) {
@@ -172,21 +212,21 @@ class ZohoLedgerApp {
 
   async checkSession() {
     if (this.state.accessToken) {
+      this.showLoading(20, "Establishing Data Pipeline...");
       try {
         const success = await this.discoverOrganizations();
         if (success) {
           this.views.landing.classList.add('view-hidden');
+          this.views.dashboard.classList.remove('view-hidden');
           await this.fetchOrganizationDetails();
           await this.fetchCustomers();
-        } else {
-            this.views.landing.classList.remove('view-hidden');
+          this.autoFitZoom();
         }
       } catch (err) {
+        this.showLandingError(err.message);
         this.logout(false);
-        this.views.landing.classList.remove('view-hidden');
       }
-    } else {
-        this.views.landing.classList.remove('view-hidden');
+      this.hideLoading();
     }
   }
 
@@ -207,18 +247,15 @@ class ZohoLedgerApp {
         return true;
       }
       return false;
-    } catch (e) { return false; }
+    } catch (e) { throw new Error(`Connectivity: ${e.message}`); }
   }
 
   async fetchOrganizationDetails() {
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
-      if (res && res.organization) {
-          this.state.currentOrgDetails = res.organization;
-          this.state.currency = res.organization.currency_code || 'LKR';
-      }
-    } catch (e) { console.warn("Org detail fetch failed", e); }
+      if (res && res.organization) this.state.currentOrgDetails = res.organization;
+    } catch (e) { console.warn("Detail fetch failed", e); }
   }
 
   async rawRequest(url) {
@@ -226,21 +263,25 @@ class ZohoLedgerApp {
       headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
     });
     if (res.status === 401) throw new Error("Session Expired");
-    if (!res.ok) throw new Error("API Connection Issue");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.message || "API Rejected Request");
+    }
     return res.json();
   }
 
-  startAuth() {
-    if (!this.config.clientId) {
-        this.views.configModal.classList.remove('view-hidden');
-        return;
-    }
+  startAuth(force = false) {
+    if (!this.config.clientId) return this.toggleConfig(true);
+    this.showLoading(15, "Authenticating Secure Tunnel...");
     const redirectUri = window.location.origin + window.location.pathname;
-    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ";
-    window.location.href = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
+    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ";
+    const prompt = force ? '&prompt=select_account' : '&prompt=consent';
+    const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}${prompt}`;
+    window.location.href = authUrl;
   }
 
   async fetchCustomers() {
+    this.showLoading(40, "Indexing Master Registry...");
     try {
       const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
       const res = await this.rawRequest(url);
@@ -248,7 +289,8 @@ class ZohoLedgerApp {
         this.state.customers = res.contacts;
         this.renderCustomerList();
       }
-    } catch (e) {}
+    } catch (e) { this.log(`Error: ${e.message}`); }
+    finally { this.hideLoading(); }
   }
 
   renderCustomerList() {
@@ -256,12 +298,12 @@ class ZohoLedgerApp {
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
       const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
       const div = document.createElement('div');
-      div.className = `flex items-center space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
+      div.className = `flex items-center space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-all group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
       div.innerHTML = `
-        <div class="w-4 h-4 rounded border border-white/20 flex items-center justify-center ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
+        <div class="w-4 h-4 rounded border border-white/20 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
           ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
         </div>
-        <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white">${c.contact_name}</span>
+        <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white tracking-widest">${c.contact_name}</span>
       `;
       div.onclick = () => this.handleCustomerClick(c.contact_id);
       this.views.customerList.appendChild(div);
@@ -271,9 +313,9 @@ class ZohoLedgerApp {
   async handleCustomerClick(id) {
     if (this.state.selectedCustomerIds.has(id)) {
       this.state.selectedCustomerIds.delete(id);
-      delete this.state.dataStore.invoices[id];
-      delete this.state.dataStore.creditnotes[id];
-      delete this.state.dataStore.payments[id];
+      Object.keys(this.state.dataStore).forEach(mod => {
+        if (this.state.dataStore[mod][id]) delete this.state.dataStore[mod][id];
+      });
     } else {
       this.state.selectedCustomerIds.add(id);
       await this.syncCustomerData(id);
@@ -282,294 +324,438 @@ class ZohoLedgerApp {
     this.updateUIVisuals();
   }
 
+  updateUIVisuals() {
+    if (this.state.activeView === 'ledger') this.renderStatementUI();
+    else this.renderExplorer();
+    this.updateStats();
+    this.autoFitZoom();
+  }
+
+  updateStats() {
+    let totalRecords = 0;
+    Object.values(this.state.dataStore).forEach(moduleData => {
+      Object.values(moduleData).forEach(customerData => {
+        totalRecords += (customerData.records || []).length;
+      });
+    });
+    this.targets.stats.innerText = `${totalRecords} RECORDS MAPPED`;
+  }
+
   async syncCustomerData(id) {
     const customer = this.state.customers.find(c => c.contact_id === id);
     if (!customer) return;
-    this.showLoading(50, `Syncing Statement: ${customer.contact_name}`);
+    this.showLoading(50, `Mapping SOA Data: ${customer.contact_name}`);
     
+    // Fetch Customer Full Details for Opening Balance
     try {
         const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
         this.state.customerFullDetails[id] = cRes.contact;
-    } catch(e) {}
+    } catch(e) { console.warn("SOA Context fetch failed", e); }
 
-    const modules = ['invoices', 'creditnotes', 'customerpayments']; 
-    for (const mod of modules) {
+    const modulesToSync = ['invoices', 'creditnotes', 'customerpayments']; 
+    
+    for (const module of modulesToSync) {
       try {
-        const url = `https://www.zohoapis.${this.config.region}/books/v3/${mod}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
+        const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
         const res = await this.rawRequest(url);
-        const key = mod === 'customerpayments' ? 'payments' : mod;
-        this.state.dataStore[key][id] = { records: res[mod] || [] };
+        const storageKey = module === 'customerpayments' ? 'payments' : module;
+        this.state.dataStore[storageKey][id] = { customerName: customer.contact_name, records: res[module] || [] };
         
-        if (mod !== 'customerpayments') {
-            const idKey = mod === 'invoices' ? 'invoice_id' : 'creditnote_id';
-            for (const r of this.state.dataStore[key][id].records) {
-                const rid = r[idKey];
-                if (!this.state.invoiceDetailsCache[rid]) {
-                    const dRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/${mod}/${rid}?organization_id=${this.state.selectedOrgId}`);
-                    this.state.invoiceDetailsCache[rid] = dRes[mod.slice(0, -1)];
-                }
+        // Deep cache item level details for SOA multi-line rendering
+        if (module === 'invoices' || module === 'creditnotes') {
+          const key = module === 'invoices' ? 'invoice_id' : 'creditnote_id';
+          for (const rec of this.state.dataStore[storageKey][id].records) {
+            const rid = rec[key];
+            if (!this.state.invoiceDetailsCache[rid]) {
+              const dRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/${module}/${rid}?organization_id=${this.state.selectedOrgId}`);
+              this.state.invoiceDetailsCache[rid] = dRes[module.slice(0, -1)];
             }
+          }
         }
-      } catch (e) {}
+      } catch (e) { 
+        console.error(`Module ${module} sync fail`, e);
+      }
     }
     this.hideLoading();
   }
 
-  /**
-   * REUSABLE CORE LOGIC: Filter valid transactions based on Zoho SOA Rules
-   */
-  filterValidTransactions(records, type) {
-    if (!records) return [];
-    const invalidStatuses = ['draft', 'void', 'trash'];
-    const positiveStatuses = ['open', 'closed', 'confirmed', 'sent', 'paid', 'partially_paid', 'unpaid', 'overdue', 'success'];
-
-    return records.filter(r => {
-      const status = (r.status || '').toLowerCase();
-      // Rule 1: Always ignore draft, void, or trash
-      if (invalidStatuses.includes(status)) return false;
-
-      // Rule 2: For Credit Notes and Payments, only include if explicitly confirmed/active
-      if (type === 'creditnote' || type === 'payment') {
-        return ['open', 'closed', 'confirmed', 'success'].includes(status);
-      }
-      
-      // Rule 3: For Invoices, include anything that isn't draft/void
-      return true;
-    });
+  async syncAllActiveCustomers() {
+    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
+    for (const id of Array.from(this.state.selectedCustomerIds)) {
+      await this.syncCustomerData(id);
+    }
+    this.updateUIVisuals();
   }
 
-  updateUIVisuals() {
-    if (this.state.activeView === 'ledger') this.renderStatementUI();
-    else this.renderExplorer();
-    this.autoFitZoom();
+  renderExplorer() {
+    this.targets.explorerTabs.innerHTML = '';
+    const available = ['invoices', 'creditnotes', 'payments'];
+    available.forEach(mod => {
+      const btn = document.createElement('button');
+      btn.className = `px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${this.state.explorerModule === mod ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-neutral-500'}`;
+      btn.innerText = mod;
+      btn.onclick = () => {
+        this.state.explorerModule = mod;
+        this.renderExplorer();
+      };
+      this.targets.explorerTabs.appendChild(btn);
+    });
+
+    const moduleData = this.state.dataStore[this.state.explorerModule];
+    const allRecords = [];
+    Object.entries(moduleData || {}).forEach(([cid, data]) => {
+      data.records.forEach(r => allRecords.push({ ...r, _customer: data.customerName }));
+    });
+
+    if (allRecords.length === 0) {
+      this.targets.explorerThead.innerHTML = '';
+      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black uppercase text-[10px] tracking-widest">No matching transactional data</td></tr>';
+      return;
+    }
+
+    const headers = ['_customer', ...Object.keys(allRecords[0]).filter(k => k !== '_customer' && typeof allRecords[0][k] !== 'object')];
+    this.targets.explorerThead.innerHTML = `<tr>${headers.map(h => `<th>${h.replace('_', '')}</th>`).join('')}</tr>`;
+    this.targets.explorerTbody.innerHTML = allRecords.map(row => `<tr>${headers.map(h => `<td>${row[h] || '---'}</td>`).join('')}</tr>`).join('');
   }
 
   renderStatementUI() {
     if (this.state.selectedCustomerIds.size === 0) {
-      this.views.emptyState.classList.remove('view-hidden');
+      this.targets.emptyState.classList.remove('view-hidden');
       this.targets.renderArea.innerHTML = '';
       this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = true;
       return;
     }
-    this.views.emptyState.classList.add('view-hidden');
+    this.targets.emptyState.classList.add('view-hidden');
     this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = false;
 
-    const org = this.state.currentOrgDetails || {};
-    let finalHtml = '';
+    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'Project Context N/A';
+    
+    let html = '';
 
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
+      const clientName = customer.contact_name || 'Valued Client';
       const openingBalance = parseFloat(customer.opening_balance) || 0;
       let runningBalance = openingBalance;
+      
       let totalInvoiced = 0;
       let totalReceived = 0;
 
-      let txs = [];
+      // Aggregating all transactions for the timeline
+      let transactions = [];
       
-      // APPLY REUSABLE FILTERING LOGIC
-      const validInvoices = this.filterValidTransactions(this.state.dataStore.invoices[id]?.records, 'invoice');
-      const validPayments = this.filterValidTransactions(this.state.dataStore.payments[id]?.records, 'payment');
-      const validCreditNotes = this.filterValidTransactions(this.state.dataStore.creditnotes[id]?.records, 'creditnote');
+      // 1. Invoices
+      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+        transactions.push({
+          date: inv.date,
+          type: 'Invoice',
+          ref: inv.invoice_number,
+          due_date: inv.due_date,
+          amount: parseFloat(inv.total) || 0,
+          payment: 0,
+          raw: inv,
+          sortDate: new Date(inv.date)
+        });
+      });
 
-      // 1. Invoices (Adding to balance)
-      validInvoices.forEach(i => txs.push({ 
-        date: i.date, type: 'Invoice', ref: i.invoice_number, due: i.due_date, amt: parseFloat(i.total), pay: 0, raw: i, sort: new Date(i.date) 
-      }));
-      
-      // 2. Payments (Reducing balance)
-      validPayments.forEach(p => txs.push({ 
-        date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), raw: p, sort: new Date(p.date) 
-      }));
-      
-      // 3. Credit Notes (Reducing balance)
-      validCreditNotes.forEach(c => txs.push({ 
-        date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), raw: c, sort: new Date(c.date) 
-      }));
+      // 2. Payments
+      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
+        transactions.push({
+          date: pay.date,
+          type: 'Payment Received',
+          ref: pay.payment_number,
+          amount: 0,
+          payment: parseFloat(pay.amount) || 0,
+          raw: pay,
+          sortDate: new Date(pay.date)
+        });
+      });
 
-      txs.sort((a,b) => a.sort - b.sort);
+      // 3. Credit Notes
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
+        transactions.push({
+          date: cn.date,
+          type: 'Credit Note',
+          ref: cn.creditnote_number,
+          amount: -(parseFloat(cn.total) || 0), // Credit notes reduce debt
+          payment: 0,
+          raw: cn,
+          sortDate: new Date(cn.date)
+        });
+      });
 
-      // Opening Balance Row
+      // Sort chronological
+      transactions.sort((a,b) => a.sortDate - b.sortDate);
+
       let rowsHtml = `
-        <tr>
-          <td></td>
-          <td><b>OPENING BALANCE</b></td>
-          <td>Balance brought forward</td>
-          <td align="right"></td>
-          <td align="right"></td>
-          <td align="right"><b>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td>
+        <tr class="bg-indigo-50 font-black italic">
+          <td class="py-3 px-5 border-b" colspan="2">OPENING BALANCE</td>
+          <td class="py-3 px-5 border-b text-left italic opacity-60">Balance brought forward</td>
+          <td class="py-3 px-5 border-b text-right" colspan="2">---</td>
+          <td class="py-3 px-5 border-b text-right">${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
         </tr>
       `;
 
-      txs.forEach(t => {
-        runningBalance += t.amt;
-        runningBalance -= t.pay;
-        totalInvoiced += t.amt;
-        totalReceived += t.pay;
+      transactions.forEach(tx => {
+        runningBalance += tx.amount;
+        runningBalance -= tx.payment;
+        
+        totalInvoiced += (tx.amount > 0 ? tx.amount : 0);
+        totalReceived += tx.payment;
 
-        let details = '';
-        if (t.type === 'Invoice') {
-            const cache = this.state.invoiceDetailsCache[t.raw.invoice_id];
-            details = `<div>Invoice ${t.ref} (Due: ${t.due})</div>`;
-            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.6">• ${li.name} × ${li.quantity}</div>`);
-        } else if (t.type === 'Payment Received') {
-            details = `<div>Payment Received</div><div style="font-size:9px; opacity:0.6">Ref: ${t.ref}</div>`;
-        } else if (t.type === 'Credit Note') {
-            const cache = this.state.invoiceDetailsCache[t.raw.creditnote_id];
-            details = `<div>Credit Note ${t.ref}</div>`;
-            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.6">• ${li.name} × ${li.quantity}</div>`);
+        let detailsHtml = '';
+        if (tx.type === 'Invoice') {
+          const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
+          detailsHtml = `<div class="font-bold text-indigo-700">Invoice ${tx.ref} (Due: ${tx.due_date})</div>`;
+          if (det && det.line_items) {
+            det.line_items.forEach(li => {
+              detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">• ${li.name} × ${li.quantity} ${li.unit || ''}</div>`;
+            });
+          }
+        } else if (tx.type === 'Payment Received') {
+          detailsHtml = `<div class="font-bold text-emerald-700 uppercase">Payment Received</div>`;
+          detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">Ref: ${tx.ref}</div>`;
+          if (tx.raw.invoices && tx.raw.invoices.length > 0) {
+            detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">Against ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
+          }
+        } else if (tx.type === 'Credit Note') {
+          const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
+          detailsHtml = `<div class="font-bold text-red-700">Credit Note ${tx.ref}</div>`;
+          if (det && det.line_items) {
+            det.line_items.forEach(li => {
+              detailsHtml += `<div class="pl-2 opacity-80 text-[10px]">• ${li.name} × ${li.quantity} (Returned)</div>`;
+            });
+          }
         }
 
         rowsHtml += `
-          <tr>
-            <td>${t.date}</td>
-            <td><b>${t.type.toUpperCase()}</b></td>
-            <td>${details}</td>
-            <td align="right">${t.amt > 0 ? t.amt.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}</td>
-            <td align="right">${t.pay > 0 ? t.pay.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}</td>
-            <td align="right"><b>${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td>
+          <tr class="border-b border-neutral-100 ledger-item-row group">
+            <td class="py-4 px-5 align-top font-bold text-neutral-400">${tx.date}</td>
+            <td class="py-4 px-5 align-top font-black text-indigo-900 uppercase">${tx.type}</td>
+            <td class="py-4 px-5 align-top text-left text-[11px] leading-tight details-cell">${detailsHtml}</td>
+            <td class="py-4 px-5 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
+              ${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
+            </td>
+            <td class="py-4 px-5 align-top text-right font-bold text-emerald-600">
+              ${tx.payment !== 0 ? tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
+            </td>
+            <td class="py-4 px-5 align-top text-right font-black text-indigo-900">
+              ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+            </td>
           </tr>
         `;
       });
 
-      finalHtml += `
+      html += `
         <div class="a4-page" id="pdf-content">
-          <div style="display:flex; justify-content:space-between; margin-bottom:50px;">
-            <div>
-                ${this.state.customLogo ? `<img src="${this.state.customLogo}" style="height:55px; margin-bottom:15px;">` : `<div style="height:55px; font-weight:900; color:#cbd5e1; font-size:12px; margin-bottom:15px;">IDENTITY LOGO</div>`}
-                <div style="font-size:11px; font-weight:700; color:#1f2937; margin-bottom:2px;">${org.name || 'Organization Name'}</div>
-                <div style="font-size:9px; color:#6b7280; line-height:1.2;">${org.address || ''}</div>
+          <div class="flex justify-between items-start mb-12">
+            <div class="flex-grow">
+              ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-16 mb-6 object-contain">` : '<div class="h-16 w-48 bg-neutral-100 rounded mb-6 flex items-center justify-center text-[9px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
+              <h1 class="text-2xl font-black uppercase tracking-tighter text-indigo-900">Project: ${projectName}</h1>
+              <p class="text-[10px] text-indigo-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
+              
+              <div class="mt-8">
+                <p class="text-[8px] font-black uppercase text-neutral-400 mb-1 tracking-widest">Customer Details</p>
+                <p class="text-xl font-black uppercase text-indigo-600">${clientName}</p>
+                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.email || ''}</p>
+                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.mobile || customer.phone || ''}</p>
+              </div>
             </div>
-            <div style="text-align:right">
-                <h1 style="font-size:22px; font-weight:700; color:#111827; margin:0 0 5px 0;">Statement of Accounts</h1>
-                <div style="font-size:10px; color:#4b5563;">Period: Up to ${new Date().toLocaleDateString()}</div>
-                <div style="font-size:10px; color:#4b5563;">Currency: ${this.state.currency}</div>
+            <div class="text-right flex-shrink-0">
+              <h2 class="text-5xl font-black tracking-tighter leading-none text-indigo-600">SOA</h2>
+              <p class="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
+              <p class="mt-1 text-[10px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
+              
+              <div class="mt-10 bg-indigo-600 text-white p-5 rounded-2xl shadow-xl">
+                <p class="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Current Balance Due</p>
+                <p class="text-3xl font-black uppercase tracking-tighter">${this.state.currency} ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+              </div>
             </div>
           </div>
-
-          <div style="margin-bottom:40px;">
-            <div style="font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase; margin-bottom:8px;">To:</div>
-            <div style="font-size:14px; font-weight:800; color:#111827; margin-bottom:4px;">${customer.contact_name}</div>
-            <div style="font-size:10px; color:#4b5563;">${customer.email || ''}</div>
-          </div>
-
-          <table class="soa-table">
+          
+          <table class="w-full text-left border-collapse table-fixed master-ledger-table mb-12">
             <thead>
-              <tr>
-                <th align="left" width="12%">Date</th>
-                <th align="left" width="18%">Transactions</th>
-                <th align="left" width="40%">Details</th>
-                <th align="right" width="10%">Amount</th>
-                <th align="right" width="10%">Payments</th>
-                <th align="right" width="10%">Balance</th>
+              <tr class="bg-indigo-600 text-white text-[9px] font-black uppercase tracking-[0.2em]">
+                <th class="py-4 px-5 w-[100px]">Date</th>
+                <th class="py-4 px-5 w-[140px]">Transaction</th>
+                <th class="py-4 px-5 w-[240px]">Details</th>
+                <th class="py-4 px-5 w-[110px] text-right">Amount</th>
+                <th class="py-4 px-5 w-[110px] text-right">Payments</th>
+                <th class="py-4 px-5 w-[120px] text-right">Balance</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody class="text-[10px] ledger-rows">
               ${rowsHtml}
             </tbody>
           </table>
 
-          <div class="summary-box">
-            <div style="border-bottom:1px solid #d1d5db; padding-bottom:10px; margin-bottom:15px; font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase;">Account Summary</div>
-            <div class="summary-row">
-                <span>Opening Balance:</span>
-                <span>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+          <div class="mt-auto border-t-2 border-indigo-100 pt-8 flex justify-between items-end">
+            <div class="space-y-4">
+              <h4 class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Account Summary</h4>
+              <div class="grid grid-cols-2 gap-x-12 gap-y-2 text-[11px] font-bold text-neutral-600 uppercase">
+                <span>Opening Balance:</span><span class="text-right">${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Invoiced Amount:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Amount Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span class="pt-2 border-t font-black text-indigo-900 text-sm">Balance Due:</span>
+                <span class="pt-2 border-t font-black text-indigo-900 text-sm text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              </div>
             </div>
-            <div class="summary-row">
-                <span>Invoiced Amount:</span>
-                <span>${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            <div class="text-right">
+              <p class="text-[11px] font-black uppercase text-indigo-500 italic">Official Account Statement</p>
+              <div class="mt-6 h-12 w-48 border-b-2 border-indigo-200 ml-auto"></div>
+              <p class="mt-2 text-[8px] font-black uppercase tracking-widest text-neutral-400">Authorized Signatory</p>
             </div>
-            <div class="summary-row">
-                <span>Amount Received:</span>
-                <span>${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-            </div>
-            <div class="summary-row total">
-                <span>Balance Due:</span>
-                <span>${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-            </div>
-          </div>
-          
-          <div style="margin-top:auto; padding-top:60px; text-align:right;">
-            <p style="font-size:10px; color:#9ca3af; font-weight:600; text-transform:uppercase;">Authorized Signature</p>
-            <div style="margin-top:40px; border-bottom:1px solid #d1d5db; width:180px; margin-left:auto;"></div>
           </div>
         </div>`;
     });
 
-    this.targets.renderArea.innerHTML = finalHtml;
+    this.targets.renderArea.innerHTML = html;
+    this.attachLedgerListeners();
+    this.autoFitZoom();
+  }
+
+  attachLedgerListeners() {
+    this.targets.renderArea.querySelectorAll('.row-del-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        const row = e.target.closest('tr');
+        row.remove();
+        this.recalculateAllLedgers();
+      };
+    });
+    this.targets.renderArea.querySelectorAll('[contenteditable="true"]').forEach(cell => {
+      cell.oninput = () => this.recalculateAllLedgers();
+    });
+  }
+
+  recalculateAllLedgers() {
+    const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
+    let runningTotal = 0;
+    
+    // Attempting to maintain balance after manual row removal
+    rows.forEach(row => {
+        if (row.classList.contains('ledger-item-row')) {
+            const amtCell = row.children[3];
+            const payCell = row.children[4];
+            const runTotalCell = row.children[5];
+            
+            const amtRaw = amtCell.innerText.replace(/,/g, '');
+            const payRaw = payCell.innerText.replace(/,/g, '');
+            
+            const amt = parseFloat(amtRaw) || 0;
+            const pay = parseFloat(payRaw) || 0;
+            
+            // Invoices/Incomes are positive in column 3, CNs are negative in col 3.
+            // Payments are in column 4.
+            runningTotal += amt; 
+            runningTotal -= pay;
+            
+            runTotalCell.innerText = runningTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
+        }
+    });
+  }
+
+  downloadExcel() {
+    this.showLoading(80, "Aggregating SOA Workbook...");
+    const data = [];
+    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'N/A';
+
+    this.state.selectedCustomerIds.forEach(id => {
+      const customer = this.state.customerFullDetails[id] || {};
+      const clientName = customer.contact_name || 'N/A';
+      const openingBalance = parseFloat(customer.opening_balance) || 0;
+      let runningBalance = openingBalance;
+
+      // Header row
+      data.push({
+        'Date': '', 'Transaction': 'OPENING BALANCE', 'Details': 'Balance brought forward', 
+        'Amount': 0, 'Payments': 0, 'Balance': openingBalance, 'Customer': clientName
+      });
+
+      // Prepare transactions
+      let transactions = [];
+      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+        transactions.push({ date: inv.date, type: 'Invoice', ref: inv.invoice_number, amount: parseFloat(inv.total) || 0, pay: 0, sortDate: new Date(inv.date) });
+      });
+      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
+        transactions.push({ date: pay.date, type: 'Payment', ref: pay.payment_number, amount: 0, pay: parseFloat(pay.amount) || 0, sortDate: new Date(pay.date) });
+      });
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
+        transactions.push({ date: cn.date, type: 'Credit Note', ref: cn.creditnote_number, amount: -(parseFloat(cn.total) || 0), pay: 0, sortDate: new Date(cn.date) });
+      });
+
+      transactions.sort((a,b) => a.sortDate - b.sortDate).forEach(tx => {
+        runningBalance += tx.amount;
+        runningBalance -= tx.pay;
+        data.push({
+          'Date': tx.date,
+          'Transaction': tx.type,
+          'Details': tx.ref,
+          'Amount': Math.abs(tx.amount),
+          'Payments': tx.pay,
+          'Balance': runningBalance,
+          'Customer': clientName,
+          'Project': projectName
+        });
+      });
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "SOA_Detailed");
+    XLSX.writeFile(wb, `InsightPRO_SOA_${Date.now()}.xlsx`);
+    this.hideLoading();
   }
 
   downloadPDF() {
-    this.showLoading(85, "Capturing Native SOA PDF...");
+    this.showLoading(85, "Generating HD Multi-Page PDF...");
     const original = document.getElementById('pdf-content');
     if (!original) return;
+    
     const tempContainer = document.getElementById('pdf-export-temp');
     tempContainer.innerHTML = '';
+    
     const clone = original.cloneNode(true);
     clone.style.transform = 'none';
     clone.style.margin = '0';
     clone.style.boxShadow = 'none';
     clone.style.width = '210mm';
+    
     tempContainer.appendChild(clone);
     tempContainer.classList.remove('view-hidden');
     tempContainer.style.display = 'block';
 
     const opt = {
-      margin: [10, 10],
-      filename: `SOA_${Date.now()}.pdf`,
+      margin: [10, 0, 10, 0],
+      filename: `SOA_STATEMENT_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
+
     html2pdf().set(opt).from(tempContainer).save().then(() => {
       tempContainer.classList.add('view-hidden');
       tempContainer.style.display = 'none';
+      tempContainer.innerHTML = '';
       this.hideLoading();
     });
-  }
-
-  downloadExcel() {
-    this.showLoading(80, "Aggregating Excel SOA...");
-    const data = [];
-    this.state.selectedCustomerIds.forEach(id => {
-      const customer = this.state.customerFullDetails[id] || {};
-      const opening = parseFloat(customer.opening_balance) || 0;
-      let balance = opening;
-      data.push({ Date: '', Transactions: 'OPENING BALANCE', Details: 'Balance brought forward', Amount: '', Payments: '', Balance: opening });
-      
-      let txs = [];
-      const validInvoices = this.filterValidTransactions(this.state.dataStore.invoices[id]?.records, 'invoice');
-      const validPayments = this.filterValidTransactions(this.state.dataStore.payments[id]?.records, 'payment');
-      const validCreditNotes = this.filterValidTransactions(this.state.dataStore.creditnotes[id]?.records, 'creditnote');
-
-      validInvoices.forEach(i => txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, amt: parseFloat(i.total), pay: 0, sort: new Date(i.date) }));
-      validPayments.forEach(p => txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), sort: new Date(p.date) }));
-      validCreditNotes.forEach(c => txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), sort: new Date(c.date) }));
-      
-      txs.sort((a,b) => a.sort - b.sort).forEach(t => {
-        balance += t.amt;
-        balance -= t.pay;
-        data.push({ Date: t.date, Transactions: t.type, Details: t.ref, Amount: t.amt || '', Payments: t.pay || '', Balance: balance });
-      });
-    });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Statement_SOA");
-    XLSX.writeFile(wb, `SOA_${Date.now()}.xlsx`);
-    this.hideLoading();
   }
 
   setZoom(val) {
     this.state.zoom = Math.max(0.1, Math.min(3.0, val));
     const pages = this.targets.renderArea.querySelectorAll('.a4-page');
-    pages.forEach(p => p.style.transform = `scale(${this.state.zoom})`);
+    pages.forEach(p => { p.style.transform = `scale(${this.state.zoom})`; });
     const standardA4H_px = 29.7 * 37.8;
-    this.targets.renderArea.style.height = `${(pages[0]?.scrollHeight || standardA4H_px) * this.state.zoom + 200}px`;
+    const actualHeight = original => original ? original.scrollHeight * this.state.zoom : standardA4H_px;
+    this.targets.renderArea.style.height = `${actualHeight(pages[0]) + 200}px`;
   }
 
   autoFitZoom() {
     if(!this.views.areaLedger) return;
-    const targetW = this.views.areaLedger.clientWidth * 0.85;
-    this.setZoom(targetW / (21 * 37.8));
+    const wrapperW = this.views.areaLedger.clientWidth;
+    const targetW = wrapperW * 0.85;
+    const standardA4W_px = 21 * 37.8;
+    this.setZoom(targetW / standardA4W_px);
   }
 
   showLoading(prog, txt) {
@@ -594,55 +780,37 @@ class ZohoLedgerApp {
     });
   }
 
-  resetSelection() {
-      this.state.selectedCustomerIds.clear();
-      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
-      this.renderCustomerList();
-      this.updateUIVisuals();
+  toggleConfig(show) { this.views.configModal.classList.toggle('view-hidden', !show); }
+  saveConfig() {
+    this.config = { clientId: document.getElementById('cfg-client-id').value.trim(), region: document.getElementById('cfg-region').value };
+    localStorage.setItem('zoho_config', JSON.stringify(this.config));
+    this.toggleConfig(false); 
+    this.updateConfigStatus();
   }
-
+  updateConfigStatus() {
+    this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
+  }
   logout(reload = true) {
     localStorage.removeItem('zoho_access_token');
     localStorage.removeItem('zoho_selected_org_id');
     if(reload) window.location.reload();
   }
-
-  saveConfig() {
-    this.config = { clientId: document.getElementById('cfg-client-id').value.trim(), region: document.getElementById('cfg-region').value };
-    localStorage.setItem('zoho_config', JSON.stringify(this.config));
-    this.views.configModal.classList.add('view-hidden');
-    this.updateConfigStatus();
+  log(m) { this.targets.log.innerText = `SYS: ${m.toUpperCase()}`; }
+  showLandingError(m) { 
+    this.views.landingError.classList.remove('view-hidden'); 
+    this.targets.errorText.innerText = m; 
   }
 
-  updateConfigStatus() {
-    this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
-  }
-
-  renderExplorer() {
-    this.targets.explorerTabs.innerHTML = '';
-    ['invoices', 'creditnotes', 'payments'].forEach(mod => {
-      const btn = document.createElement('button');
-      btn.className = `px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${this.state.explorerModule === mod ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-neutral-500'}`;
-      btn.innerText = mod;
-      btn.onclick = () => { this.state.explorerModule = mod; this.renderExplorer(); };
-      this.targets.explorerTabs.appendChild(btn);
-    });
-
-    const moduleData = this.state.dataStore[this.state.explorerModule];
-    const allRecords = [];
-    Object.entries(moduleData || {}).forEach(([cid, data]) => {
-      data.records.forEach(r => allRecords.push({ ...r, _customer: this.state.customers.find(c => c.contact_id === cid)?.contact_name }));
-    });
-
-    if (allRecords.length === 0) {
-      this.targets.explorerThead.innerHTML = '';
-      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black text-[10px]">Registry Empty</td></tr>';
-      return;
+  toggleAllCustomers(selected) {
+    if (selected) {
+      this.state.customers.forEach(c => this.state.selectedCustomerIds.add(c.contact_id));
+      this.syncAllActiveCustomers();
+    } else {
+      this.state.selectedCustomerIds.clear();
+      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
+      this.updateUIVisuals();
     }
-
-    const headers = ['_customer', ...Object.keys(allRecords[0]).filter(k => k !== '_customer' && typeof allRecords[0][k] !== 'object')];
-    this.targets.explorerThead.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
-    this.targets.explorerTbody.innerHTML = allRecords.map(row => `<tr>${headers.map(h => `<td>${row[h] || '---'}</td>`).join('')}</tr>`).join('');
+    this.renderCustomerList();
   }
 }
 
