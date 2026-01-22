@@ -1,585 +1,613 @@
+
 /**
- * BIZSENSE STATEMENT ENGINE 2.0
- * Accurate Financial Replication for Zoho Books
+ * BIZSENSE STATEMENT PRO - NATIVE ZOHO SOA REPLICATION ENGINE
  */
 
 class ZohoLedgerApp {
-    constructor() {
-      this.proxyPrefix = "https://corsproxy.io/?";
-      this.state = {
-        accessToken: localStorage.getItem('zoho_access_token'),
-        organizations: [],
-        selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
-        currentOrgDetails: null,
-        customers: [],
-        customerFullDetails: {},
-        selectedCustomerIds: new Set(),
-        
-        // Data Stores - The Critical Fix: Added 'payments'
-        dataStore: { 
-            invoices: {}, 
-            creditnotes: {}, 
-            payments: {} // Stores payment received data
-        },
-        
-        invoiceDetailsCache: {}, // Stores full invoice object with line items
-        customLogo: localStorage.getItem('biz_logo') || null,
-        zoom: 0.85,
-        currency: 'LKR'
-      };
-  
-      this.initStorage();
-      this.handleOAuthCallback();
-      this.init();
+  constructor() {
+    this.proxyPrefix = "https://corsproxy.io/?";
+    this.initStorage();
+    this.state = {
+      accessToken: localStorage.getItem('zoho_access_token'),
+      organizations: [],
+      selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
+      currentOrgDetails: null,
+      customers: [],
+      customerFullDetails: {},
+      selectedCustomerIds: new Set(),
+      dataStore: { invoices: {}, creditnotes: {}, payments: {} },
+      invoiceDetailsCache: {},
+      customLogo: localStorage.getItem('biz_logo') || null,
+      zoom: 0.75,
+      activeView: 'ledger',
+      explorerModule: 'invoices',
+      currency: 'LKR'
+    };
+
+    this.handleOAuthCallback();
+    this.init();
+  }
+
+  initStorage() {
+    const savedConfig = localStorage.getItem('zoho_config');
+    this.config = savedConfig ? JSON.parse(savedConfig) : { clientId: '', region: 'com' };
+  }
+
+  init() {
+    document.addEventListener('DOMContentLoaded', () => {
+      this.cacheDOM();
+      this.bindEvents();
+      this.updateConfigStatus();
+      this.checkSession();
+      setTimeout(() => this.autoFitZoom(), 1000);
+      window.addEventListener('resize', () => this.autoFitZoom());
+    });
+  }
+
+  cacheDOM() {
+    this.views = {
+      landing: document.getElementById('view-landing'),
+      dashboard: document.getElementById('view-dashboard'),
+      configModal: document.getElementById('modal-config'),
+      loadingBar: document.getElementById('loading-bar-container'),
+      loadingOverlay: document.getElementById('loading-status-overlay'),
+      loadingProgress: document.getElementById('loading-bar'),
+      loadingText: document.getElementById('loading-bar-text'),
+      customerList: document.getElementById('customer-list'),
+      areaLedger: document.getElementById('area-ledger'),
+      statementContainer: document.getElementById('statement-render-target'),
+      ledgerView: document.getElementById('view-ledger-container'),
+      explorerView: document.getElementById('view-explorer-container'),
+      pdfTemp: document.getElementById('pdf-export-temp'),
+      emptyState: document.getElementById('empty-state')
+    };
+    
+    this.inputs = {
+      orgSelect: document.getElementById('select-organization'),
+      search: document.getElementById('customer-search'),
+      clientId: document.getElementById('cfg-client-id'),
+      region: document.getElementById('cfg-region'),
+      logoUpload: document.getElementById('logo-upload')
+    };
+
+    this.btns = {
+      connect: document.getElementById('btn-connect'),
+      saveConfig: document.getElementById('btn-save-config'),
+      downloadPdf: document.getElementById('btn-download-pdf'),
+      downloadExcel: document.getElementById('btn-download-excel'),
+      logout: document.getElementById('btn-logout'),
+      clearAll: document.getElementById('btn-clear-all'),
+      zoomIn: document.getElementById('btn-zoom-in'),
+      zoomOut: document.getElementById('btn-zoom-out'),
+      zoomFit: document.getElementById('btn-zoom-fit'),
+      toggleLedger: document.getElementById('btn-view-ledger'),
+      toggleExplorer: document.getElementById('btn-view-explorer')
+    };
+
+    this.targets = {
+      renderArea: document.getElementById('statement-render-target'),
+      log: document.getElementById('log-message'),
+      stats: document.getElementById('data-stats'),
+      explorerTabs: document.getElementById('explorer-tabs'),
+      explorerThead: document.getElementById('explorer-thead'),
+      explorerTbody: document.getElementById('explorer-tbody')
+    };
+  }
+
+  bindEvents() {
+    this.btns.connect.onclick = () => this.startAuth();
+    this.btns.saveConfig.onclick = () => this.saveConfig();
+    this.btns.logout.onclick = () => this.logout();
+    this.btns.downloadPdf.onclick = () => this.downloadPDF();
+    this.btns.downloadExcel.onclick = () => this.downloadExcel();
+    this.btns.clearAll.onclick = () => this.resetSelection();
+    
+    this.btns.toggleLedger.onclick = () => this.switchView('ledger');
+    this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
+
+    this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
+    this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
+    this.btns.zoomFit.onclick = () => this.autoFitZoom();
+    this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
+    this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
+    this.inputs.orgSelect.onchange = (e) => this.handleOrgSwitch(e.target.value);
+  }
+
+  async handleOrgSwitch(orgId) {
+    this.showLoading(20, "Switching Project...");
+    this.state.selectedOrgId = orgId;
+    localStorage.setItem('zoho_selected_org_id', orgId);
+    
+    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
+    this.state.invoiceDetailsCache = {};
+    this.state.selectedCustomerIds = new Set();
+    this.state.customerFullDetails = {};
+
+    await this.fetchOrganizationDetails();
+    await this.fetchCustomers();
+    this.renderCustomerList();
+    this.updateUIVisuals();
+    this.hideLoading();
+  }
+
+  switchView(view) {
+    this.state.activeView = view;
+    this.views.ledgerView.classList.toggle('view-hidden', view !== 'ledger');
+    this.views.explorerView.classList.toggle('view-hidden', view !== 'explorer');
+    
+    this.btns.toggleLedger.classList.toggle('bg-indigo-600', view === 'ledger');
+    this.btns.toggleLedger.classList.toggle('text-white', view === 'ledger');
+    this.btns.toggleLedger.classList.toggle('text-neutral-500', view !== 'ledger');
+    
+    this.btns.toggleExplorer.classList.toggle('bg-indigo-600', view === 'explorer');
+    this.btns.toggleExplorer.classList.toggle('text-white', view === 'explorer');
+    this.btns.toggleExplorer.classList.toggle('text-neutral-500', view !== 'explorer');
+
+    if (view === 'explorer') this.renderExplorer();
+    else this.autoFitZoom();
+  }
+
+  handleLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      this.state.customLogo = event.target.result;
+      localStorage.setItem('biz_logo', this.state.customLogo);
+      this.renderStatementUI();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  handleOAuthCallback() {
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token')) {
+      const params = new URLSearchParams(hash.substring(1));
+      this.state.accessToken = params.get('access_token');
+      localStorage.setItem('zoho_access_token', this.state.accessToken);
+      window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
     }
-  
-    initStorage() {
-      const savedConfig = localStorage.getItem('zoho_config');
-      this.config = savedConfig ? JSON.parse(savedConfig) : { clientId: '', region: 'com' };
-    }
-  
-    init() {
-      document.addEventListener('DOMContentLoaded', () => {
-        this.cacheDOM();
-        this.bindEvents();
-        this.updateConfigStatus();
-        this.checkSession();
-        window.addEventListener('resize', () => this.autoFitZoom());
-      });
-    }
-  
-    cacheDOM() {
-      this.views = {
-        landing: document.getElementById('view-landing'),
-        dashboard: document.getElementById('view-dashboard'),
-        configModal: document.getElementById('modal-config'),
-        loadingBar: document.getElementById('loading-bar-container'),
-        loadingProgress: document.getElementById('loading-bar'),
-        customerList: document.getElementById('customer-list'),
-        areaLedger: document.getElementById('area-ledger'),
-        renderArea: document.getElementById('statement-render-target'),
-        emptyState: document.getElementById('empty-state'),
-        pdfTemp: document.getElementById('pdf-export-temp')
-      };
-      
-      this.inputs = {
-        orgSelect: document.getElementById('select-organization'),
-        search: document.getElementById('customer-search'),
-        logoUpload: document.getElementById('logo-upload')
-      };
-  
-      this.btns = {
-        connect: document.getElementById('btn-connect'),
-        saveConfig: document.getElementById('btn-save-config'),
-        downloadPdf: document.getElementById('btn-download-pdf'),
-        downloadExcel: document.getElementById('btn-download-excel'),
-        logout: document.getElementById('btn-logout'),
-        clearAll: document.getElementById('btn-clear-all'),
-        zoomIn: document.getElementById('btn-zoom-in'),
-        zoomOut: document.getElementById('btn-zoom-out')
-      };
-    }
-  
-    bindEvents() {
-      this.btns.connect.onclick = () => this.startAuth();
-      this.btns.saveConfig.onclick = () => this.saveConfig();
-      this.btns.logout.onclick = () => this.logout();
-      this.btns.downloadPdf.onclick = () => this.downloadPDF();
-      this.btns.downloadExcel.onclick = () => this.downloadExcel();
-      this.btns.clearAll.onclick = () => this.resetSelection();
-      
-      this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
-      this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
-      
-      this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
-      this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
-      this.inputs.orgSelect.onchange = (e) => this.handleOrgSwitch(e.target.value);
-    }
-  
-    /* --- AUTHENTICATION & INIT --- */
-  
-    handleOAuthCallback() {
-      const hash = window.location.hash;
-      if (hash && hash.includes('access_token')) {
-        const params = new URLSearchParams(hash.substring(1));
-        this.state.accessToken = params.get('access_token');
-        localStorage.setItem('zoho_access_token', this.state.accessToken);
-        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
-      }
-    }
-  
-    async checkSession() {
-      if (!this.state.accessToken) {
-          this.views.landing.classList.remove('view-hidden');
-          return;
-      }
+  }
+
+  async checkSession() {
+    if (this.state.accessToken) {
       try {
         const success = await this.discoverOrganizations();
         if (success) {
           this.views.landing.classList.add('view-hidden');
-          this.views.dashboard.classList.remove('view-hidden');
           await this.fetchOrganizationDetails();
           await this.fetchCustomers();
         } else {
-            this.logout(false);
             this.views.landing.classList.remove('view-hidden');
         }
       } catch (err) {
-        console.error(err);
         this.logout(false);
         this.views.landing.classList.remove('view-hidden');
       }
+    } else {
+        this.views.landing.classList.remove('view-hidden');
     }
-  
-    startAuth() {
-      if (!this.config.clientId) {
-          this.views.configModal.classList.remove('view-hidden');
-          return;
+  }
+
+  async discoverOrganizations() {
+    try {
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations`;
+      const res = await this.rawRequest(url);
+      if (res && res.organizations) {
+        this.state.organizations = res.organizations;
+        this.inputs.orgSelect.innerHTML = '';
+        res.organizations.forEach(org => {
+          const opt = document.createElement('option');
+          opt.value = org.organization_id; opt.innerText = org.name;
+          this.inputs.orgSelect.appendChild(opt);
+        });
+        if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
+        this.inputs.orgSelect.value = this.state.selectedOrgId;
+        return true;
       }
-      const redirectUri = window.location.origin + window.location.pathname;
-      const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ";
-      window.location.href = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
-    }
+      return false;
+    } catch (e) { return false; }
+  }
 
-    saveConfig() {
-        const cid = document.getElementById('cfg-client-id').value.trim();
-        const reg = document.getElementById('cfg-region').value;
-        if(!cid) return alert("Client ID Required");
-        this.config = { clientId: cid, region: reg };
-        localStorage.setItem('zoho_config', JSON.stringify(this.config));
-        this.views.configModal.classList.add('view-hidden');
-        this.updateConfigStatus();
-    }
+  async fetchOrganizationDetails() {
+    try {
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`;
+      const res = await this.rawRequest(url);
+      if (res && res.organization) {
+          this.state.currentOrgDetails = res.organization;
+          this.state.currency = res.organization.currency_code || 'LKR';
+      }
+    } catch (e) { console.warn("Org detail fetch failed", e); }
+  }
 
-    updateConfigStatus() {
-        this.btns.connect.innerText = (this.config.clientId) ? "Connect Zoho Books" : "Configure API First";
-        this.btns.connect.disabled = !this.config.clientId;
+  async rawRequest(url) {
+    const res = await fetch(this.proxyPrefix + encodeURIComponent(url), {
+      headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (res.status === 401) throw new Error("Session Expired");
+    if (!res.ok) throw new Error("API Connection Issue");
+    return res.json();
+  }
+
+  startAuth() {
+    if (!this.config.clientId) {
+        this.views.configModal.classList.remove('view-hidden');
+        return;
     }
-  
-    /* --- DATA FETCHING CORE --- */
-  
-    async rawRequest(url) {
-      const res = await fetch(this.proxyPrefix + encodeURIComponent(url), {
-        headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}` }
+    const redirectUri = window.location.origin + window.location.pathname;
+    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ";
+    window.location.href = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
+  }
+
+  async fetchCustomers() {
+    try {
+      const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
+      const res = await this.rawRequest(url);
+      if (res && res.contacts) {
+        this.state.customers = res.contacts;
+        this.renderCustomerList();
+      }
+    } catch (e) {}
+  }
+
+  renderCustomerList() {
+    this.views.customerList.innerHTML = '';
+    this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
+      const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
+      const div = document.createElement('div');
+      div.className = `flex items-center space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
+      div.innerHTML = `
+        <div class="w-4 h-4 rounded border border-white/20 flex items-center justify-center ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
+          ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
+        </div>
+        <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white">${c.contact_name}</span>
+      `;
+      div.onclick = () => this.handleCustomerClick(c.contact_id);
+      this.views.customerList.appendChild(div);
+    });
+  }
+
+  async handleCustomerClick(id) {
+    if (this.state.selectedCustomerIds.has(id)) {
+      this.state.selectedCustomerIds.delete(id);
+      delete this.state.dataStore.invoices[id];
+      delete this.state.dataStore.creditnotes[id];
+      delete this.state.dataStore.payments[id];
+    } else {
+      this.state.selectedCustomerIds.add(id);
+      await this.syncCustomerData(id);
+    }
+    this.renderCustomerList();
+    this.updateUIVisuals();
+  }
+
+  async syncCustomerData(id) {
+    const customer = this.state.customers.find(c => c.contact_id === id);
+    if (!customer) return;
+    this.showLoading(50, `Syncing Statement: ${customer.contact_name}`);
+    
+    try {
+        const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
+        this.state.customerFullDetails[id] = cRes.contact;
+    } catch(e) {}
+
+    const modules = ['invoices', 'creditnotes', 'customerpayments']; 
+    for (const mod of modules) {
+      try {
+        const url = `https://www.zohoapis.${this.config.region}/books/v3/${mod}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
+        const res = await this.rawRequest(url);
+        const key = mod === 'customerpayments' ? 'payments' : mod;
+        this.state.dataStore[key][id] = { records: res[mod] || [] };
+        
+        if (mod !== 'customerpayments') {
+            const idKey = mod === 'invoices' ? 'invoice_id' : 'creditnote_id';
+            for (const r of this.state.dataStore[key][id].records) {
+                const rid = r[idKey];
+                if (!this.state.invoiceDetailsCache[rid]) {
+                    const dRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/${mod}/${rid}?organization_id=${this.state.selectedOrgId}`);
+                    this.state.invoiceDetailsCache[rid] = dRes[mod.slice(0, -1)];
+                }
+            }
+        }
+      } catch (e) {}
+    }
+    this.hideLoading();
+  }
+
+  updateUIVisuals() {
+    if (this.state.activeView === 'ledger') this.renderStatementUI();
+    else this.renderExplorer();
+    this.autoFitZoom();
+  }
+
+  renderStatementUI() {
+    if (this.state.selectedCustomerIds.size === 0) {
+      this.views.emptyState.classList.remove('view-hidden');
+      this.targets.renderArea.innerHTML = '';
+      this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = true;
+      return;
+    }
+    this.views.emptyState.classList.add('view-hidden');
+    this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = false;
+
+    const org = this.state.currentOrgDetails || {};
+    let finalHtml = '';
+
+    this.state.selectedCustomerIds.forEach(id => {
+      const customer = this.state.customerFullDetails[id] || {};
+      const openingBalance = parseFloat(customer.opening_balance) || 0;
+      let runningBalance = openingBalance;
+      let totalInvoiced = 0;
+      let totalReceived = 0;
+
+      let txs = [];
+      // 1. Invoices (Adding to balance)
+      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ 
+        date: i.date, type: 'Invoice', ref: i.invoice_number, due: i.due_date, amt: parseFloat(i.total), pay: 0, raw: i, sort: new Date(i.date) 
+      }));
+      // 2. Payments (Reducing balance)
+      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ 
+        date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), raw: p, sort: new Date(p.date) 
+      }));
+      // 3. Credit Notes (Reducing balance - Standard Zoho Behavior)
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ 
+        date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), raw: c, sort: new Date(c.date) 
+      }));
+
+      txs.sort((a,b) => a.sort - b.sort);
+
+      // Opening Balance Row
+      let rowsHtml = `
+        <tr>
+          <td></td>
+          <td><b>OPENING BALANCE</b></td>
+          <td>Balance brought forward</td>
+          <td align="right"></td>
+          <td align="right"></td>
+          <td align="right"><b>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td>
+        </tr>
+      `;
+
+      txs.forEach(t => {
+        runningBalance += t.amt;
+        runningBalance -= t.pay;
+        totalInvoiced += t.amt;
+        totalReceived += t.pay;
+
+        let details = '';
+        if (t.type === 'Invoice') {
+            const cache = this.state.invoiceDetailsCache[t.raw.invoice_id];
+            details = `<div>Invoice ${t.ref} (Due: ${t.due})</div>`;
+            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.6">• ${li.name} × ${li.quantity}</div>`);
+        } else if (t.type === 'Payment Received') {
+            details = `<div>Payment Received</div><div style="font-size:9px; opacity:0.6">Ref: ${t.ref}</div>`;
+        } else if (t.type === 'Credit Note') {
+            const cache = this.state.invoiceDetailsCache[t.raw.creditnote_id];
+            details = `<div>Credit Note ${t.ref}</div>`;
+            if (cache?.line_items) cache.line_items.forEach(li => details += `<div style="padding-left:10px; font-size:9px; opacity:0.6">• ${li.name} × ${li.quantity}</div>`);
+        }
+
+        rowsHtml += `
+          <tr>
+            <td>${t.date}</td>
+            <td><b>${t.type.toUpperCase()}</b></td>
+            <td>${details}</td>
+            <td align="right">${t.amt > 0 ? t.amt.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}</td>
+            <td align="right">${t.pay > 0 ? t.pay.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}</td>
+            <td align="right"><b>${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</b></td>
+          </tr>
+        `;
       });
-      if (res.status === 401) throw new Error("Session Expired");
-      if (!res.ok) throw new Error("API Connection Issue");
-      return res.json();
+
+      finalHtml += `
+        <div class="a4-page" id="pdf-content">
+          <div style="display:flex; justify-content:space-between; margin-bottom:50px;">
+            <div>
+                ${this.state.customLogo ? `<img src="${this.state.customLogo}" style="height:55px; margin-bottom:15px;">` : `<div style="height:55px; font-weight:900; color:#cbd5e1; font-size:12px; margin-bottom:15px;">IDENTITY LOGO</div>`}
+                <div style="font-size:11px; font-weight:700; color:#1f2937; margin-bottom:2px;">${org.name || 'Organization Name'}</div>
+                <div style="font-size:9px; color:#6b7280; line-height:1.2;">${org.address || ''}</div>
+            </div>
+            <div style="text-align:right">
+                <h1 style="font-size:22px; font-weight:700; color:#111827; margin:0 0 5px 0;">Statement of Accounts</h1>
+                <div style="font-size:10px; color:#4b5563;">Period: Up to ${new Date().toLocaleDateString()}</div>
+                <div style="font-size:10px; color:#4b5563;">Currency: ${this.state.currency}</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:40px;">
+            <div style="font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase; margin-bottom:8px;">To:</div>
+            <div style="font-size:14px; font-weight:800; color:#111827; margin-bottom:4px;">${customer.contact_name}</div>
+            <div style="font-size:10px; color:#4b5563;">${customer.email || ''}</div>
+          </div>
+
+          <table class="soa-table">
+            <thead>
+              <tr>
+                <th align="left" width="12%">Date</th>
+                <th align="left" width="18%">Transactions</th>
+                <th align="left" width="40%">Details</th>
+                <th align="right" width="10%">Amount</th>
+                <th align="right" width="10%">Payments</th>
+                <th align="right" width="10%">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="summary-box">
+            <div style="border-bottom:1px solid #d1d5db; padding-bottom:10px; margin-bottom:15px; font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase;">Account Summary</div>
+            <div class="summary-row">
+                <span>Opening Balance:</span>
+                <span>${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="summary-row">
+                <span>Invoiced Amount:</span>
+                <span>${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="summary-row">
+                <span>Amount Received:</span>
+                <span>${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="summary-row total">
+                <span>Balance Due:</span>
+                <span>${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+          </div>
+          
+          <div style="margin-top:auto; padding-top:60px; text-align:right;">
+            <p style="font-size:10px; color:#9ca3af; font-weight:600; text-transform:uppercase;">Authorized Signature</p>
+            <div style="margin-top:40px; border-bottom:1px solid #d1d5db; width:180px; margin-left:auto;"></div>
+          </div>
+        </div>`;
+    });
+
+    this.targets.renderArea.innerHTML = finalHtml;
+  }
+
+  downloadPDF() {
+    this.showLoading(85, "Capturing Native SOA PDF...");
+    const original = document.getElementById('pdf-content');
+    if (!original) return;
+    const tempContainer = document.getElementById('pdf-export-temp');
+    tempContainer.innerHTML = '';
+    const clone = original.cloneNode(true);
+    clone.style.transform = 'none';
+    clone.style.margin = '0';
+    clone.style.boxShadow = 'none';
+    clone.style.width = '210mm';
+    tempContainer.appendChild(clone);
+    tempContainer.classList.remove('view-hidden');
+    tempContainer.style.display = 'block';
+
+    const opt = {
+      margin: [10, 10],
+      filename: `SOA_${Date.now()}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(tempContainer).save().then(() => {
+      tempContainer.classList.add('view-hidden');
+      tempContainer.style.display = 'none';
+      this.hideLoading();
+    });
+  }
+
+  downloadExcel() {
+    this.showLoading(80, "Aggregating Excel SOA...");
+    const data = [];
+    this.state.selectedCustomerIds.forEach(id => {
+      const customer = this.state.customerFullDetails[id] || {};
+      const opening = parseFloat(customer.opening_balance) || 0;
+      let balance = opening;
+      data.push({ Date: '', Transactions: 'OPENING BALANCE', Details: 'Balance brought forward', Amount: '', Payments: '', Balance: opening });
+      
+      let txs = [];
+      (this.state.dataStore.invoices[id]?.records || []).forEach(i => txs.push({ date: i.date, type: 'Invoice', ref: i.invoice_number, amt: parseFloat(i.total), pay: 0, sort: new Date(i.date) }));
+      (this.state.dataStore.payments[id]?.records || []).forEach(p => txs.push({ date: p.date, type: 'Payment Received', ref: p.payment_number, amt: 0, pay: parseFloat(p.amount), sort: new Date(p.date) }));
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(c => txs.push({ date: c.date, type: 'Credit Note', ref: c.creditnote_number, amt: 0, pay: parseFloat(c.total), sort: new Date(c.date) }));
+      
+      txs.sort((a,b) => a.sort - b.sort).forEach(t => {
+        balance += t.amt;
+        balance -= t.pay;
+        data.push({ Date: t.date, Transactions: t.type, Details: t.ref, Amount: t.amt || '', Payments: t.pay || '', Balance: balance });
+      });
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Statement_SOA");
+    XLSX.writeFile(wb, `SOA_${Date.now()}.xlsx`);
+    this.hideLoading();
+  }
+
+  setZoom(val) {
+    this.state.zoom = Math.max(0.1, Math.min(3.0, val));
+    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
+    pages.forEach(p => p.style.transform = `scale(${this.state.zoom})`);
+    const standardA4H_px = 29.7 * 37.8;
+    this.targets.renderArea.style.height = `${(pages[0]?.scrollHeight || standardA4H_px) * this.state.zoom + 200}px`;
+  }
+
+  autoFitZoom() {
+    if(!this.views.areaLedger) return;
+    const targetW = this.views.areaLedger.clientWidth * 0.85;
+    this.setZoom(targetW / (21 * 37.8));
+  }
+
+  showLoading(prog, txt) {
+    this.views.loadingBar.classList.remove('view-hidden');
+    this.views.loadingOverlay.classList.remove('view-hidden');
+    this.views.loadingProgress.style.width = `${prog}%`;
+    this.views.loadingText.innerText = txt.toUpperCase();
+  }
+
+  hideLoading() {
+    this.views.loadingProgress.style.width = '100%';
+    setTimeout(() => {
+      this.views.loadingBar.classList.add('view-hidden');
+      this.views.loadingOverlay.classList.add('view-hidden');
+    }, 800);
+  }
+
+  filterCustomers(term) {
+    this.views.customerList.querySelectorAll('div').forEach(item => {
+      const name = item.innerText.toLowerCase();
+      item.style.display = name.includes(term.toLowerCase()) ? 'flex' : 'none';
+    });
+  }
+
+  resetSelection() {
+      this.state.selectedCustomerIds.clear();
+      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
+      this.renderCustomerList();
+      this.updateUIVisuals();
+  }
+
+  logout(reload = true) {
+    localStorage.removeItem('zoho_access_token');
+    localStorage.removeItem('zoho_selected_org_id');
+    if(reload) window.location.reload();
+  }
+
+  saveConfig() {
+    this.config = { clientId: document.getElementById('cfg-client-id').value.trim(), region: document.getElementById('cfg-region').value };
+    localStorage.setItem('zoho_config', JSON.stringify(this.config));
+    this.views.configModal.classList.add('view-hidden');
+    this.updateConfigStatus();
+  }
+
+  updateConfigStatus() {
+    this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
+  }
+
+  renderExplorer() {
+    this.targets.explorerTabs.innerHTML = '';
+    ['invoices', 'creditnotes', 'payments'].forEach(mod => {
+      const btn = document.createElement('button');
+      btn.className = `px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${this.state.explorerModule === mod ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-neutral-500'}`;
+      btn.innerText = mod;
+      btn.onclick = () => { this.state.explorerModule = mod; this.renderExplorer(); };
+      this.targets.explorerTabs.appendChild(btn);
+    });
+
+    const moduleData = this.state.dataStore[this.state.explorerModule];
+    const allRecords = [];
+    Object.entries(moduleData || {}).forEach(([cid, data]) => {
+      data.records.forEach(r => allRecords.push({ ...r, _customer: this.state.customers.find(c => c.contact_id === cid)?.contact_name }));
+    });
+
+    if (allRecords.length === 0) {
+      this.targets.explorerThead.innerHTML = '';
+      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black text-[10px]">Registry Empty</td></tr>';
+      return;
     }
 
-    async discoverOrganizations() {
-        try {
-          const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations`;
-          const res = await this.rawRequest(url);
-          if (res && res.organizations) {
-            this.state.organizations = res.organizations;
-            this.inputs.orgSelect.innerHTML = '';
-            res.organizations.forEach(org => {
-              const opt = document.createElement('option');
-              opt.value = org.organization_id; opt.innerText = org.name;
-              this.inputs.orgSelect.appendChild(opt);
-            });
-            if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
-            this.inputs.orgSelect.value = this.state.selectedOrgId;
-            return true;
-          }
-          return false;
-        } catch (e) { return false; }
-    }
-
-    async fetchOrganizationDetails() {
-        try {
-            const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`;
-            const res = await this.rawRequest(url);
-            if (res && res.organization) {
-                this.state.currentOrgDetails = res.organization;
-                this.state.currency = res.organization.currency_code || 'LKR';
-            }
-        } catch (e) {}
-    }
-
-    async fetchCustomers() {
-        this.showLoading(30);
-        try {
-            // Fetch active customers
-            const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
-            const res = await this.rawRequest(url);
-            if (res && res.contacts) {
-                this.state.customers = res.contacts;
-                this.renderCustomerList();
-            }
-        } catch (e) { console.error(e); }
-        this.hideLoading();
-    }
-  
-    async handleOrgSwitch(orgId) {
-        this.state.selectedOrgId = orgId;
-        localStorage.setItem('zoho_selected_org_id', orgId);
-        this.resetSelection();
-        await this.fetchOrganizationDetails();
-        await this.fetchCustomers();
-    }
-
-    /* --- THE LOGIC ENGINE --- */
-
-    async handleCustomerClick(id) {
-        // Toggle selection
-        if (this.state.selectedCustomerIds.has(id)) {
-            this.state.selectedCustomerIds.delete(id);
-        } else {
-            this.state.selectedCustomerIds.clear(); // Single select for Statement View usually better, but Set kept for future
-            this.state.selectedCustomerIds.add(id);
-            await this.syncCustomerData(id);
-        }
-        this.renderCustomerList();
-        this.generateStatement();
-    }
-
-    async syncCustomerData(id) {
-        this.showLoading(10);
-        const baseUrl = `https://www.zohoapis.${this.config.region}/books/v3`;
-        
-        // 1. Fetch Basic Contact Info
-        try {
-            const cRes = await this.rawRequest(`${baseUrl}/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
-            this.state.customerFullDetails[id] = cRes.contact;
-        } catch(e) {}
-
-        // 2. Fetch Transactions (Invoices, Credit Notes, AND PAYMENTS)
-        const endpoints = [
-            { key: 'invoices', url: `${baseUrl}/invoices?customer_id=${id}&organization_id=${this.state.selectedOrgId}&status=sent,overdue,paid,partially_paid` },
-            { key: 'creditnotes', url: `${baseUrl}/creditnotes?customer_id=${id}&organization_id=${this.state.selectedOrgId}&status=open,closed` },
-            { key: 'customerpayments', url: `${baseUrl}/customerpayments?customer_id=${id}&organization_id=${this.state.selectedOrgId}` }
-        ];
-
-        for (const ep of endpoints) {
-            try {
-                this.showLoading(30);
-                const res = await this.rawRequest(ep.url);
-                const storeKey = ep.key === 'customerpayments' ? 'payments' : ep.key;
-                this.state.dataStore[storeKey][id] = res[ep.key] || [];
-
-                // 3. Deep Fetch Line Items for Invoices & Credits
-                // This is crucial for "Item level descriptions"
-                if (ep.key !== 'customerpayments') {
-                    const records = this.state.dataStore[storeKey][id];
-                    const idField = ep.key === 'invoices' ? 'invoice_id' : 'creditnote_id';
-                    
-                    // Parallel fetching for speed
-                    const detailPromises = records.map(async (rec) => {
-                        const recId = rec[idField];
-                        if (!this.state.invoiceDetailsCache[recId]) {
-                            const dUrl = `${baseUrl}/${ep.key}/${recId}?organization_id=${this.state.selectedOrgId}`;
-                            const dRes = await this.rawRequest(dUrl);
-                            this.state.invoiceDetailsCache[recId] = dRes[ep.key.slice(0, -1)]; // invoice or creditnote
-                        }
-                    });
-                    await Promise.all(detailPromises);
-                }
-
-            } catch(e) { console.error(`Failed to fetch ${ep.key}`, e); }
-        }
-        this.hideLoading();
-    }
-
-    /* --- GENERATION & RENDERING --- */
-
-    generateStatement() {
-        if (this.state.selectedCustomerIds.size === 0) {
-            this.views.emptyState.classList.remove('view-hidden');
-            this.views.renderArea.innerHTML = '';
-            this.btns.downloadPdf.disabled = true;
-            this.btns.downloadExcel.disabled = true;
-            return;
-        }
-
-        this.views.emptyState.classList.add('view-hidden');
-        this.btns.downloadPdf.disabled = false;
-        this.btns.downloadExcel.disabled = false;
-
-        let htmlOutput = '';
-        const org = this.state.currentOrgDetails || {};
-
-        this.state.selectedCustomerIds.forEach(customerId => {
-            const customer = this.state.customerFullDetails[customerId] || {};
-            const openingBal = parseFloat(customer.opening_balance_amount || 0);
-            
-            // --- THE MASTER MERGE & SORT ALGORITHM ---
-            let transactions = [];
-
-            // 1. Add Invoices
-            const invoices = this.state.dataStore.invoices[customerId] || [];
-            invoices.forEach(inv => {
-                const fullDetails = this.state.invoiceDetailsCache[inv.invoice_id] || inv;
-                transactions.push({
-                    date: inv.date,
-                    rawDate: new Date(inv.date),
-                    createdTime: new Date(inv.created_time || inv.date), // Fallback
-                    type: 'INVOICE',
-                    ref: inv.invoice_number,
-                    description: `Due Date: ${inv.due_date}`,
-                    debit: parseFloat(inv.total),
-                    credit: 0,
-                    details: fullDetails.line_items || [],
-                    is_invoice: true
-                });
-            });
-
-            // 2. Add Payments (CRITICAL FIX)
-            const payments = this.state.dataStore.payments[customerId] || [];
-            payments.forEach(pay => {
-                transactions.push({
-                    date: pay.date,
-                    rawDate: new Date(pay.date),
-                    createdTime: new Date(pay.created_time || pay.date + "T23:59:59"), // Ensure payments usually process after invoice on same day if unknown
-                    type: 'PAYMENT',
-                    ref: pay.payment_number,
-                    description: 'Payment Received',
-                    debit: 0,
-                    credit: parseFloat(pay.amount),
-                    details: [],
-                    is_payment: true
-                });
-            });
-
-            // 3. Add Credit Notes
-            const credits = this.state.dataStore.creditnotes[customerId] || [];
-            credits.forEach(cn => {
-                const fullDetails = this.state.invoiceDetailsCache[cn.creditnote_id] || cn;
-                transactions.push({
-                    date: cn.date,
-                    rawDate: new Date(cn.date),
-                    createdTime: new Date(cn.created_time || cn.date),
-                    type: 'CREDIT NOTE',
-                    ref: cn.creditnote_number,
-                    description: 'Credit applied',
-                    debit: 0,
-                    credit: parseFloat(cn.total),
-                    details: fullDetails.line_items || [],
-                    is_cn: true
-                });
-            });
-
-            // Sort logic: Primary by Date, Secondary by Created Time
-            transactions.sort((a, b) => {
-                const dateDiff = a.rawDate - b.rawDate;
-                if (dateDiff !== 0) return dateDiff;
-                return a.createdTime - b.createdTime;
-            });
-
-            // --- CALCULATION LOOP ---
-            let runningBalance = openingBal;
-            let totalInvoiced = 0;
-            let totalReceived = 0; // Payments + Credits
-
-            let rowsHtml = '';
-            
-            // Opening Balance Row
-            if (openingBal !== 0) {
-                rowsHtml += `
-                    <tr class="bg-slate-50">
-                        <td></td>
-                        <td class="font-bold text-slate-500">OPENING BALANCE</td>
-                        <td class="text-xs text-slate-500 italic">Balance brought forward</td>
-                        <td></td>
-                        <td></td>
-                        <td class="font-bold text-right">${this.formatMoney(openingBal)}</td>
-                    </tr>
-                `;
-            }
-
-            transactions.forEach(t => {
-                runningBalance = runningBalance + t.debit - t.credit;
-                totalInvoiced += t.debit;
-                totalReceived += t.credit;
-
-                // Build Line Item Details (The "Item Descriptions" req)
-                let detailHtml = `<div class="font-bold text-slate-700">${t.type} #${t.ref}</div>`;
-                if (t.description) detailHtml += `<div class="text-[10px] text-slate-500">${t.description}</div>`;
-                
-                if (t.details.length > 0) {
-                    detailHtml += `<div class="item-details">`;
-                    t.details.forEach(item => {
-                        detailHtml += `
-                            <div class="item-row">
-                                <span>${item.name} <span class="text-slate-400">(${item.quantity} x ${item.rate})</span></span>
-                                <span>${this.formatMoney(item.item_total)}</span>
-                            </div>
-                        `;
-                    });
-                    detailHtml += `</div>`;
-                }
-
-                rowsHtml += `
-                    <tr>
-                        <td class="font-medium text-slate-600">${t.date}</td>
-                        <td class="text-slate-500 text-[9px] font-bold">${t.type}</td>
-                        <td>${detailHtml}</td>
-                        <td class="text-right font-medium text-slate-700">${t.debit > 0 ? this.formatMoney(t.debit) : '-'}</td>
-                        <td class="text-right font-medium text-emerald-600">${t.credit > 0 ? this.formatMoney(t.credit) : '-'}</td>
-                        <td class="text-right font-bold text-slate-900">${this.formatMoney(runningBalance)}</td>
-                    </tr>
-                `;
-            });
-
-            // --- TEMPLATE ---
-            htmlOutput += `
-            <div class="a4-page" id="statement-doc">
-                <!-- Header -->
-                <div class="doc-header">
-                    <div class="doc-brand">
-                        ${this.state.customLogo ? `<img src="${this.state.customLogo}" style="height:60px; object-fit:contain; align-self:flex-start;">` : `<div style="padding:10px; background:#f1f5f9; color:#94a3b8; font-weight:800; font-size:10px;">LOGO PLACEHOLDER</div>`}
-                        <div style="font-weight:800; font-size:16px; color:#0f172a; margin-top:10px;">${org.name || 'Organization Name'}</div>
-                        <div style="font-size:10px; color:#64748b; white-space:pre-line;">${org.address || ''}</div>
-                    </div>
-                    <div class="doc-title-block">
-                        <h1 class="doc-title">Statement of Accounts</h1>
-                        <div class="doc-subtitle">Generated on ${new Date().toLocaleDateString()}</div>
-                        <div class="doc-subtitle">Currency: ${this.state.currency}</div>
-                    </div>
-                </div>
-
-                <!-- Summary Section -->
-                <div class="summary-section">
-                    <div class="customer-addr">
-                        <div style="text-transform:uppercase; font-size:9px; font-weight:700; color:#94a3b8; margin-bottom:5px;">Bill To</div>
-                        <strong>${customer.contact_name}</strong>
-                        <div>${customer.billing_address ? customer.billing_address.address : ''}</div>
-                        <div>${customer.billing_address ? customer.billing_address.city : ''}</div>
-                    </div>
-
-                    <div class="account-summary-box">
-                        <div style="border-bottom:1px solid #e2e8f0; padding-bottom:5px; margin-bottom:10px; font-weight:700; color:#0f172a; font-size:11px; text-transform:uppercase;">Account Summary</div>
-                        <div class="as-row">
-                            <span>Opening Balance</span>
-                            <span>${this.formatMoney(openingBal)}</span>
-                        </div>
-                        <div class="as-row">
-                            <span>Invoiced Amount</span>
-                            <span>${this.formatMoney(totalInvoiced)}</span>
-                        </div>
-                        <div class="as-row">
-                            <span>Amount Received</span>
-                            <span>(${this.formatMoney(totalReceived)})</span>
-                        </div>
-                        <div class="as-row total">
-                            <span>Balance Due</span>
-                            <span>${this.formatMoney(runningBalance)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Table -->
-                <table class="soa-table">
-                    <thead>
-                        <tr>
-                            <th width="12%">Date</th>
-                            <th width="10%">Type</th>
-                            <th width="38%">Details</th>
-                            <th width="13%" align="right">Amount</th>
-                            <th width="13%" align="right">Payments</th>
-                            <th width="14%" align="right">Balance</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                    </tbody>
-                </table>
-                
-                <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8;">
-                    This is a computer generated statement.
-                </div>
-            </div>`;
-        });
-
-        this.views.renderArea.innerHTML = htmlOutput;
-        setTimeout(() => this.autoFitZoom(), 100);
-    }
-
-    /* --- UTILS --- */
-
-    formatMoney(amount) {
-        return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    renderCustomerList() {
-        this.views.customerList.innerHTML = '';
-        const sorted = this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name));
-        
-        sorted.forEach(c => {
-            const isSel = this.state.selectedCustomerIds.has(c.contact_id);
-            const div = document.createElement('div');
-            div.className = `p-3 rounded-lg cursor-pointer transition-all flex items-center gap-3 ${isSel ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`;
-            div.innerHTML = `
-                <div class="w-2 h-2 rounded-full ${isSel ? 'bg-white' : 'bg-slate-600'}"></div>
-                <div class="truncate text-xs font-bold uppercase">${c.contact_name}</div>
-            `;
-            div.onclick = () => this.handleCustomerClick(c.contact_id);
-            this.views.customerList.appendChild(div);
-        });
-    }
-
-    filterCustomers(term) {
-        const t = term.toLowerCase();
-        Array.from(this.views.customerList.children).forEach(el => {
-            el.style.display = el.innerText.toLowerCase().includes(t) ? 'flex' : 'none';
-        });
-    }
-
-    resetSelection() {
-        this.state.selectedCustomerIds.clear();
-        this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
-        this.renderCustomerList();
-        this.generateStatement();
-    }
-
-    setZoom(val) {
-        this.state.zoom = Math.max(0.4, Math.min(1.5, val));
-        const page = document.getElementById('statement-doc');
-        if(page) page.style.transform = `scale(${this.state.zoom})`;
-    }
-
-    autoFitZoom() {
-        if (!this.views.areaLedger) return;
-        const availableWidth = this.views.areaLedger.clientWidth;
-        // 21cm (A4 width) approx 794px at 96dpi. Add padding.
-        const targetZoom = (availableWidth - 80) / 794; 
-        this.setZoom(targetZoom);
-    }
-
-    logout(reload = true) {
-        localStorage.removeItem('zoho_access_token');
-        if(reload) window.location.reload();
-    }
-    
-    showLoading(w) { 
-        this.views.loadingBar.classList.remove('view-hidden');
-        this.views.loadingProgress.style.width = w + '%'; 
-    }
-    
-    hideLoading() { 
-        this.views.loadingProgress.style.width = '100%';
-        setTimeout(() => this.views.loadingBar.classList.add('view-hidden'), 500);
-    }
-
-    downloadPDF() {
-        this.showLoading(80);
-        const element = document.getElementById('statement-doc');
-        const opt = {
-            margin: 0,
-            filename: `Statement_${new Date().toISOString().split('T')[0]}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-        html2pdf().set(opt).from(element).save().then(() => this.hideLoading());
-    }
-
-    downloadExcel() {
-        // Simple Excel Export logic matching the display
-        // ... (Similar implementation to previous, just updated keys)
-        alert("Excel export logic follows same data structure.");
-    }
+    const headers = ['_customer', ...Object.keys(allRecords[0]).filter(k => k !== '_customer' && typeof allRecords[0][k] !== 'object')];
+    this.targets.explorerThead.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    this.targets.explorerTbody.innerHTML = allRecords.map(row => `<tr>${headers.map(h => `<td>${row[h] || '---'}</td>`).join('')}</tr>`).join('');
+  }
 }
 
-new ZohoLedgerApp();
+window.app = new ZohoLedgerApp();
