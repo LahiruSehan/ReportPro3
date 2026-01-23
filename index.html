@@ -11,6 +11,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Chart.js for Trend Chart -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     
@@ -29,6 +32,101 @@
     .view-hidden { display: none !important; }
     .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
+    /* LOGIN SCREEN ENHANCEMENTS */
+    
+    /* Background Slideshow */
+    #bg-slideshow {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -2;
+      overflow: hidden;
+    }
+    .bg-slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-size: cover;
+      background-position: center;
+      opacity: 0;
+      filter: blur(8px) brightness(0.4);
+      transform: scale(1.1);
+      transition: opacity 2s ease-in-out, transform 10s linear;
+    }
+    .bg-slide.active {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Animated Border Login Card */
+    .login-card-wrapper {
+      position: relative;
+      border-radius: 1.5rem;
+      overflow: hidden;
+      padding: 2px; /* Width of the border */
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .login-card-wrapper::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: conic-gradient(from 0deg, transparent 0deg, transparent 90deg, #6366f1 180deg, #8b5cf6 270deg, transparent 360deg);
+      animation: rotateBorder 4s linear infinite;
+      z-index: 0;
+    }
+    @keyframes rotateBorder {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
+    .login-card-content {
+      position: relative;
+      background: rgba(10, 10, 15, 0.75);
+      backdrop-filter: blur(20px);
+      z-index: 1;
+      border-radius: 1.4rem;
+      height: 100%;
+      width: 100%;
+    }
+
+    /* Gradient Buttons */
+    .btn-gradient-primary {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-gradient-primary:hover {
+      background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px -10px rgba(124, 58, 237, 0.5);
+    }
+    .btn-gradient-secondary {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: all 0.3s ease;
+    }
+    .btn-gradient-secondary:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.2);
+    }
+
+    /* Quote Animation */
+    .quote-fade {
+      animation: fadeInOut 5s infinite;
+    }
+    @keyframes fadeInOut {
+      0%, 100% { opacity: 0; transform: translateY(5px); }
+      10%, 90% { opacity: 1; transform: translateY(0); }
+    }
+
     /* Global Select Styles */
     select, input[type="text"], input[type="password"], input[type="date"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
     
@@ -176,11 +274,16 @@
   
   <div id="pdf-export-temp" class="view-hidden"></div>
 
+  <!-- BG Slideshow Container -->
+  <div id="bg-slideshow">
+    <!-- Slides injected by JS -->
+  </div>
+
   <!-- Connection Hub Modal -->
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
     <div class="glass-card p-6 md:p-10 w-full max-w-xl space-y-6 relative border-indigo-500/30 shadow-2xl">
       <button id="btn-close-config" class="absolute top-6 right-6 text-neutral-500 text-3xl hover:text-white">&times;</button>
-      <h3 class="text-xl font-black uppercase tracking-tight">API Handshake</h3>
+      <h3 class="text-xl font-black uppercase tracking-tight flex items-center gap-2"><i class="ph ph-gear-six text-indigo-400"></i> API Handshake</h3>
       
       <div class="space-y-4">
         <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
@@ -213,19 +316,45 @@
   </div>
 
   <!-- Landing Screen -->
-  <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center">
-    <div class="glass-card p-10 md:p-20 max-w-2xl w-full flex flex-col items-center shadow-2xl relative overflow-hidden">
-      <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-24 mb-10">
-      <h1 class="text-5xl md:text-7xl font-black mb-4 uppercase tracking-tighter leading-none">BIZSENSE<br><span class="text-indigo-500">PRO</span></h1>
-      
-      <div id="landing-error" class="view-hidden my-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs text-left w-full">
-        <p class="font-black uppercase mb-1">Authorization Error</p>
-        <p id="landing-error-text" class="opacity-80"></p>
-      </div>
-      
-      <div class="flex flex-col md:flex-row gap-5 w-full max-w-md mt-6">
-        <button id="btn-connect" class="flex-[2] py-6 bg-indigo-600 text-white rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl hover:bg-indigo-700">Authorize Access</button>
-        <button id="btn-open-config-landing" class="flex-1 py-6 bg-white/5 text-neutral-300 rounded-3xl font-black uppercase text-[11px] border border-white/10">Settings</button>
+  <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center relative z-10">
+    <!-- Animated Border Wrapper -->
+    <div class="login-card-wrapper max-w-2xl w-full">
+      <div class="login-card-content p-10 md:p-16 flex flex-col items-center shadow-2xl relative overflow-hidden">
+        
+        <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-20 mb-8 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+        
+        <div class="mb-8">
+            <h1 class="text-5xl md:text-6xl font-black uppercase tracking-tighter leading-none mb-2">BIZSENSE<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">PRO</span></h1>
+            <p class="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-300/70">Enterprise SOA Engine</p>
+        </div>
+
+        <!-- Welcome & Quote Section -->
+        <div class="mb-10 w-full">
+            <p class="text-sm font-medium text-gray-300 mb-4">Welcome back, Financial Controller.</p>
+            <div class="h-8 flex items-center justify-center">
+                <p id="business-quote" class="text-[11px] text-gray-400 italic font-mono transition-all duration-500">"Revenue is vanity, profit is sanity, but cash is king."</p>
+            </div>
+        </div>
+        
+        <div id="landing-error" class="view-hidden my-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs text-left w-full">
+          <p class="font-black uppercase mb-1 flex items-center gap-2"><i class="ph ph-warning-circle"></i> Authorization Error</p>
+          <p id="landing-error-text" class="opacity-80"></p>
+        </div>
+        
+        <div class="flex flex-col md:flex-row gap-5 w-full max-w-md mt-2">
+          <button id="btn-connect" class="btn-gradient-primary flex-[2] py-5 text-white rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl flex items-center justify-center gap-3">
+            <i class="ph ph-lock-key text-lg"></i> Authorize Access
+          </button>
+          <button id="btn-open-config-landing" class="btn-gradient-secondary flex-1 py-5 text-neutral-300 rounded-2xl font-black uppercase text-[11px] flex items-center justify-center gap-2">
+            <i class="ph ph-gear text-lg"></i> Settings
+          </button>
+        </div>
+
+        <div class="mt-8 flex gap-4 text-gray-500/50">
+            <i class="ph ph-shield-check text-2xl" title="Secure"></i>
+            <i class="ph ph-chart-line-up text-2xl" title="Analytics"></i>
+            <i class="ph ph-globe text-2xl" title="Global"></i>
+        </div>
       </div>
     </div>
   </div>

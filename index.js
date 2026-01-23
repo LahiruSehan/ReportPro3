@@ -38,6 +38,14 @@ class ZohoLedgerApp {
         { name: 'cyan', hex: '#06b6d4' },
         { name: 'violet', hex: '#8b5cf6' },
         { name: 'fuchsia', hex: '#d946ef' }
+      ],
+      quotes: [
+        "\"Revenue is vanity, profit is sanity, but cash is king.\"",
+        "\"Opportunities don't happen. You create them.\"",
+        "\"Success usually comes to those who are too busy to be looking for it.\"",
+        "\"Don't count the days, make the days count.\"",
+        "\"The best way to predict the future is to create it.\"",
+        "\"Quality means doing it right when no one is looking.\""
       ]
     };
 
@@ -57,12 +65,61 @@ class ZohoLedgerApp {
       this.renderColorPicker(); 
       this.updateConfigStatus();
       this.checkSession();
+      this.initLandingUI(); // Start landing animations
       setTimeout(() => this.autoFitZoom(), 1000);
       window.addEventListener('resize', () => this.autoFitZoom());
       
       // Keyboard Navigation
       document.addEventListener('keydown', (e) => this.handleKeyboardNav(e));
     });
+  }
+
+  initLandingUI() {
+    // 1. Background Slideshow Logic
+    const bgContainer = document.getElementById('bg-slideshow');
+    if (!bgContainer) return;
+
+    const images = [
+      'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop', // Sky
+      'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop', // Data
+      'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2032&auto=format&fit=crop', // Meeting
+      'https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2011&auto=format&fit=crop', // Finance
+      'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2069&auto=format&fit=crop'  // Office
+    ];
+
+    // Inject images
+    bgContainer.innerHTML = '';
+    images.forEach((url, i) => {
+        const div = document.createElement('div');
+        div.className = `bg-slide ${i === 0 ? 'active' : ''}`;
+        div.style.backgroundImage = `url(${url})`;
+        bgContainer.appendChild(div);
+    });
+
+    // Rotate Backgrounds
+    let currentSlide = 0;
+    setInterval(() => {
+        const slides = document.querySelectorAll('.bg-slide');
+        if (slides.length > 0) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (currentSlide + 1) % slides.length;
+            slides[currentSlide].classList.add('active');
+        }
+    }, 4000); // 4 seconds
+
+    // 2. Rotate Quotes
+    const quoteEl = document.getElementById('business-quote');
+    if (quoteEl) {
+        let qIdx = 0;
+        setInterval(() => {
+            qIdx = (qIdx + 1) % this.state.quotes.length;
+            quoteEl.style.opacity = '0';
+            setTimeout(() => {
+                quoteEl.innerText = this.state.quotes[qIdx];
+                quoteEl.style.opacity = '1';
+            }, 500); // Wait for fade out
+        }, 5000); // 5 seconds
+    }
   }
 
   cacheDOM() {
@@ -1035,13 +1092,13 @@ class ZohoLedgerApp {
     wrapper.style.top = '0';
     wrapper.style.left = '0';
     wrapper.style.zIndex = '5000'; // Make it visible on top
-    wrapper.style.width = '100vw'; // Use vw/vh to cover viewport fully
-    wrapper.style.height = '100vh';
-    wrapper.style.backgroundColor = 'white'; // White background prevents black screen
+    wrapper.style.width = '100%';
+    wrapper.style.height = '100%';
+    wrapper.style.backgroundColor = 'rgba(0,0,0,0.8)'; // Dim background
     wrapper.style.display = 'flex';
     wrapper.style.justifyContent = 'center';
     wrapper.style.alignItems = 'flex-start';
-    wrapper.style.overflow = 'hidden'; // Prevent scrollbars affecting capture
+    wrapper.style.overflow = 'auto';
     
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
