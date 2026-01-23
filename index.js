@@ -374,7 +374,11 @@ class ZohoLedgerApp {
   }
 
   startAuth(force = false) {
-    if (!this.config.clientId) return this.toggleConfig(true);
+    if (!this.config.clientId || this.config.clientId.length < 3) {
+        this.showLandingError("Configuration Missing: Client ID required.");
+        this.toggleConfig(true);
+        return;
+    }
     this.showLoading(15, "Authenticating Secure Tunnel...");
     const redirectUri = window.location.origin + window.location.pathname;
     const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ";
@@ -1152,7 +1156,7 @@ class ZohoLedgerApp {
     this.updateConfigStatus();
   }
   updateConfigStatus() {
-    this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
+    this.btns.connect.disabled = false;
   }
   logout(reload = true) {
     localStorage.removeItem('zoho_access_token');
