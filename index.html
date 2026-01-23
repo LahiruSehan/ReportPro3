@@ -50,14 +50,16 @@
     .a4-page {
       background: white; 
       color: #111; 
-      padding: 1.5cm; 
-      min-height: 29.7cm; 
-      width: 21cm; 
+      padding: 10mm; /* Compact padding */
+      min-height: 297mm; 
+      width: 210mm; 
       margin: 1cm auto; 
       box-shadow: 0 20px 50px rgba(0,0,0,0.4); 
       position: relative; 
       transform-origin: top center;
       transition: transform 0.2s ease;
+      overflow: hidden;
+      box-sizing: border-box;
     }
 
     .statement-view-container { 
@@ -85,16 +87,21 @@
     .explorer-table th { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid var(--app-border); font-size: 10px; text-transform: uppercase; color: #6366f1; font-weight: 900; }
     .explorer-table td { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.02); font-size: 11px; color: #cbd5e1; }
 
-    /* PDF Generation Helper - Positioned to ensure visibility during capture */
+    /* PDF Generation Helper - High Visibility for Capture */
     #pdf-export-temp {
-      position: absolute;
+      position: fixed;
       left: 0;
       top: 0;
-      width: 210mm;
+      width: 100%;
+      height: 100%;
       z-index: -100;
-      opacity: 0; /* Hidden from user, visible to renderer */
       pointer-events: none;
+      opacity: 0;
     }
+
+    /* Color balls hover effect */
+    .color-ball { transition: transform 0.2s, border-color 0.2s; cursor: pointer; }
+    .color-ball:hover { transform: scale(1.2); border-color: white; }
 
     /* Print Logic */
     @media print {
@@ -108,10 +115,6 @@
     
     /* Force page breaks in PDF */
     .page-break { page-break-after: always; break-after: page; }
-
-    /* Color balls hover effect */
-    .color-ball { transition: transform 0.2s; cursor: pointer; }
-    .color-ball:hover { transform: scale(1.2); }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -124,7 +127,7 @@
   </div>
 
   <!-- PDF Export Hidden Container -->
-  <div id="pdf-export-temp"></div>
+  <div id="pdf-export-temp" class="view-hidden"></div>
 
   <!-- Connection Hub Modal -->
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">

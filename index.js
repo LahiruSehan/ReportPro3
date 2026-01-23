@@ -30,7 +30,10 @@ class ZohoLedgerApp {
         { name: 'emerald', hex: '#059669' },
         { name: 'rose', hex: '#e11d48' },
         { name: 'amber', hex: '#d97706' },
-        { name: 'slate', hex: '#475569' }
+        { name: 'slate', hex: '#475569' },
+        { name: 'cyan', hex: '#06b6d4' },
+        { name: 'violet', hex: '#8b5cf6' },
+        { name: 'fuchsia', hex: '#d946ef' }
       ]
     };
 
@@ -840,14 +843,24 @@ class ZohoLedgerApp {
     clone.style.margin = '0';
     clone.style.transform = 'none';
     clone.style.boxShadow = 'none';
+    clone.style.padding = '10mm'; // Match A4 padding
 
-    // Container for capture - needs to be visible in DOM but overlaid
-    const tempContainer = document.getElementById('pdf-export-temp');
-    tempContainer.innerHTML = '';
-    tempContainer.appendChild(clone);
+    // Create a container wrapper to center it or just hold it
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.top = '0';
+    wrapper.style.left = '0';
+    wrapper.style.zIndex = '5000'; // Make it visible on top
+    wrapper.style.width = '100%';
+    wrapper.style.height = '100%';
+    wrapper.style.backgroundColor = 'rgba(0,0,0,0.8)'; // Dim background
+    wrapper.style.display = 'flex';
+    wrapper.style.justifyContent = 'center';
+    wrapper.style.alignItems = 'flex-start';
+    wrapper.style.overflow = 'auto';
     
-    // Ensure container is rendered
-    tempContainer.style.display = 'block';
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
     
     const opt = {
       margin: 0, 
@@ -857,20 +870,20 @@ class ZohoLedgerApp {
         scale: 2, 
         useCORS: true, 
         scrollY: 0,
-        logging: true,
-        windowWidth: 1200 // Force wide viewport for capture
+        logging: false,
+        windowWidth: 1200
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
     html2pdf().set(opt).from(clone).save().then(() => {
       // Cleanup after save
-      tempContainer.innerHTML = '';
-      tempContainer.style.display = 'none'; // Re-hide
+      document.body.removeChild(wrapper);
       this.hideLoading();
     }).catch(err => {
       console.error("PDF Gen Error", err);
       alert("PDF Generation Failed: " + err.message);
+      if(document.body.contains(wrapper)) document.body.removeChild(wrapper);
       this.hideLoading();
     });
   }
