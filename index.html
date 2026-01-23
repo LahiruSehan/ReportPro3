@@ -30,101 +30,15 @@
     body { background-color: var(--app-bg); color: var(--app-text); font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; }
     
     .view-hidden { display: none !important; }
-    .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
-    /* LOGIN SCREEN ENHANCEMENTS */
+    /* Login Glass Style (Only for Landing) */
+    .glass-card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
-    /* Background Slideshow */
-    #bg-slideshow {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: -2;
-      overflow: hidden;
-    }
-    .bg-slide {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-size: cover;
-      background-position: center;
-      opacity: 0;
-      filter: blur(8px) brightness(0.4);
-      transform: scale(1.1);
-      transition: opacity 2s ease-in-out, transform 10s linear;
-    }
-    .bg-slide.active {
-      opacity: 1;
-      transform: scale(1);
-    }
-
-    /* Animated Border Login Card */
-    .login-card-wrapper {
-      position: relative;
-      border-radius: 1.5rem;
-      overflow: hidden;
-      padding: 2px; /* Width of the border */
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    }
-    .login-card-wrapper::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: conic-gradient(from 0deg, transparent 0deg, transparent 90deg, #6366f1 180deg, #8b5cf6 270deg, transparent 360deg);
-      animation: rotateBorder 4s linear infinite;
-      z-index: 0;
-    }
-    @keyframes rotateBorder {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-    
-    .login-card-content {
-      position: relative;
-      background: rgba(10, 10, 15, 0.75);
-      backdrop-filter: blur(20px);
-      z-index: 1;
-      border-radius: 1.4rem;
-      height: 100%;
-      width: 100%;
-    }
-
-    /* Gradient Buttons */
-    .btn-gradient-primary {
-      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
-    .btn-gradient-primary:hover {
-      background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
-      transform: translateY(-1px);
-      box-shadow: 0 10px 20px -10px rgba(124, 58, 237, 0.5);
-    }
-    .btn-gradient-secondary {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      transition: all 0.3s ease;
-    }
-    .btn-gradient-secondary:hover {
-      background: rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.2);
-    }
-
-    /* Quote Animation */
-    .quote-fade {
-      animation: fadeInOut 5s infinite;
-    }
-    @keyframes fadeInOut {
-      0%, 100% { opacity: 0; transform: translateY(5px); }
-      10%, 90% { opacity: 1; transform: translateY(0); }
+    /* Solid App Style (For Dashboard) */
+    .solid-card { 
+        background: #09090b; /* Solid Dark */
+        border: 1px solid #27272a; 
+        border-radius: 1rem; 
     }
 
     /* Global Select Styles */
@@ -191,60 +105,63 @@
     .color-ball { transition: transform 0.2s, border-color 0.2s; cursor: pointer; }
     .color-ball:hover { transform: scale(1.2); border-color: white; }
 
-    /* Modern Gradient Loading Bar */
-    #loading-bar-container {
+    /* Integrated Top Loading Bar */
+    #loading-container {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
-      height: 4px;
-      z-index: 9999;
-      background: rgba(255, 255, 255, 0.05);
-    }
-    #loading-bar {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899, #06b6d4);
-      background-size: 300% 100%;
-      animation: gradientShift 2s ease infinite;
-      box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
-      border-radius: 0 4px 4px 0;
-      transition: width 0.3s ease-out;
-    }
-    @keyframes gradientShift {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-    
-    /* Modern Status Pill */
-    #loading-status-overlay {
-      position: fixed;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(10, 10, 20, 0.85);
-      backdrop-filter: blur(12px);
-      padding: 8px 20px;
-      border-radius: 9999px;
-      border: 1px solid rgba(255,255,255,0.1);
-      color: white;
-      font-weight: 800;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      z-index: 9998;
+      height: 24px; /* Thicker bar */
+      z-index: 10000; /* Highest priority */
+      background: #000;
       display: flex;
       align-items: center;
-      gap: 10px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05);
-      pointer-events: none;
-      transition: opacity 0.3s, transform 0.3s;
+      justify-content: center;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
     }
-    #loading-status-overlay.view-hidden {
-        opacity: 0;
-        transform: translateX(-50%) translateY(-20px);
+    #loading-progress {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #4f46e5, #ec4899, #06b6d4);
+      background-size: 200% 100%;
+      animation: gradientFlow 2s linear infinite;
+      transition: width 0.3s ease-out;
+      z-index: 1;
     }
+    #loading-text {
+      position: relative;
+      z-index: 2;
+      color: white;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    }
+    @keyframes gradientFlow { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+    /* Login BG Slideshow */
+    #bg-slideshow { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -2; overflow: hidden; }
+    .bg-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; opacity: 0; filter: blur(8px) brightness(0.4); transform: scale(1.1); transition: opacity 2s ease-in-out, transform 10s linear; }
+    .bg-slide.active { opacity: 1; transform: scale(1); }
+
+    /* Login Card */
+    .login-card-wrapper { position: relative; border-radius: 1.5rem; overflow: hidden; padding: 2px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+    .login-card-wrapper::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: conic-gradient(from 0deg, transparent 0deg, transparent 90deg, #6366f1 180deg, #8b5cf6 270deg, transparent 360deg); animation: rotateBorder 4s linear infinite; z-index: 0; }
+    @keyframes rotateBorder { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .login-card-content { position: relative; background: rgba(10, 10, 15, 0.75); backdrop-filter: blur(20px); z-index: 1; border-radius: 1.4rem; height: 100%; width: 100%; }
+
+    /* Gradient Buttons */
+    .btn-gradient-primary { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); transition: all 0.3s ease; position: relative; overflow: hidden; }
+    .btn-gradient-primary:hover { background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%); transform: translateY(-1px); box-shadow: 0 10px 20px -10px rgba(124, 58, 237, 0.5); }
+    .btn-gradient-secondary { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
+    .btn-gradient-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+
+    /* Modal Styling Fix */
+    .modal-overlay { z-index: 5000 !important; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
 
     /* Print Logic */
     @media print {
@@ -254,30 +171,22 @@
     }
 
     tr { break-inside: avoid; page-break-inside: avoid; }
-    
-    /* Toggle Switch */
     .toggle-checkbox:checked { right: 0; border-color: #68D391; }
     .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
 
-  <div id="loading-bar-container" class="view-hidden">
-    <div id="loading-bar"></div>
-  </div>
-  
-  <!-- Modern Status Pill -->
-  <div id="loading-status-overlay" class="view-hidden">
-    <div class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
-    <span id="loading-bar-text">INITIALIZING...</span>
+  <!-- New Integrated Loading Bar -->
+  <div id="loading-container" class="view-hidden">
+    <div id="loading-progress"></div>
+    <span id="loading-text">INITIALIZING...</span>
   </div>
   
   <div id="pdf-export-temp" class="view-hidden"></div>
 
   <!-- BG Slideshow Container -->
-  <div id="bg-slideshow">
-    <!-- Slides injected by JS -->
-  </div>
+  <div id="bg-slideshow"></div>
 
   <!-- Connection Hub Modal -->
   <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
@@ -315,9 +224,8 @@
     </div>
   </div>
 
-  <!-- Landing Screen -->
+  <!-- Landing Screen (Glassy) -->
   <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center relative z-10">
-    <!-- Animated Border Wrapper -->
     <div class="login-card-wrapper max-w-2xl w-full">
       <div class="login-card-content p-10 md:p-16 flex flex-col items-center shadow-2xl relative overflow-hidden">
         
@@ -328,7 +236,6 @@
             <p class="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-300/70">Enterprise SOA Engine</p>
         </div>
 
-        <!-- Welcome & Quote Section -->
         <div class="mb-10 w-full">
             <p class="text-sm font-medium text-gray-300 mb-4">Welcome back, Financial Controller.</p>
             <div class="h-8 flex items-center justify-center">
@@ -359,9 +266,9 @@
     </div>
   </div>
 
-  <!-- Dashboard -->
+  <!-- Dashboard (Solid) -->
   <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
-    <header class="p-2 md:p-3 glass-card m-2 md:m-3 flex flex-col md:flex-row items-start md:items-center justify-between no-print gap-3">
+    <header class="p-2 md:p-3 solid-card m-2 md:m-3 flex flex-col md:flex-row items-start md:items-center justify-between no-print gap-3">
       <div class="flex items-center space-x-6">
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
         <div class="flex flex-col">
@@ -370,7 +277,6 @@
         </div>
       </div>
       
-      <!-- Date Range & Tools -->
       <div class="flex flex-wrap items-center gap-2 bg-black/40 rounded-xl p-1 border border-white/5">
         <select id="date-range-preset" class="text-[9px] font-black uppercase bg-transparent border-none text-white focus:ring-0 cursor-pointer">
           <option value="all">All History</option>
@@ -408,7 +314,7 @@
 
     <div class="flex flex-grow overflow-hidden px-2 md:px-4 pb-2 md:pb-4 gap-4">
       <aside class="hidden lg:flex w-80 flex-col gap-4 no-print">
-        <div class="glass-card p-6 flex-grow flex flex-col overflow-hidden">
+        <div class="solid-card p-6 flex-grow flex flex-col overflow-hidden">
           <div class="flex justify-between items-center mb-4">
             <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
             <div class="flex gap-1">
@@ -420,7 +326,7 @@
         </div>
       </aside>
 
-      <main class="flex-grow glass-card flex flex-col overflow-hidden relative">
+      <main class="flex-grow solid-card flex flex-col overflow-hidden relative">
         <div id="view-ledger-container" class="flex flex-col flex-grow overflow-hidden">
           <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01] no-print">
             <div class="flex items-center gap-4">
@@ -448,7 +354,6 @@
               <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
             </div>
             
-            <!-- Skeleton Loader State -->
             <div id="skeleton-loader" class="statement-view-container view-hidden">
                 <div class="bg-white p-[1.5cm] w-[21cm] min-h-[29.7cm] shadow-2xl relative">
                     <div class="flex justify-between mb-12">

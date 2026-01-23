@@ -128,10 +128,9 @@ class ZohoLedgerApp {
       dashboard: document.getElementById('view-dashboard'),
       configModal: document.getElementById('modal-config'),
       settingsModal: document.getElementById('modal-settings'),
-      loadingBar: document.getElementById('loading-bar-container'),
-      loadingOverlay: document.getElementById('loading-status-overlay'),
-      loadingProgress: document.getElementById('loading-bar'),
-      loadingText: document.getElementById('loading-bar-text'),
+      loadingContainer: document.getElementById('loading-container'),
+      loadingProgress: document.getElementById('loading-progress'),
+      loadingText: document.getElementById('loading-text'),
       landingError: document.getElementById('landing-error'),
       customerList: document.getElementById('customer-list'),
       areaLedger: document.getElementById('area-ledger'),
@@ -1139,25 +1138,28 @@ class ZohoLedgerApp {
   }
 
   showLoading(prog, txt) {
-    this.views.loadingBar.classList.remove('view-hidden');
-    this.views.loadingOverlay.classList.remove('view-hidden');
-    this.views.loadingProgress.style.width = `${prog}%`;
-    this.views.loadingText.innerText = txt.toUpperCase();
+    const loadingContainer = this.views.loadingContainer || document.getElementById('loading-container');
+    const loadingProgress = this.views.loadingProgress || document.getElementById('loading-progress');
+    const loadingText = this.views.loadingText || document.getElementById('loading-text');
+
+    if(loadingContainer) loadingContainer.classList.remove('view-hidden');
+    if(loadingProgress) loadingProgress.style.width = `${prog}%`;
+    if(loadingText) loadingText.innerText = txt.toUpperCase();
     
     // Feature: Skeleton Loading
-    // Hide actual content, show skeleton
     if(this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
     if(this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
   }
 
   hideLoading() {
-    this.views.loadingProgress.style.width = '100%';
+    const loadingProgress = this.views.loadingProgress || document.getElementById('loading-progress');
+    if(loadingProgress) loadingProgress.style.width = '100%';
+    
     setTimeout(() => {
-      this.views.loadingBar.classList.add('view-hidden');
-      this.views.loadingOverlay.classList.add('view-hidden');
+      const loadingContainer = this.views.loadingContainer || document.getElementById('loading-container');
+      if(loadingContainer) loadingContainer.classList.add('view-hidden');
       
       // Feature: Skeleton Loading
-      // Show actual content, hide skeleton
       if(this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
       if(this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
     }, 800);
