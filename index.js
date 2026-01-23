@@ -447,6 +447,7 @@ class ZohoLedgerApp {
       
       let totalInvoiced = 0;
       let totalReceived = 0;
+      let totalCredits = 0;
 
       // Aggregating all transactions for the timeline
       let transactions = [];
@@ -509,7 +510,15 @@ class ZohoLedgerApp {
         runningBalance -= tx.payment;
         
         totalInvoiced += (tx.amount > 0 ? tx.amount : 0);
-        totalReceived += tx.payment;
+        
+        // Split Total Received and Total Credits
+        if (tx.payment > 0) {
+            if (tx.type === 'Credit Note') {
+                totalCredits += tx.payment;
+            } else {
+                totalReceived += tx.payment;
+            }
+        }
 
         // Display Logic for Payment Column (Red for CN, Green for Pay)
         let paymentDisplay = '';
@@ -634,6 +643,7 @@ class ZohoLedgerApp {
                 <span>Opening Balance:</span><span class="text-right">${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                 <span>Invoiced Amount:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                 <span>Amount Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Credit Notes:</span><span class="text-right text-red-600">${totalCredits.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                 <span class="pt-1 border-t font-black text-indigo-900 text-[10px]">Balance Due:</span>
                 <span class="pt-1 border-t font-black text-indigo-900 text-[10px] text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
