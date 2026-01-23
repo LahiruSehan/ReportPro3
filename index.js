@@ -476,8 +476,8 @@ class ZohoLedgerApp {
           date: cn.date,
           type: 'Credit Note',
           ref: cn.creditnote_number,
-          amount: -(parseFloat(cn.total) || 0), // Credit notes reduce debt
-          payment: 0,
+          amount: 0, // Moved to payment column
+          payment: parseFloat(cn.total) || 0, // Treated as payment
           raw: cn,
           sortDate: new Date(cn.date)
         });
@@ -508,7 +508,9 @@ class ZohoLedgerApp {
           detailsHtml = `<div class="font-bold text-indigo-700">Invoice ${tx.ref} (Due: ${tx.due_date})</div>`;
           if (det && det.line_items) {
             det.line_items.forEach(li => {
-              detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">• ${li.name} × ${li.quantity} ${li.unit || ''}</div>`;
+              const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+              const total = parseFloat(li.item_total || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+              detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">• ${li.name} <span class="font-mono text-[7px] opacity-75">(${li.quantity} × ${rate} = ${total})</span></div>`;
             });
           }
         } else if (tx.type === 'Payment Received') {
@@ -522,7 +524,9 @@ class ZohoLedgerApp {
           detailsHtml = `<div class="font-bold text-red-700">Credit Note ${tx.ref}</div>`;
           if (det && det.line_items) {
             det.line_items.forEach(li => {
-              detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">• ${li.name} × ${li.quantity} (Returned)</div>`;
+              const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+              const total = parseFloat(li.item_total || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+              detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">• ${li.name} <span class="font-mono text-[7px] opacity-75">(${li.quantity} × ${rate} = ${total})</span></div>`;
             });
           }
         }
@@ -550,7 +554,7 @@ class ZohoLedgerApp {
           <div class="flex justify-between items-start mb-6">
             <div class="flex-grow">
               ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-12 mb-3 object-contain">` : '<div class="h-12 w-40 bg-neutral-100 rounded mb-3 flex items-center justify-center text-[8px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
-              <h1 class="text-xl font-black uppercase tracking-tighter text-indigo-900">Project: ${projectName}</h1>
+              <h1 class="text-xl font-black uppercase tracking-tighter text-indigo-900">${projectName}</h1>
               <p class="text-[8px] text-indigo-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
               
               <div class="mt-4">
