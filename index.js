@@ -107,7 +107,8 @@ class ZohoLedgerApp {
       downloadExcel: document.getElementById('btn-download-excel'),
       emailComposer: document.getElementById('btn-email-composer'),
       logout: document.getElementById('btn-logout'),
-      // REMOVED selectAll and clearAll references as they don't exist in HTML anymore
+      selectAll: document.getElementById('btn-select-all'),
+      clearAll: document.getElementById('btn-clear-all'),
       openConfig: document.getElementById('btn-open-config-landing'),
       closeConfig: document.getElementById('btn-close-config'),
       openSettings: document.getElementById('btn-project-settings'),
@@ -140,49 +141,59 @@ class ZohoLedgerApp {
   }
 
   bindEvents() {
-    this.btns.connect.onclick = () => this.startAuth();
-    this.btns.saveConfig.onclick = () => this.saveConfig();
-    this.btns.resetConfig.onclick = () => this.wipeConfiguration();
-    this.btns.openConfig.onclick = () => this.toggleConfig(true);
-    this.btns.closeConfig.onclick = () => this.toggleConfig(false);
-    this.btns.logout.onclick = () => this.logout();
-    this.btns.downloadPdf.onclick = () => this.downloadPDF();
-    this.btns.downloadExcel.onclick = () => this.downloadExcel();
-    this.btns.emailComposer.onclick = () => this.openEmailComposer();
+    if(this.btns.connect) this.btns.connect.onclick = () => this.startAuth();
+    if(this.btns.saveConfig) this.btns.saveConfig.onclick = () => this.saveConfig();
+    if(this.btns.resetConfig) this.btns.resetConfig.onclick = () => this.wipeConfiguration();
+    if(this.btns.openConfig) this.btns.openConfig.onclick = () => this.toggleConfig(true);
+    if(this.btns.closeConfig) this.btns.closeConfig.onclick = () => this.toggleConfig(false);
+    if(this.btns.logout) this.btns.logout.onclick = () => this.logout();
+    if(this.btns.downloadPdf) this.btns.downloadPdf.onclick = () => this.downloadPDF();
+    if(this.btns.downloadExcel) this.btns.downloadExcel.onclick = () => this.downloadExcel();
+    if(this.btns.emailComposer) this.btns.emailComposer.onclick = () => this.openEmailComposer();
     
-    // REMOVED missing button logic
+    // Safety checks for optional buttons
+    if(this.btns.selectAll) {
+        this.btns.selectAll.style.display = 'none'; // Ensure hidden if exists
+        this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
+    }
+    if(this.btns.clearAll) this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
     
-    this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
-    this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
+    if(this.btns.openSettings) this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
+    if(this.btns.closeSettings) this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
     
-    this.btns.toggleLedger.onclick = () => this.switchView('ledger');
-    this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
+    if(this.btns.toggleLedger) this.btns.toggleLedger.onclick = () => this.switchView('ledger');
+    if(this.btns.toggleExplorer) this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
 
-    this.btns.applySettings.onclick = () => {
-      this.state.activeModules.clear();
-      this.inputs.moduleCheckboxes.forEach(cb => { if(cb.checked) this.state.activeModules.add(cb.value); });
-      localStorage.setItem('active_modules', JSON.stringify(Array.from(this.state.activeModules)));
-      this.views.settingsModal.classList.add('view-hidden');
-      this.syncAllActiveCustomers();
-    };
+    if(this.btns.applySettings) {
+        this.btns.applySettings.onclick = () => {
+          this.state.activeModules.clear();
+          this.inputs.moduleCheckboxes.forEach(cb => { if(cb.checked) this.state.activeModules.add(cb.value); });
+          localStorage.setItem('active_modules', JSON.stringify(Array.from(this.state.activeModules)));
+          this.views.settingsModal.classList.add('view-hidden');
+          this.syncAllActiveCustomers();
+        };
+    }
 
-    this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
-    this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
-    this.btns.zoomFit.onclick = () => this.autoFitZoom();
-    this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
-    this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
-    this.inputs.orgSelect.onchange = (e) => this.handleOrgSwitch(e.target.value);
+    if(this.btns.zoomIn) this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
+    if(this.btns.zoomOut) this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
+    if(this.btns.zoomFit) this.btns.zoomFit.onclick = () => this.autoFitZoom();
+    
+    if(this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
+    if(this.inputs.logoUpload) this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
+    if(this.inputs.orgSelect) this.inputs.orgSelect.onchange = (e) => this.handleOrgSwitch(e.target.value);
     
     // Feature: Date Filter
-    this.inputs.dateRangePreset.onchange = (e) => this.handleDatePreset(e.target.value);
-    this.inputs.dateStart.onchange = () => this.updateDateFilter();
-    this.inputs.dateEnd.onchange = () => this.updateDateFilter();
+    if(this.inputs.dateRangePreset) this.inputs.dateRangePreset.onchange = (e) => this.handleDatePreset(e.target.value);
+    if(this.inputs.dateStart) this.inputs.dateStart.onchange = () => this.updateDateFilter();
+    if(this.inputs.dateEnd) this.inputs.dateEnd.onchange = () => this.updateDateFilter();
     
     // Feature: Summary Toggle
-    this.inputs.toggleSummary.onchange = (e) => {
-        this.state.isSummaryMode = !this.state.isSummaryMode;
-        this.renderStatementUI();
-    };
+    if(this.inputs.toggleSummary) {
+        this.inputs.toggleSummary.onchange = (e) => {
+            this.state.isSummaryMode = !this.state.isSummaryMode;
+            this.renderStatementUI();
+        };
+    }
   }
 
   handleKeyboardNav(e) {
@@ -203,7 +214,7 @@ class ZohoLedgerApp {
   handleDatePreset(val) {
     const now = new Date();
     const container = document.getElementById('custom-date-container');
-    container.classList.add('hidden');
+    if(container) container.classList.add('hidden');
     
     if (val === 'all') {
         this.state.filterDateStart = null;
@@ -218,15 +229,15 @@ class ZohoLedgerApp {
         this.state.filterDateStart = new Date(now.getFullYear(), 0, 1);
         this.state.filterDateEnd = new Date(now.getFullYear(), 11, 31);
     } else if (val === 'custom') {
-        container.classList.remove('hidden');
+        if(container) container.classList.remove('hidden');
         return; 
     }
     this.renderStatementUI();
   }
 
   updateDateFilter() {
-    const s = this.inputs.dateStart.value;
-    const e = this.inputs.dateEnd.value;
+    const s = this.inputs.dateStart ? this.inputs.dateStart.value : null;
+    const e = this.inputs.dateEnd ? this.inputs.dateEnd.value : null;
     if (s) this.state.filterDateStart = new Date(s);
     if (e) this.state.filterDateEnd = new Date(e);
     this.renderStatementUI();
@@ -278,13 +289,17 @@ class ZohoLedgerApp {
     this.views.ledgerView.classList.toggle('view-hidden', view !== 'ledger');
     this.views.explorerView.classList.toggle('view-hidden', view !== 'explorer');
     
-    this.btns.toggleLedger.classList.toggle('bg-indigo-600', view === 'ledger');
-    this.btns.toggleLedger.classList.toggle('text-white', view === 'ledger');
-    this.btns.toggleLedger.classList.toggle('text-neutral-500', view !== 'ledger');
+    if(this.btns.toggleLedger) {
+        this.btns.toggleLedger.classList.toggle('bg-indigo-600', view === 'ledger');
+        this.btns.toggleLedger.classList.toggle('text-white', view === 'ledger');
+        this.btns.toggleLedger.classList.toggle('text-neutral-500', view !== 'ledger');
+    }
     
-    this.btns.toggleExplorer.classList.toggle('bg-indigo-600', view === 'explorer');
-    this.btns.toggleExplorer.classList.toggle('text-white', view === 'explorer');
-    this.btns.toggleExplorer.classList.toggle('text-neutral-500', view !== 'explorer');
+    if(this.btns.toggleExplorer) {
+        this.btns.toggleExplorer.classList.toggle('bg-indigo-600', view === 'explorer');
+        this.btns.toggleExplorer.classList.toggle('text-white', view === 'explorer');
+        this.btns.toggleExplorer.classList.toggle('text-neutral-500', view !== 'explorer');
+    }
 
     if (view === 'explorer') this.renderExplorer();
     else this.autoFitZoom();
@@ -338,14 +353,16 @@ class ZohoLedgerApp {
       const res = await this.rawRequest(url);
       if (res && res.organizations) {
         this.state.organizations = res.organizations;
-        this.inputs.orgSelect.innerHTML = '';
-        res.organizations.forEach(org => {
-          const opt = document.createElement('option');
-          opt.value = org.organization_id; opt.innerText = org.name;
-          this.inputs.orgSelect.appendChild(opt);
-        });
-        if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
-        this.inputs.orgSelect.value = this.state.selectedOrgId;
+        if(this.inputs.orgSelect) {
+            this.inputs.orgSelect.innerHTML = '';
+            res.organizations.forEach(org => {
+              const opt = document.createElement('option');
+              opt.value = org.organization_id; opt.innerText = org.name;
+              this.inputs.orgSelect.appendChild(opt);
+            });
+            if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
+            this.inputs.orgSelect.value = this.state.selectedOrgId;
+        }
         return true;
       }
       return false;
@@ -400,6 +417,7 @@ class ZohoLedgerApp {
   }
 
   renderCustomerList() {
+    if(!this.views.customerList) return;
     this.views.customerList.innerHTML = '';
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
       const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
@@ -445,7 +463,7 @@ class ZohoLedgerApp {
         totalRecords += (customerData.records || []).length;
       });
     });
-    this.targets.stats.innerText = `${totalRecords} RECORDS MAPPED`;
+    if(this.targets.stats) this.targets.stats.innerText = `${totalRecords} RECORDS MAPPED`;
   }
 
   async syncCustomerData(id) {
@@ -495,6 +513,7 @@ class ZohoLedgerApp {
   }
 
   renderExplorer() {
+    if(!this.targets.explorerTabs) return;
     this.targets.explorerTabs.innerHTML = '';
     const available = ['invoices', 'creditnotes', 'payments'];
     available.forEach(mod => {
@@ -529,14 +548,16 @@ class ZohoLedgerApp {
     if (this.state.selectedCustomerIds.size === 0) {
       this.targets.emptyState.classList.remove('view-hidden');
       this.targets.renderArea.innerHTML = '';
-      this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = true;
+      if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = true;
+      if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = true;
       return;
     }
     this.targets.emptyState.classList.add('view-hidden');
-    this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = false;
+    if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = false;
+    if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = false;
 
     const theme = this.state.theme;
-    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'Project Context N/A';
+    const projectName = this.inputs.orgSelect && this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex] ? this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex].text : 'Project Context N/A';
     
     let html = '';
 
@@ -932,7 +953,7 @@ class ZohoLedgerApp {
     }
 
     const data = [];
-    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'N/A';
+    const projectName = this.inputs.orgSelect && this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex] ? this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex].text : 'N/A';
 
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
