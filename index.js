@@ -13,7 +13,7 @@ class ZohoLedgerApp {
       selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
       currentOrgDetails: null,
       customers: [],
-      customerFullDetails: {}, // Cache for opening balances and specific contact info
+      customerFullDetails: {}, 
       selectedCustomerIds: new Set(),
       activeModules: new Set(JSON.parse(localStorage.getItem('active_modules')) || ['invoices', 'creditnotes', 'payments']), 
       dataStore: { invoices: {}, creditnotes: {}, payments: {} },
@@ -22,7 +22,16 @@ class ZohoLedgerApp {
       zoom: 0.75,
       activeView: 'ledger',
       explorerModule: 'invoices',
-      currency: 'LKR'
+      currency: 'LKR',
+      theme: 'indigo', // Default theme color
+      colors: [
+        { name: 'indigo', hex: '#4f46e5' },
+        { name: 'blue', hex: '#2563eb' },
+        { name: 'emerald', hex: '#059669' },
+        { name: 'rose', hex: '#e11d48' },
+        { name: 'amber', hex: '#d97706' },
+        { name: 'slate', hex: '#475569' }
+      ]
     };
 
     this.handleOAuthCallback();
@@ -38,6 +47,7 @@ class ZohoLedgerApp {
     document.addEventListener('DOMContentLoaded', () => {
       this.cacheDOM();
       this.bindEvents();
+      this.renderColorPicker(); // Initialize color balls
       this.updateConfigStatus();
       this.checkSession();
       setTimeout(() => this.autoFitZoom(), 1000);
@@ -103,7 +113,8 @@ class ZohoLedgerApp {
       errorText: document.getElementById('landing-error-text'),
       explorerTabs: document.getElementById('explorer-tabs'),
       explorerThead: document.getElementById('explorer-thead'),
-      explorerTbody: document.getElementById('explorer-tbody')
+      explorerTbody: document.getElementById('explorer-tbody'),
+      colorPicker: document.getElementById('color-theme-picker')
     };
 
     const redirectUri = window.location.origin + window.location.pathname;
@@ -122,7 +133,6 @@ class ZohoLedgerApp {
     this.btns.logout.onclick = () => this.logout();
     this.btns.downloadPdf.onclick = () => this.downloadPDF();
     this.btns.downloadExcel.onclick = () => this.downloadExcel();
-    // Disabled multi-select buttons in UI logic
     this.btns.selectAll.style.display = 'none'; 
     this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
     
@@ -146,6 +156,23 @@ class ZohoLedgerApp {
     this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
     this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
     this.inputs.orgSelect.onchange = (e) => this.handleOrgSwitch(e.target.value);
+  }
+
+  renderColorPicker() {
+    if(!this.targets.colorPicker) return;
+    this.targets.colorPicker.innerHTML = '';
+    this.state.colors.forEach(c => {
+      const ball = document.createElement('div');
+      ball.className = `w-5 h-5 rounded-full color-ball border border-white/20 ${this.state.theme === c.name ? 'ring-2 ring-white' : ''}`;
+      ball.style.backgroundColor = c.hex;
+      ball.title = c.name.toUpperCase();
+      ball.onclick = () => {
+        this.state.theme = c.name;
+        this.renderColorPicker(); // Update active ring
+        this.renderStatementUI(); // Re-render with new colors
+      };
+      this.targets.colorPicker.appendChild(ball);
+    });
   }
 
   async handleOrgSwitch(orgId) {
@@ -312,17 +339,12 @@ class ZohoLedgerApp {
   }
 
   async handleCustomerClick(id) {
-    // Single Customer Selection Logic: Replace existing
     if (this.state.selectedCustomerIds.has(id)) {
-        // If clicking the same one, maybe deselect? Or just do nothing? 
-        // Let's allow deselect to clear view
         this.state.selectedCustomerIds.delete(id);
         this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
     } else {
-        // Clear all others first
         this.state.selectedCustomerIds.clear();
-        this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} }; // Clear data store for fresh view
-        
+        this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} }; 
         this.state.selectedCustomerIds.add(id);
         await this.syncCustomerData(id);
     }
@@ -353,7 +375,6 @@ class ZohoLedgerApp {
     if (!customer) return;
     this.showLoading(50, `Mapping SOA Data: ${customer.contact_name}`);
     
-    // Fetch Customer Full Details for Opening Balance
     try {
         const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
         this.state.customerFullDetails[id] = cRes.contact;
@@ -368,7 +389,6 @@ class ZohoLedgerApp {
         const storageKey = module === 'customerpayments' ? 'payments' : module;
         this.state.dataStore[storageKey][id] = { customerName: customer.contact_name, records: res[module] || [] };
         
-        // Deep cache item level details for SOA multi-line rendering
         if (module === 'invoices' || module === 'creditnotes') {
           const key = module === 'invoices' ? 'invoice_id' : 'creditnote_id';
           for (const rec of this.state.dataStore[storageKey][id].records) {
@@ -435,6 +455,7 @@ class ZohoLedgerApp {
     this.targets.emptyState.classList.add('view-hidden');
     this.btns.downloadPdf.disabled = this.btns.downloadExcel.disabled = false;
 
+    const theme = this.state.theme;
     const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'Project Context N/A';
     
     let html = '';
@@ -449,10 +470,8 @@ class ZohoLedgerApp {
       let totalReceived = 0;
       let totalCredits = 0;
 
-      // Aggregating all transactions for the timeline
       let transactions = [];
       
-      // 1. Invoices
       (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
         transactions.push({
           date: inv.date,
@@ -466,7 +485,6 @@ class ZohoLedgerApp {
         });
       });
 
-      // 2. Payments
       (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
         transactions.push({
           date: pay.date,
@@ -479,24 +497,22 @@ class ZohoLedgerApp {
         });
       });
 
-      // 3. Credit Notes
       (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
         transactions.push({
           date: cn.date,
           type: 'Credit Note',
           ref: cn.creditnote_number,
-          amount: 0, // Moved to payment column
-          payment: parseFloat(cn.total) || 0, // Treated as payment for logic
+          amount: 0, 
+          payment: parseFloat(cn.total) || 0, 
           raw: cn,
           sortDate: new Date(cn.date)
         });
       });
 
-      // Sort chronological
       transactions.sort((a,b) => a.sortDate - b.sortDate);
 
       let rowsHtml = `
-        <tr class="bg-indigo-50 font-black italic">
+        <tr class="bg-${theme}-50 font-black italic">
           <td class="py-2 px-3 border-b" colspan="2">OPENING BALANCE</td>
           <td class="py-2 px-3 border-b text-left italic opacity-60">Balance brought forward</td>
           <td class="py-2 px-3 border-b text-right" colspan="2">---</td>
@@ -505,13 +521,10 @@ class ZohoLedgerApp {
       `;
 
       transactions.forEach(tx => {
-        // Calculation Logic
         runningBalance += tx.amount;
         runningBalance -= tx.payment;
-        
         totalInvoiced += (tx.amount > 0 ? tx.amount : 0);
         
-        // Split Total Received and Total Credits
         if (tx.payment > 0) {
             if (tx.type === 'Credit Note') {
                 totalCredits += tx.payment;
@@ -520,14 +533,11 @@ class ZohoLedgerApp {
             }
         }
 
-        // Display Logic for Payment Column (Red for CN, Green for Pay)
         let paymentDisplay = '';
         if (tx.payment !== 0) {
             if (tx.type === 'Credit Note') {
-                // Show as negative red for deduction
                 paymentDisplay = `<span class="text-red-600 font-bold">-${tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>`;
             } else {
-                // Show as green for payment
                 paymentDisplay = `<span class="text-emerald-600 font-bold">${tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>`;
             }
         }
@@ -535,13 +545,13 @@ class ZohoLedgerApp {
         let detailsHtml = '';
         if (tx.type === 'Invoice') {
           const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-          detailsHtml = `<div class="font-black text-indigo-800 text-[10px] mb-1">INVOICE #${tx.ref} <span class="text-neutral-400 font-medium text-[8px] ml-1">Due: ${tx.due_date}</span></div>`;
+          detailsHtml = `<div class="font-black text-${theme}-800 text-[10px] mb-1">INVOICE #${tx.ref} <span class="text-neutral-400 font-medium text-[8px] ml-1">Due: ${tx.due_date}</span></div>`;
           if (det && det.line_items) {
             detailsHtml += `<div class="space-y-1 mt-1">`;
             det.line_items.forEach(li => {
               const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
               detailsHtml += `
-                <div class="flex justify-between items-center text-[9px] border-l-2 border-indigo-100 pl-2">
+                <div class="flex justify-between items-center text-[9px] border-l-2 border-${theme}-100 pl-2">
                     <span class="font-bold text-neutral-800">${li.name}</span>
                     <span class="font-medium text-neutral-600 font-mono text-[8px] whitespace-nowrap">
                         ${li.quantity} <span class="text-[7px] text-neutral-400">x</span> ${this.state.currency} ${rate}
@@ -578,7 +588,7 @@ class ZohoLedgerApp {
         rowsHtml += `
           <tr class="border-b border-neutral-100 ledger-item-row group">
             <td class="py-1.5 px-3 align-top font-bold text-neutral-400">${tx.date}</td>
-            <td class="py-1.5 px-3 align-top font-black text-indigo-900 uppercase">${tx.type}</td>
+            <td class="py-1.5 px-3 align-top font-black text-${theme}-900 uppercase">${tx.type}</td>
             <td class="py-1.5 px-3 align-top text-left text-[9px] leading-tight details-cell">${detailsHtml}</td>
             <td class="py-1.5 px-3 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
               ${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
@@ -586,7 +596,7 @@ class ZohoLedgerApp {
             <td class="py-1.5 px-3 align-top text-right">
               ${paymentDisplay}
             </td>
-            <td class="py-1.5 px-3 align-top text-right font-black text-indigo-900">
+            <td class="py-1.5 px-3 align-top text-right font-black text-${theme}-900">
               ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
             </td>
           </tr>
@@ -598,22 +608,22 @@ class ZohoLedgerApp {
           <div class="flex justify-between items-start mb-6">
             <div class="flex-grow">
               ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-12 mb-3 object-contain">` : '<div class="h-12 w-40 bg-neutral-100 rounded mb-3 flex items-center justify-center text-[8px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
-              <h1 class="text-xl font-black uppercase tracking-tighter text-indigo-900">${projectName}</h1>
-              <p class="text-[8px] text-indigo-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
+              <h1 class="text-xl font-black uppercase tracking-tighter text-${theme}-900">${projectName}</h1>
+              <p class="text-[8px] text-${theme}-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
               
               <div class="mt-4">
                 <p class="text-[8px] font-black uppercase text-neutral-400 mb-1 tracking-widest">Customer Details</p>
-                <p class="text-lg font-black uppercase text-indigo-600">${clientName}</p>
+                <p class="text-lg font-black uppercase text-${theme}-600">${clientName}</p>
                 <p class="text-[9px] text-neutral-500 max-w-xs">${customer.email || ''}</p>
                 <p class="text-[9px] text-neutral-500 max-w-xs">${customer.mobile || customer.phone || ''}</p>
               </div>
             </div>
             <div class="text-right flex-shrink-0">
-              <h2 class="text-4xl font-black tracking-tighter leading-none text-indigo-600">SOA</h2>
+              <h2 class="text-4xl font-black tracking-tighter leading-none text-${theme}-600">SOA</h2>
               <p class="mt-2 text-[9px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
               <p class="mt-1 text-[9px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
               
-              <div class="mt-4 bg-indigo-600 text-white p-3 rounded-xl shadow-xl">
+              <div class="mt-4 bg-${theme}-600 text-white p-3 rounded-xl shadow-xl">
                 <p class="text-[8px] font-black uppercase tracking-widest opacity-80 mb-1">Current Balance Due</p>
                 <p class="text-2xl font-black uppercase tracking-tighter">${this.state.currency} ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
               </div>
@@ -622,7 +632,7 @@ class ZohoLedgerApp {
           
           <table class="w-full text-left border-collapse table-fixed master-ledger-table mb-6">
             <thead>
-              <tr class="bg-indigo-600 text-white text-[8px] font-black uppercase tracking-[0.2em]">
+              <tr class="bg-${theme}-600 text-white text-[8px] font-black uppercase tracking-[0.2em]">
                 <th class="py-2 px-3 w-[80px]">Date</th>
                 <th class="py-2 px-3 w-[120px]">Transaction</th>
                 <th class="py-2 px-3 w-[220px]">Details</th>
@@ -636,21 +646,21 @@ class ZohoLedgerApp {
             </tbody>
           </table>
 
-          <div class="mt-auto border-t border-indigo-100 pt-4 flex justify-between items-end">
+          <div class="mt-auto border-t border-${theme}-100 pt-4 flex justify-between items-end">
             <div class="space-y-3">
-              <h4 class="text-[9px] font-black uppercase text-indigo-400 tracking-widest">Account Summary</h4>
+              <h4 class="text-[9px] font-black uppercase text-${theme}-400 tracking-widest">Account Summary</h4>
               <div class="grid grid-cols-2 gap-x-8 gap-y-1 text-[9px] font-bold text-neutral-600 uppercase">
                 <span>Opening Balance:</span><span class="text-right">${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                 <span>Invoiced Amount:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                 <span>Amount Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                 <span>Credit Notes:</span><span class="text-right text-red-600">${totalCredits.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                <span class="pt-1 border-t font-black text-indigo-900 text-[10px]">Balance Due:</span>
-                <span class="pt-1 border-t font-black text-indigo-900 text-[10px] text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span class="pt-1 border-t font-black text-${theme}-900 text-[10px]">Balance Due:</span>
+                <span class="pt-1 border-t font-black text-${theme}-900 text-[10px] text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
             </div>
             <div class="text-right">
-              <p class="text-[9px] font-black uppercase text-indigo-500 italic">Official Account Statement</p>
-              <div class="mt-4 h-10 w-40 border-b border-indigo-200 ml-auto"></div>
+              <p class="text-[9px] font-black uppercase text-${theme}-500 italic">Official Account Statement</p>
+              <div class="mt-4 h-10 w-40 border-b border-${theme}-200 ml-auto"></div>
               <p class="mt-1 text-[8px] font-black uppercase tracking-widest text-neutral-400">Authorized Signatory</p>
             </div>
           </div>
@@ -679,7 +689,6 @@ class ZohoLedgerApp {
     const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
     let runningTotal = 0;
     
-    // Attempting to maintain balance after manual row removal
     rows.forEach(row => {
         if (row.classList.contains('ledger-item-row')) {
             const amtCell = row.children[3];
@@ -687,13 +696,11 @@ class ZohoLedgerApp {
             const runTotalCell = row.children[5];
             
             const amtRaw = amtCell.innerText.replace(/,/g, '');
-            const payRaw = payCell.innerText.replace(/,/g, '').replace('-',''); // strip minus for calc if present
+            const payRaw = payCell.innerText.replace(/,/g, '').replace('-',''); 
             
             const amt = parseFloat(amtRaw) || 0;
             const pay = parseFloat(payRaw) || 0;
             
-            // Invoices/Incomes are positive in column 3, CNs are negative in col 3.
-            // Payments are in column 4.
             runningTotal += amt; 
             runningTotal -= pay;
             
@@ -718,7 +725,6 @@ class ZohoLedgerApp {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'N/A';
       
-      // Initial Balance
       const openingBalance = parseFloat(customer.opening_balance) || 0;
       let runningBalance = openingBalance;
       
@@ -733,10 +739,8 @@ class ZohoLedgerApp {
         'Customer': clientName
       });
 
-      // 1. Collect Transactions
       let transactions = [];
       
-      // Invoices
       (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
         transactions.push({
           date: inv.date,
@@ -750,7 +754,6 @@ class ZohoLedgerApp {
         });
       });
 
-      // Payments
       (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
         transactions.push({
           date: pay.date,
@@ -763,7 +766,6 @@ class ZohoLedgerApp {
         });
       });
 
-      // Credit Notes
       (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
         transactions.push({
           date: cn.date,
@@ -777,10 +779,8 @@ class ZohoLedgerApp {
         });
       });
 
-      // Sort
       transactions.sort((a,b) => a.sortDate - b.sortDate);
 
-      // 2. Process Transactions
       transactions.forEach(tx => {
         runningBalance += tx.amount;
         runningBalance -= tx.payment;
@@ -831,55 +831,42 @@ class ZohoLedgerApp {
         return;
     }
 
-    // Clone it to avoid modifying the live view
     const clone = element.cloneNode(true);
     
-    // Create a wrapper for the clone to ensure exact A4 sizing context
-    const wrapper = document.createElement('div');
-    wrapper.style.width = '210mm';
-    wrapper.style.minHeight = '297mm';
-    wrapper.style.backgroundColor = 'white';
-    wrapper.style.margin = '0';
-    wrapper.style.padding = '0'; // The padding is inside .a4-page
-    wrapper.appendChild(clone);
-
-    // Styling fixes for the clone
+    // Explicitly set dimensions and background on the clone to prevent transparent/empty render
+    clone.style.width = '210mm';
+    clone.style.minHeight = '297mm';
+    clone.style.background = 'white';
     clone.style.margin = '0';
+    clone.style.transform = 'none';
     clone.style.boxShadow = 'none';
-    clone.style.transform = 'none'; // Remove zoom scaling
-    
-    // Use the temp container
+
+    // Container for capture - needs to be visible in DOM but overlaid
     const tempContainer = document.getElementById('pdf-export-temp');
     tempContainer.innerHTML = '';
-    tempContainer.appendChild(wrapper);
+    tempContainer.appendChild(clone);
     
-    // Make visible for html2canvas
-    tempContainer.classList.remove('view-hidden');
+    // Ensure container is rendered
     tempContainer.style.display = 'block';
-    tempContainer.style.position = 'absolute';
-    tempContainer.style.top = '0';
-    tempContainer.style.left = '0';
-    tempContainer.style.zIndex = '-100'; // Behind everything but visible to DOM
-
+    
     const opt = {
-      margin: 0, // We control margins in CSS/HTML
+      margin: 0, 
       filename: `SOA_${new Date().toISOString().slice(0,10)}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { 
-        scale: 2, // High res
+        scale: 2, 
         useCORS: true, 
         scrollY: 0,
-        logging: false,
-        windowWidth: 794 // Approx 210mm in pixels at 96dpi (210 * 3.78)
+        logging: true,
+        windowWidth: 1200 // Force wide viewport for capture
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(wrapper).save().then(() => {
-      // Cleanup
+    html2pdf().set(opt).from(clone).save().then(() => {
+      // Cleanup after save
       tempContainer.innerHTML = '';
-      tempContainer.classList.add('view-hidden');
-      tempContainer.style.display = 'none';
+      tempContainer.style.display = 'none'; // Re-hide
       this.hideLoading();
     }).catch(err => {
       console.error("PDF Gen Error", err);
