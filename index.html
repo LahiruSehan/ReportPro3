@@ -50,14 +50,16 @@
     .a4-page {
       background: white; 
       color: #111; 
-      padding: 1.5cm; 
-      min-height: 29.7cm; 
-      width: 21cm; 
+      padding: 10mm; /* Reduced padding to fit more content */
+      min-height: 297mm; 
+      width: 210mm; 
       margin: 1cm auto; 
       box-shadow: 0 20px 50px rgba(0,0,0,0.4); 
       position: relative; 
       transform-origin: top center;
       transition: transform 0.2s ease;
+      overflow: hidden; /* Ensure content stays inside */
+      box-sizing: border-box;
     }
 
     .statement-view-container { 
@@ -97,7 +99,7 @@
     /* Print Logic */
     @media print {
       body { background: white !important; }
-      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 210mm !important; min-height: 297mm !important; }
+      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 210mm !important; min-height: 297mm !important; padding: 10mm !important; }
       .no-print { display: none !important; }
     }
 
