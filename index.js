@@ -505,13 +505,24 @@ class ZohoLedgerApp {
         let detailsHtml = '';
         if (tx.type === 'Invoice') {
           const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-          detailsHtml = `<div class="font-bold text-indigo-700">Invoice ${tx.ref} (Due: ${tx.due_date})</div>`;
+          detailsHtml = `<div class="font-black text-indigo-800 text-[10px] mb-1">INVOICE #${tx.ref} <span class="text-neutral-400 font-medium text-[8px] ml-1">Due: ${tx.due_date}</span></div>`;
           if (det && det.line_items) {
+            detailsHtml += `<div class="space-y-1 mt-1">`;
             det.line_items.forEach(li => {
               const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
               const total = parseFloat(li.item_total || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-              detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">• ${li.name} <span class="font-mono text-[7px] opacity-75">(${li.quantity} × ${rate} = ${total})</span></div>`;
+              detailsHtml += `
+                <div class="pl-2 border-l-2 border-indigo-100">
+                    <div class="flex justify-between items-baseline">
+                        <span class="text-[9px] font-bold text-neutral-700">${li.name}</span>
+                        <span class="text-[9px] font-mono font-bold text-neutral-900">${total}</span>
+                    </div>
+                    <div class="text-[8px] text-neutral-400 font-mono">
+                        ${li.quantity} <span class="mx-0.5 text-[7px]">✕</span> ${rate}
+                    </div>
+                </div>`;
             });
+            detailsHtml += `</div>`;
           }
         } else if (tx.type === 'Payment Received') {
           detailsHtml = `<div class="font-bold text-emerald-700 uppercase">Payment Received</div>`;
@@ -521,13 +532,24 @@ class ZohoLedgerApp {
           }
         } else if (tx.type === 'Credit Note') {
           const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
-          detailsHtml = `<div class="font-bold text-red-700">Credit Note ${tx.ref}</div>`;
+          detailsHtml = `<div class="font-black text-red-700 text-[10px] mb-1">CREDIT NOTE #${tx.ref}</div>`;
           if (det && det.line_items) {
+             detailsHtml += `<div class="space-y-1 mt-1">`;
             det.line_items.forEach(li => {
               const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
               const total = parseFloat(li.item_total || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-              detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">• ${li.name} <span class="font-mono text-[7px] opacity-75">(${li.quantity} × ${rate} = ${total})</span></div>`;
+              detailsHtml += `
+                <div class="pl-2 border-l-2 border-red-100">
+                    <div class="flex justify-between items-baseline">
+                        <span class="text-[9px] font-bold text-neutral-700">${li.name}</span>
+                        <span class="text-[9px] font-mono font-bold text-red-900">-${total}</span>
+                    </div>
+                    <div class="text-[8px] text-neutral-400 font-mono">
+                        ${li.quantity} <span class="mx-0.5 text-[7px]">✕</span> ${rate}
+                    </div>
+                </div>`;
             });
+            detailsHtml += `</div>`;
           }
         }
 
