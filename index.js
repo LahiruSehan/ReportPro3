@@ -704,45 +704,110 @@ class ZohoLedgerApp {
 
   downloadExcel() {
     this.showLoading(80, "Aggregating SOA Workbook...");
+    
+    if (this.state.selectedCustomerIds.size === 0) {
+      alert("No customer selected.");
+      this.hideLoading();
+      return;
+    }
+
     const data = [];
     const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'N/A';
 
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'N/A';
+      
+      // Initial Balance
       const openingBalance = parseFloat(customer.opening_balance) || 0;
       let runningBalance = openingBalance;
-
-      // Header row
+      
       data.push({
-        'Date': '', 'Transaction': 'OPENING BALANCE', 'Details': 'Balance brought forward', 
-        'Amount': 0, 'Payments': 0, 'Balance': openingBalance, 'Customer': clientName
+        'Date': '---',
+        'Transaction': 'OPENING BALANCE',
+        'Reference': '---',
+        'Details': 'Balance Brought Forward',
+        'Amount (Debit)': 0,
+        'Payment/Credit': 0,
+        'Balance': openingBalance,
+        'Customer': clientName
       });
 
-      // Prepare transactions
+      // 1. Collect Transactions
       let transactions = [];
+      
+      // Invoices
       (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
-        transactions.push({ date: inv.date, type: 'Invoice', ref: inv.invoice_number, amount: parseFloat(inv.total) || 0, pay: 0, sortDate: new Date(inv.date) });
-      });
-      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
-        transactions.push({ date: pay.date, type: 'Payment', ref: pay.payment_number, amount: 0, pay: parseFloat(pay.amount) || 0, sortDate: new Date(pay.date) });
-      });
-      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
-        transactions.push({ date: cn.date, type: 'Credit Note', ref: cn.creditnote_number, amount: -(parseFloat(cn.total) || 0), pay: 0, sortDate: new Date(cn.date) });
+        transactions.push({
+          date: inv.date,
+          type: 'Invoice',
+          ref: inv.invoice_number,
+          due_date: inv.due_date,
+          amount: parseFloat(inv.total) || 0,
+          payment: 0,
+          raw: inv,
+          sortDate: new Date(inv.date)
+        });
       });
 
-      transactions.sort((a,b) => a.sortDate - b.sortDate).forEach(tx => {
+      // Payments
+      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
+        transactions.push({
+          date: pay.date,
+          type: 'Payment Received',
+          ref: pay.payment_number,
+          amount: 0,
+          payment: parseFloat(pay.amount) || 0,
+          raw: pay,
+          sortDate: new Date(pay.date)
+        });
+      });
+
+      // Credit Notes
+      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
+        transactions.push({
+          date: cn.date,
+          type: 'Credit Note',
+          ref: cn.creditnote_number,
+          amount: 0, 
+          payment: parseFloat(cn.total) || 0, 
+          raw: cn,
+          sortDate: new Date(cn.date),
+          isCredit: true
+        });
+      });
+
+      // Sort
+      transactions.sort((a,b) => a.sortDate - b.sortDate);
+
+      // 2. Process Transactions
+      transactions.forEach(tx => {
         runningBalance += tx.amount;
-        runningBalance -= tx.pay;
+        runningBalance -= tx.payment;
+
+        let detailStr = '';
+        if (tx.type === 'Invoice' || tx.type === 'Credit Note') {
+           const cacheKey = tx.type === 'Invoice' ? tx.raw.invoice_id : tx.raw.creditnote_id;
+           const det = this.state.invoiceDetailsCache[cacheKey];
+           if (det && det.line_items) {
+             detailStr = det.line_items.map(li => `${li.name} (${li.quantity} x ${li.rate})`).join('; ');
+           }
+        } else if (tx.type === 'Payment Received') {
+           detailStr = `Ref: ${tx.ref}`;
+        }
+
+        let debit = tx.amount;
+        let credit = tx.payment;
+        
         data.push({
           'Date': tx.date,
           'Transaction': tx.type,
-          'Details': tx.ref,
-          'Amount': Math.abs(tx.amount),
-          'Payments': tx.pay,
+          'Reference': tx.ref,
+          'Details': detailStr,
+          'Amount (Debit)': debit !== 0 ? debit : '',
+          'Payment/Credit': credit !== 0 ? (tx.isCredit ? -credit : credit) : '', 
           'Balance': runningBalance,
-          'Customer': clientName,
-          'Project': projectName
+          'Customer': clientName
         });
       });
     });
@@ -750,41 +815,75 @@ class ZohoLedgerApp {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "SOA_Detailed");
-    XLSX.writeFile(wb, `InsightPRO_SOA_${Date.now()}.xlsx`);
+    XLSX.writeFile(wb, `SOA_${projectName.replace(/[^a-z0-9]/gi, '_')}.xlsx`);
     this.hideLoading();
   }
 
   downloadPDF() {
-    this.showLoading(85, "Generating HD Multi-Page PDF...");
-    const original = document.getElementById('pdf-content');
-    if (!original) return;
+    this.showLoading(85, "Rendering High-Def PDF...");
     
-    const tempContainer = document.getElementById('pdf-export-temp');
-    tempContainer.innerHTML = '';
+    // Select the Rendered Page
+    const element = this.targets.renderArea.querySelector('.a4-page');
     
-    const clone = original.cloneNode(true);
-    clone.style.transform = 'none';
+    if (!element) {
+        alert("No statement generated to export.");
+        this.hideLoading();
+        return;
+    }
+
+    // Clone it to avoid modifying the live view
+    const clone = element.cloneNode(true);
+    
+    // Create a wrapper for the clone to ensure exact A4 sizing context
+    const wrapper = document.createElement('div');
+    wrapper.style.width = '210mm';
+    wrapper.style.minHeight = '297mm';
+    wrapper.style.backgroundColor = 'white';
+    wrapper.style.margin = '0';
+    wrapper.style.padding = '0'; // The padding is inside .a4-page
+    wrapper.appendChild(clone);
+
+    // Styling fixes for the clone
     clone.style.margin = '0';
     clone.style.boxShadow = 'none';
-    clone.style.width = '210mm';
+    clone.style.transform = 'none'; // Remove zoom scaling
     
-    tempContainer.appendChild(clone);
+    // Use the temp container
+    const tempContainer = document.getElementById('pdf-export-temp');
+    tempContainer.innerHTML = '';
+    tempContainer.appendChild(wrapper);
+    
+    // Make visible for html2canvas
     tempContainer.classList.remove('view-hidden');
     tempContainer.style.display = 'block';
+    tempContainer.style.position = 'absolute';
+    tempContainer.style.top = '0';
+    tempContainer.style.left = '0';
+    tempContainer.style.zIndex = '-100'; // Behind everything but visible to DOM
 
     const opt = {
-      margin: [10, 0, 10, 0],
-      filename: `SOA_STATEMENT_${Date.now()}.pdf`,
+      margin: 0, // We control margins in CSS/HTML
+      filename: `SOA_${new Date().toISOString().slice(0,10)}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      html2canvas: { 
+        scale: 2, // High res
+        useCORS: true, 
+        scrollY: 0,
+        logging: false,
+        windowWidth: 794 // Approx 210mm in pixels at 96dpi (210 * 3.78)
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(tempContainer).save().then(() => {
+    html2pdf().set(opt).from(wrapper).save().then(() => {
+      // Cleanup
+      tempContainer.innerHTML = '';
       tempContainer.classList.add('view-hidden');
       tempContainer.style.display = 'none';
-      tempContainer.innerHTML = '';
+      this.hideLoading();
+    }).catch(err => {
+      console.error("PDF Gen Error", err);
+      alert("PDF Generation Failed: " + err.message);
       this.hideLoading();
     });
   }
