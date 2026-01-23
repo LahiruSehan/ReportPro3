@@ -107,8 +107,7 @@ class ZohoLedgerApp {
       downloadExcel: document.getElementById('btn-download-excel'),
       emailComposer: document.getElementById('btn-email-composer'),
       logout: document.getElementById('btn-logout'),
-      selectAll: document.getElementById('btn-select-all'),
-      clearAll: document.getElementById('btn-clear-all'),
+      // REMOVED selectAll and clearAll references as they don't exist in HTML anymore
       openConfig: document.getElementById('btn-open-config-landing'),
       closeConfig: document.getElementById('btn-close-config'),
       openSettings: document.getElementById('btn-project-settings'),
@@ -150,8 +149,8 @@ class ZohoLedgerApp {
     this.btns.downloadPdf.onclick = () => this.downloadPDF();
     this.btns.downloadExcel.onclick = () => this.downloadExcel();
     this.btns.emailComposer.onclick = () => this.openEmailComposer();
-    this.btns.selectAll.style.display = 'none'; 
-    this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
+    
+    // REMOVED missing button logic
     
     this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
     this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
@@ -1156,7 +1155,7 @@ class ZohoLedgerApp {
     this.updateConfigStatus();
   }
   updateConfigStatus() {
-    this.btns.connect.disabled = false;
+    this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
   }
   logout(reload = true) {
     localStorage.removeItem('zoho_access_token');
