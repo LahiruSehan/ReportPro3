@@ -9,6 +9,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Chart.js for Trend Chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     
@@ -28,11 +30,11 @@
     .glass-card { background: var(--app-card); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
     
     /* Global Select Styles */
-    select, input[type="text"], input[type="password"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
+    select, input[type="text"], input[type="password"], input[type="date"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
     
-    /* Header Specific Select Fix - Ensured high contrast */
+    /* Header Specific Select Fix */
     #select-organization {
-      background: #1e1b4b !important; /* Deep indigo */
+      background: #1e1b4b !important; 
       color: #ffffff !important;
       border: 1px solid rgba(99, 102, 241, 0.5) !important;
       padding: 6px 12px !important;
@@ -41,16 +43,13 @@
       border-radius: 8px;
       appearance: auto;
     }
-    #select-organization option {
-      background: #1e1b4b;
-      color: white;
-    }
+    #select-organization option { background: #1e1b4b; color: white; }
 
     /* A4 Pagination Preview Style */
     .a4-page {
       background: white; 
       color: #111; 
-      padding: 10mm; /* Compact padding */
+      padding: 10mm; 
       min-height: 297mm; 
       width: 210mm; 
       margin: 1cm auto; 
@@ -76,27 +75,18 @@
     .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; transition: transform 0.2s; }
     .zoom-btn:hover { transform: scale(1.1); }
 
-    #loading-bar-container { position: fixed; top: 0; left: 0; width: 100%; height: 6px; z-index: 1000; overflow: hidden; background: rgba(0,0,0,0.6); }
-    #loading-bar { height: 100%; width: 0%; background: #6366f1; transition: 0.3s; }
-    #loading-status-overlay { position: fixed; top: 6px; left: 0; width: 100%; height: 40px; background: #6366f1; z-index: 999; display: flex; align-items: center; padding: 0 1.5rem; color: white; font-weight: 900; font-size: 10px; text-transform: uppercase; }
+    /* Skeleton Loader */
+    .skeleton {
+      background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+      border-radius: 4px;
+    }
+    @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-    .modal-overlay { z-index: 400; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
-    .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-    
-    .explorer-table th { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid var(--app-border); font-size: 10px; text-transform: uppercase; color: #6366f1; font-weight: 900; }
-    .explorer-table td { white-space: nowrap; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.02); font-size: 11px; color: #cbd5e1; }
-
-    /* PDF Generation Helper - High Visibility for Capture */
+    /* PDF Generation Helper */
     #pdf-export-temp {
-      position: fixed;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      z-index: -100;
-      pointer-events: none;
-      opacity: 0;
+      position: fixed; left: 0; top: 0; width: 100%; height: 100%; z-index: -100; pointer-events: none; opacity: 0;
     }
 
     /* Color balls hover effect */
@@ -111,22 +101,18 @@
     }
 
     tr { break-inside: avoid; page-break-inside: avoid; }
-    .invoice-group-header { background: #f8fafc; border-left: 4px solid #6366f1; }
     
-    /* Force page breaks in PDF */
-    .page-break { page-break-after: always; break-after: page; }
+    /* Toggle Switch */
+    .toggle-checkbox:checked { right: 0; border-color: #68D391; }
+    .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
 
-  <div id="loading-bar-container" class="view-hidden">
-    <div id="loading-bar"></div>
+  <div id="loading-bar-container" class="view-hidden fixed top-0 left-0 w-full h-1.5 z-[1000] bg-black/60">
+    <div id="loading-bar" class="h-full w-0 bg-indigo-500 transition-all duration-300"></div>
   </div>
-  <div id="loading-status-overlay" class="view-hidden">
-    <span id="loading-bar-text">INITIALIZING...</span>
-  </div>
-
-  <!-- PDF Export Hidden Container -->
+  
   <div id="pdf-export-temp" class="view-hidden"></div>
 
   <!-- Connection Hub Modal -->
@@ -185,7 +171,7 @@
 
   <!-- Dashboard -->
   <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
-    <header class="p-3 md:p-4 glass-card m-2 md:m-4 flex items-center justify-between no-print">
+    <header class="p-2 md:p-3 glass-card m-2 md:m-3 flex flex-col md:flex-row items-start md:items-center justify-between no-print gap-3">
       <div class="flex items-center space-x-6">
         <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
         <div class="flex flex-col">
@@ -194,12 +180,37 @@
         </div>
       </div>
       
-      <div class="flex items-center bg-black/40 rounded-xl p-1 border border-white/5">
-        <button id="btn-view-ledger" class="px-4 py-2 text-[9px] font-black uppercase bg-indigo-600 text-white rounded-lg transition-all">Ledger</button>
-        <button id="btn-view-explorer" class="px-4 py-2 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all">Explorer</button>
+      <!-- Date Range & Tools -->
+      <div class="flex flex-wrap items-center gap-2 bg-black/40 rounded-xl p-1 border border-white/5">
+        <select id="date-range-preset" class="text-[9px] font-black uppercase bg-transparent border-none text-white focus:ring-0 cursor-pointer">
+          <option value="all">All History</option>
+          <option value="this_month">This Month</option>
+          <option value="last_month">Last Month</option>
+          <option value="this_year">This Year</option>
+          <option value="custom">Custom Range</option>
+        </select>
+        <div id="custom-date-container" class="hidden flex items-center gap-1 border-l border-white/10 pl-2">
+            <input type="date" id="date-start" class="bg-transparent border border-white/10 rounded text-[9px] w-24 text-white">
+            <span class="text-white">-</span>
+            <input type="date" id="date-end" class="bg-transparent border border-white/10 rounded text-[9px] w-24 text-white">
+        </div>
+        
+        <div class="w-px h-6 bg-white/10 mx-1"></div>
+
+        <div class="flex items-center gap-2 px-2">
+            <span class="text-[8px] font-black uppercase text-neutral-400">Detailed</span>
+            <div class="relative inline-block w-8 mr-2 align-middle select-none transition duration-200 ease-in">
+                <input type="checkbox" name="toggle" id="toggle-summary" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer border-indigo-900 left-0 checked:right-0 checked:left-auto"/>
+                <label for="toggle-summary" class="toggle-label block overflow-hidden h-4 rounded-full bg-indigo-900 cursor-pointer border border-white/10"></label>
+            </div>
+        </div>
+
+        <div class="w-px h-6 bg-white/10 mx-1"></div>
+
+        <button id="btn-email-composer" class="p-2 text-neutral-400 hover:text-white" title="Compose Email"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></button>
       </div>
 
-      <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-3">
         <button id="btn-project-settings" class="p-2 text-neutral-500 hover:text-white" title="Sync Settings"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></button>
         <button id="btn-logout" class="p-2 text-neutral-500 hover:text-red-500" title="Secure Logout"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"/></svg></button>
       </div>
@@ -211,8 +222,7 @@
           <div class="flex justify-between items-center mb-4">
             <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
             <div class="flex gap-1">
-              <button id="btn-select-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">ALL</button>
-              <button id="btn-clear-all" class="text-[8px] font-black bg-white/5 px-2 py-1 rounded">NONE</button>
+              <span class="text-[8px] font-black bg-white/5 px-2 py-1 rounded text-neutral-500">ARROW KEYS NAV</span>
             </div>
           </div>
           <input type="text" id="customer-search" placeholder="Search customer..." class="w-full mb-4 text-xs">
@@ -247,7 +257,33 @@
               <button id="btn-zoom-out" class="zoom-btn font-bold">-</button>
               <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
             </div>
+            
+            <!-- Skeleton Loader State -->
+            <div id="skeleton-loader" class="statement-view-container view-hidden">
+                <div class="bg-white p-[1.5cm] w-[21cm] min-h-[29.7cm] shadow-2xl relative">
+                    <div class="flex justify-between mb-12">
+                        <div class="w-1/2 space-y-4">
+                            <div class="skeleton h-16 w-32"></div>
+                            <div class="skeleton h-8 w-64"></div>
+                            <div class="skeleton h-24 w-48 mt-8"></div>
+                        </div>
+                        <div class="w-1/3 space-y-4 flex flex-col items-end">
+                            <div class="skeleton h-12 w-24"></div>
+                            <div class="skeleton h-32 w-full rounded-xl"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="skeleton h-8 w-full"></div>
+                        <div class="skeleton h-6 w-full"></div>
+                        <div class="skeleton h-6 w-full"></div>
+                        <div class="skeleton h-6 w-full"></div>
+                        <div class="skeleton h-6 w-full"></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="statement-render-target" class="statement-view-container"></div>
+            
             <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20">
               <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
               <p class="font-black uppercase tracking-[0.4em] text-xs">Customer Selection Required</p>
