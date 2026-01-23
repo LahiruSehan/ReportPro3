@@ -69,6 +69,14 @@ class ZohoLedgerApp {
       setTimeout(() => this.autoFitZoom(), 1000);
       window.addEventListener('resize', () => this.autoFitZoom());
       
+      // Inject No-Scrollbar Style for Preview Area
+      const style = document.createElement('style');
+      style.innerHTML = `
+        #area-ledger::-webkit-scrollbar { display: none; }
+        #area-ledger { -ms-overflow-style: none; scrollbar-width: none; }
+      `;
+      document.head.appendChild(style);
+      
       // Keyboard Navigation
       document.addEventListener('keydown', (e) => this.handleKeyboardNav(e));
     });
@@ -138,7 +146,8 @@ class ZohoLedgerApp {
       skeletonLoader: document.getElementById('skeleton-loader'),
       ledgerView: document.getElementById('view-ledger-container'),
       explorerView: document.getElementById('view-explorer-container'),
-      pdfTemp: document.getElementById('pdf-export-temp')
+      pdfTemp: document.getElementById('pdf-export-temp'),
+      bgSlideshow: document.getElementById('bg-slideshow')
     };
     
     this.inputs = {
@@ -345,6 +354,11 @@ class ZohoLedgerApp {
     this.views.ledgerView.classList.toggle('view-hidden', view !== 'ledger');
     this.views.explorerView.classList.toggle('view-hidden', view !== 'explorer');
     
+    // Hide bg in dashboard
+    if(this.views.bgSlideshow) {
+        if(view === 'ledger' || view === 'explorer') this.views.bgSlideshow.classList.add('view-hidden');
+    }
+
     if(this.btns.toggleLedger) {
         this.btns.toggleLedger.classList.toggle('bg-indigo-600', view === 'ledger');
         this.btns.toggleLedger.classList.toggle('text-white', view === 'ledger');
@@ -391,6 +405,9 @@ class ZohoLedgerApp {
         if (success) {
           this.views.landing.classList.add('view-hidden');
           this.views.dashboard.classList.remove('view-hidden');
+          // Hide BG on successful login
+          if(this.views.bgSlideshow) this.views.bgSlideshow.classList.add('view-hidden');
+          
           await this.fetchOrganizationDetails();
           await this.fetchCustomers();
           this.autoFitZoom();
@@ -751,10 +768,10 @@ class ZohoLedgerApp {
                 det.line_items.forEach(li => {
                   const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
                   detailsHtml += `
-                    <div class="flex justify-between items-center text-[9px] border-l-2 border-${theme}-100 pl-2">
+                    <div class="text-[9px] border-l-2 border-${theme}-100 pl-2 mb-0.5">
                         <span class="font-bold text-neutral-800">${li.name}</span>
-                        <span class="font-medium text-neutral-600 font-mono text-[8px] whitespace-nowrap">
-                            ${li.quantity} <span class="text-[7px] text-neutral-400">x</span> ${this.state.currency} ${rate}
+                        <span class="text-neutral-500 font-mono text-[8px] ml-1">
+                            (${li.quantity} × ${rate})
                         </span>
                     </div>`;
                 });
@@ -774,10 +791,10 @@ class ZohoLedgerApp {
                 det.line_items.forEach(li => {
                   const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
                   detailsHtml += `
-                    <div class="flex justify-between items-center text-[9px] border-l-2 border-red-100 pl-2">
+                    <div class="text-[9px] border-l-2 border-red-100 pl-2 mb-0.5">
                         <span class="font-bold text-neutral-800">${li.name}</span>
-                        <span class="font-medium text-neutral-600 font-mono text-[8px] whitespace-nowrap">
-                            ${li.quantity} <span class="text-[7px] text-neutral-400">x</span> ${this.state.currency} ${rate}
+                        <span class="text-neutral-600 font-mono text-[8px] ml-1">
+                            (${li.quantity} × ${rate})
                         </span>
                     </div>`;
                 });
@@ -793,7 +810,7 @@ class ZohoLedgerApp {
 
         rowsHtml += `
           <tr class="border-b border-neutral-100 ledger-item-row group">
-            <td class="py-3 px-2 align-top font-bold text-neutral-400">${tx.date}</td>
+            <td class="py-3 px-2 align-top font-bold text-neutral-400 whitespace-nowrap">${tx.date}</td>
             <td class="py-3 px-2 align-top font-black text-${theme}-900 uppercase">${tx.type}</td>
             <td class="py-3 px-2 align-top text-left text-[11px] leading-tight details-cell">${detailsHtml}</td>
             <td class="py-3 px-2 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
@@ -850,12 +867,12 @@ class ZohoLedgerApp {
           <table class="w-full text-left border-collapse table-fixed master-ledger-table mb-12">
             <thead>
               <tr class="bg-${theme}-600 text-white text-[9px] font-black uppercase tracking-[0.2em]">
-                <th class="py-3 px-2 w-[70px]">Date</th>
-                <th class="py-3 px-2 w-[100px]">Transaction</th>
-                <th class="py-3 px-2 w-[260px]">Details</th>
-                <th class="py-3 px-2 w-[90px] text-right">Amount</th>
-                <th class="py-3 px-2 w-[90px] text-right">Payments</th>
-                <th class="py-3 px-2 w-[100px] text-right">Balance</th>
+                <th class="py-3 px-2 w-[85px]">Date</th>
+                <th class="py-3 px-2 w-[90px]">Transaction</th>
+                <th class="py-3 px-2 w-[240px]">Details</th>
+                <th class="py-3 px-2 w-[85px] text-right">Amount</th>
+                <th class="py-3 px-2 w-[85px] text-right">Payments</th>
+                <th class="py-3 px-2 w-[95px] text-right">Balance</th>
               </tr>
             </thead>
             <tbody class="text-[10px] ledger-rows">
