@@ -853,7 +853,7 @@ class ZohoLedgerApp {
                 <div class="w-1/3 space-y-2">
                   <h4 class="text-[9px] font-black uppercase text-${theme}-400 tracking-widest text-right">Account Summary</h4>
                   <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] font-bold text-neutral-600 uppercase">
-                    <span>Opening:</span><span class="text-right">${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                    <span>Opening:</span><span class="text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                     <span>Invoiced:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                     <span>Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                     <span>Credits:</span><span class="text-right text-red-600">${totalCredits.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
@@ -933,16 +933,6 @@ class ZohoLedgerApp {
     });
   }
 
-  openEmailComposer() {
-    if (this.state.selectedCustomerIds.size === 0) return alert("Select a customer first.");
-    const id = Array.from(this.state.selectedCustomerIds)[0];
-    const customer = this.state.customerFullDetails[id] || {};
-    const email = customer.email || "";
-    const subject = `Statement of Accounts - ${new Date().toLocaleDateString()}`;
-    const body = `Dear ${customer.contact_name},\n\nPlease find attached the Statement of Accounts.\n\nThank you for your business.`;
-    window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  }
-
   downloadExcel() {
     this.showLoading(80, "Aggregating SOA Workbook...");
     
@@ -953,7 +943,7 @@ class ZohoLedgerApp {
     }
 
     const data = [];
-    const projectName = this.inputs.orgSelect && this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex] ? this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex].text : 'N/A';
+    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'N/A';
 
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
@@ -1049,72 +1039,41 @@ class ZohoLedgerApp {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "SOA_Detailed");
-    XLSX.writeFile(wb, `SOA_${projectName.replace(/[^a-z0-9]/gi, '_')}.xlsx`);
+    XLSX.writeFile(wb, `InsightPRO_SOA_${Date.now()}.xlsx`);
     this.hideLoading();
   }
 
   downloadPDF() {
-    this.showLoading(85, "Rendering High-Def PDF...");
+    this.showLoading(85, "Generating HD Multi-Page PDF...");
+    const original = document.getElementById('pdf-content');
+    if (!original) return;
     
-    // Select the Rendered Page
-    const element = this.targets.renderArea.querySelector('.a4-page');
+    const tempContainer = document.getElementById('pdf-export-temp');
+    tempContainer.innerHTML = '';
     
-    if (!element) {
-        alert("No statement generated to export.");
-        this.hideLoading();
-        return;
-    }
-
-    const clone = element.cloneNode(true);
-    
-    // Explicitly set dimensions and background on the clone to prevent transparent/empty render
-    clone.style.width = '210mm';
-    clone.style.minHeight = '297mm';
-    clone.style.background = 'white';
-    clone.style.margin = '0';
+    const clone = original.cloneNode(true);
     clone.style.transform = 'none';
+    clone.style.margin = '0';
     clone.style.boxShadow = 'none';
-    clone.style.padding = '10mm'; // Match A4 padding
+    clone.style.width = '210mm';
+    
+    tempContainer.appendChild(clone);
+    tempContainer.classList.remove('view-hidden');
+    tempContainer.style.display = 'block';
 
-    // Create a container wrapper to center it or just hold it
-    const wrapper = document.createElement('div');
-    wrapper.style.position = 'fixed';
-    wrapper.style.top = '0';
-    wrapper.style.left = '0';
-    wrapper.style.zIndex = '5000'; // Make it visible on top
-    wrapper.style.width = '100%';
-    wrapper.style.height = '100%';
-    wrapper.style.backgroundColor = 'rgba(0,0,0,0.8)'; // Dim background
-    wrapper.style.display = 'flex';
-    wrapper.style.justifyContent = 'center';
-    wrapper.style.alignItems = 'flex-start';
-    wrapper.style.overflow = 'auto';
-    
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);
-    
     const opt = {
-      margin: 0, 
-      filename: `SOA_${new Date().toISOString().slice(0,10)}.pdf`,
+      margin: [10, 0, 10, 0],
+      filename: `SOA_STATEMENT_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { 
-        scale: 2, 
-        useCORS: true, 
-        scrollY: 0,
-        logging: false,
-        windowWidth: 1200
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
 
-    html2pdf().set(opt).from(clone).save().then(() => {
-      // Cleanup after save
-      document.body.removeChild(wrapper);
-      this.hideLoading();
-    }).catch(err => {
-      console.error("PDF Gen Error", err);
-      alert("PDF Generation Failed: " + err.message);
-      if(document.body.contains(wrapper)) document.body.removeChild(wrapper);
+    html2pdf().set(opt).from(tempContainer).save().then(() => {
+      tempContainer.classList.add('view-hidden');
+      tempContainer.style.display = 'none';
+      tempContainer.innerHTML = '';
       this.hideLoading();
     });
   }
@@ -1141,11 +1100,6 @@ class ZohoLedgerApp {
     this.views.loadingOverlay.classList.remove('view-hidden');
     this.views.loadingProgress.style.width = `${prog}%`;
     this.views.loadingText.innerText = txt.toUpperCase();
-    
-    // Feature: Skeleton Loading
-    // Hide actual content, show skeleton
-    if(this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
-    if(this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
   }
 
   hideLoading() {
@@ -1153,11 +1107,6 @@ class ZohoLedgerApp {
     setTimeout(() => {
       this.views.loadingBar.classList.add('view-hidden');
       this.views.loadingOverlay.classList.add('view-hidden');
-      
-      // Feature: Skeleton Loading
-      // Show actual content, hide skeleton
-      if(this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
-      if(this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
     }, 800);
   }
 
