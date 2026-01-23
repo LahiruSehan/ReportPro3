@@ -704,10 +704,10 @@ class ZohoLedgerApp {
 
       let rowsHtml = `
         <tr class="bg-${theme}-50 font-black italic">
-          <td class="py-2 px-3 border-b" colspan="2">${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}</td>
-          <td class="py-2 px-3 border-b text-left italic opacity-60">Balance brought forward</td>
-          <td class="py-2 px-3 border-b text-right" colspan="2">---</td>
-          <td class="py-2 px-3 border-b text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+          <td class="py-3 px-2 border-b" colspan="2">${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}</td>
+          <td class="py-3 px-2 border-b text-left italic opacity-60">Balance brought forward</td>
+          <td class="py-3 px-2 border-b text-right" colspan="2">---</td>
+          <td class="py-3 px-2 border-b text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
         </tr>
       `;
 
@@ -746,7 +746,7 @@ class ZohoLedgerApp {
         if (!this.state.isSummaryMode) {
             if (tx.type === 'Invoice') {
               const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-              detailsHtml = `<div class="font-black text-${theme}-800 text-[10px] mb-1">INVOICE #${tx.ref} <span class="text-neutral-400 font-medium text-[8px] ml-1">Due: ${tx.due_date}</span>${overdueBadge}</div>`;
+              detailsHtml = `<div class="font-black text-${theme}-800 text-[10px] mb-1">INVOICE #${tx.ref} <span class="text-neutral-400 font-medium text-[8px] ml-1 whitespace-nowrap">Due: ${tx.due_date}</span>${overdueBadge}</div>`;
               if (det && det.line_items) {
                 detailsHtml += `<div class="space-y-1 mt-1">`;
                 det.line_items.forEach(li => {
@@ -794,16 +794,16 @@ class ZohoLedgerApp {
 
         rowsHtml += `
           <tr class="border-b border-neutral-100 ledger-item-row group">
-            <td class="py-1.5 px-3 align-top font-bold text-neutral-400">${tx.date}</td>
-            <td class="py-1.5 px-3 align-top font-black text-${theme}-900 uppercase">${tx.type}</td>
-            <td class="py-1.5 px-3 align-top text-left text-[9px] leading-tight details-cell">${detailsHtml}</td>
-            <td class="py-1.5 px-3 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
+            <td class="py-3 px-2 align-top font-bold text-neutral-400">${tx.date}</td>
+            <td class="py-3 px-2 align-top font-black text-${theme}-900 uppercase">${tx.type}</td>
+            <td class="py-3 px-2 align-top text-left text-[11px] leading-tight details-cell">${detailsHtml}</td>
+            <td class="py-3 px-2 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
               ${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
             </td>
-            <td class="py-1.5 px-3 align-top text-right">
+            <td class="py-3 px-2 align-top text-right">
               ${paymentDisplay}
             </td>
-            <td class="py-1.5 px-3 align-top text-right font-black text-${theme}-900">
+            <td class="py-3 px-2 align-top text-right font-black text-${theme}-900">
               ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
             </td>
           </tr>
@@ -815,25 +815,25 @@ class ZohoLedgerApp {
 
       html += `
         <div class="a4-page" id="pdf-content">
-          <div class="flex justify-between items-start mb-6">
+          <div class="flex justify-between items-start mb-12">
             <div class="flex-grow">
-              ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-12 mb-3 object-contain">` : '<div class="h-12 w-40 bg-neutral-100 rounded mb-3 flex items-center justify-center text-[8px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
-              <h1 class="text-xl font-black uppercase tracking-tighter text-${theme}-900">${projectName}</h1>
-              <p class="text-[8px] text-${theme}-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
+              ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-16 mb-6 object-contain">` : '<div class="h-16 w-48 bg-neutral-100 rounded mb-6 flex items-center justify-center text-[9px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
+              <h1 class="text-2xl font-black uppercase tracking-tighter text-${theme}-900">${projectName}</h1>
+              <p class="text-[10px] text-indigo-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
               
-              <div class="mt-4">
+              <div class="mt-8">
                 <p class="text-[8px] font-black uppercase text-neutral-400 mb-1 tracking-widest">Customer Details</p>
-                <p class="text-lg font-black uppercase text-${theme}-600">${clientName}</p>
-                <p class="text-[9px] text-neutral-500 max-w-xs">${customer.email || ''}</p>
-                <p class="text-[9px] text-neutral-500 max-w-xs">${customer.mobile || customer.phone || ''}</p>
+                <p class="text-xl font-black uppercase text-indigo-600">${clientName}</p>
+                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.email || ''}</p>
+                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.mobile || customer.phone || ''}</p>
               </div>
             </div>
             <div class="text-right flex-shrink-0 w-48">
               <div class="flex justify-end items-baseline gap-2">
                   <h2 class="text-4xl font-black tracking-tighter leading-none text-${theme}-600">SOA</h2>
               </div>
-              <p class="mt-2 text-[9px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
-              <p class="mt-1 text-[9px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
+              <p class="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
+              <p class="mt-1 text-[10px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
               
               <!-- Feature: Trend Chart Visual -->
               <div class="mt-4 bg-${theme}-600 text-white p-3 rounded-xl shadow-xl overflow-hidden relative">
@@ -848,54 +848,38 @@ class ZohoLedgerApp {
             </div>
           </div>
           
-          <table class="w-full text-left border-collapse table-fixed master-ledger-table mb-6">
+          <table class="w-full text-left border-collapse table-fixed master-ledger-table mb-12">
             <thead>
-              <tr class="bg-${theme}-600 text-white text-[8px] font-black uppercase tracking-[0.2em]">
-                <th class="py-2 px-3 w-[80px]">Date</th>
-                <th class="py-2 px-3 w-[120px]">Transaction</th>
-                <th class="py-2 px-3 w-[280px]">Details</th>
-                <th class="py-2 px-3 w-[100px] text-right">Amount</th>
-                <th class="py-2 px-3 w-[100px] text-right">Payments</th>
-                <th class="py-2 px-3 w-[110px] text-right">Balance</th>
+              <tr class="bg-${theme}-600 text-white text-[9px] font-black uppercase tracking-[0.2em]">
+                <th class="py-3 px-2 w-[70px]">Date</th>
+                <th class="py-3 px-2 w-[100px]">Transaction</th>
+                <th class="py-3 px-2 w-[260px]">Details</th>
+                <th class="py-3 px-2 w-[90px] text-right">Amount</th>
+                <th class="py-3 px-2 w-[90px] text-right">Payments</th>
+                <th class="py-3 px-2 w-[100px] text-right">Balance</th>
               </tr>
             </thead>
-            <tbody class="text-[9px] ledger-rows">
+            <tbody class="text-[10px] ledger-rows">
               ${rowsHtml}
             </tbody>
           </table>
 
-          <div class="mt-auto border-t border-${theme}-100 pt-4">
-            
-            <div class="flex justify-between items-end mb-6">
-                <!-- Feature: Removed Aging Summary -->
-                <div class="w-2/3 pr-8"></div> 
-
-                <div class="w-1/3 space-y-2">
-                  <h4 class="text-[9px] font-black uppercase text-${theme}-400 tracking-widest text-right">Account Summary</h4>
-                  <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] font-bold text-neutral-600 uppercase">
-                    <span>Opening:</span><span class="text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                    <span>Invoiced:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                    <span>Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                    <span>Credits:</span><span class="text-right text-red-600">${totalCredits.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                    <span class="pt-1 border-t font-black text-${theme}-900 text-[10px]">Balance Due:</span>
-                    <span class="pt-1 border-t font-black text-${theme}-900 text-[10px] text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                  </div>
-                </div>
+          <div class="mt-auto border-t-2 border-indigo-100 pt-8 flex justify-between items-end">
+            <div class="space-y-4">
+              <h4 class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Account Summary</h4>
+              <div class="grid grid-cols-2 gap-x-12 gap-y-2 text-[11px] font-bold text-neutral-600 uppercase">
+                <span>Opening Balance:</span><span class="text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Invoiced Amount:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Amount Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span>Credit Notes:</span><span class="text-right text-red-600">${totalCredits.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span class="pt-2 border-t font-black text-indigo-900 text-sm">Balance Due:</span>
+                <span class="pt-2 border-t font-black text-indigo-900 text-sm text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              </div>
             </div>
-
-            <!-- Feature: Editable Notes -->
-            <div class="flex justify-between items-end border-t border-${theme}-100 pt-4">
-                <div class="w-2/3">
-                    <p class="text-[8px] font-black uppercase text-neutral-400 mb-1">Notes & Payment Instructions</p>
-                    <div contenteditable="true" class="text-[9px] text-neutral-600 p-2 border border-dashed border-transparent hover:border-${theme}-300 rounded outline-none" id="editable-notes">
-                        ${this.state.notesContent}
-                    </div>
-                </div>
-                <div class="text-right">
-                  <p class="text-[9px] font-black uppercase text-${theme}-500 italic">Official Account Statement</p>
-                  <div class="mt-4 h-10 w-40 border-b border-${theme}-200 ml-auto"></div>
-                  <p class="mt-1 text-[8px] font-black uppercase tracking-widest text-neutral-400">Authorized Signatory</p>
-                </div>
+            <div class="text-right">
+              <p class="text-[11px] font-black uppercase text-indigo-500 italic">Official Account Statement</p>
+              <div class="mt-6 h-12 w-48 border-b-2 border-indigo-200 ml-auto"></div>
+              <p class="mt-2 text-[8px] font-black uppercase tracking-widest text-neutral-400">Authorized Signatory</p>
             </div>
           </div>
         </div>`;
@@ -933,6 +917,7 @@ class ZohoLedgerApp {
     const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
     let runningTotal = 0;
     
+    // Attempting to maintain balance after manual row removal
     rows.forEach(row => {
         if (row.classList.contains('ledger-item-row')) {
             const amtCell = row.children[3];
@@ -940,11 +925,13 @@ class ZohoLedgerApp {
             const runTotalCell = row.children[5];
             
             const amtRaw = amtCell.innerText.replace(/,/g, '');
-            const payRaw = payCell.innerText.replace(/,/g, '').replace('-',''); 
+            const payRaw = payCell.innerText.replace(/,/g, '');
             
             const amt = parseFloat(amtRaw) || 0;
             const pay = parseFloat(payRaw) || 0;
             
+            // Invoices/Incomes are positive in column 3, CNs are negative in col 3.
+            // Payments are in column 4.
             runningTotal += amt; 
             runningTotal -= pay;
             
