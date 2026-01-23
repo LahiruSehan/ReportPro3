@@ -654,25 +654,7 @@ class ZohoLedgerApp {
         </tr>
       `;
 
-      // Feature: Aging Calculation (Buckets: 0-30, 31-60, 61-90, 90+)
       const now = new Date();
-      const aging = { current: 0, days30: 0, days60: 0, days90: 0 };
-
-      // We calculate aging based on OPEN INVOICES present in the Full dataset (not filtered), because aging is about current debt.
-      // Ideally we'd use the 'balance' field from invoice api, but we have 'total' here.
-      // For accurate aging in a statement app without fetching individual invoice balances again, we can iterate 'invoices' from dataStore.
-      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
-          if (inv.balance > 0) { // Check if API provided balance
-              const dueDate = new Date(inv.due_date);
-              const diffTime = Math.abs(now - dueDate);
-              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-              
-              if (dueDate > now) aging.current += inv.balance;
-              else if (diffDays <= 30) aging.days30 += inv.balance;
-              else if (diffDays <= 60) aging.days60 += inv.balance;
-              else aging.days90 += inv.balance;
-          }
-      });
 
       transactions.forEach(tx => {
         runningBalance += tx.amount;
@@ -685,10 +667,12 @@ class ZohoLedgerApp {
             else totalReceived += tx.payment;
         }
 
-        // Feature: Overdue Highlighting
+        // Feature: Overdue Highlighting (Specific Days)
         let overdueBadge = '';
-        if (tx.type === 'Invoice' && new Date(tx.due_date) < now && tx.raw.balance > 0) {
-            overdueBadge = `<span class="ml-2 px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] rounded font-bold">OVERDUE</span>`;
+        if (tx.type === 'Invoice' && new Date(tx.due_date) < now && (tx.raw.balance > 0 || tx.amount > 0)) { // Fallback if balance not avail
+            const diffTime = Math.abs(now - new Date(tx.due_date));
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            overdueBadge = `<span class="ml-2 px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] rounded font-bold whitespace-nowrap">OVERDUE BY ${diffDays} DAYS</span>`;
         }
 
         let paymentDisplay = '';
@@ -770,7 +754,6 @@ class ZohoLedgerApp {
       });
 
       // Feature: Trend Chart (Mock Data Visualization Placeholder in Header)
-      // Real trend chart requires extensive history. We'll add a visual placeholder SVG for aesthetic.
       const trendSvg = `<svg class="w-full h-8 opacity-50" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0 20 L0 10 Q 25 15 50 5 T 100 10 L 100 20 Z" fill="currentColor" /></svg>`;
 
       html += `
@@ -813,7 +796,7 @@ class ZohoLedgerApp {
               <tr class="bg-${theme}-600 text-white text-[8px] font-black uppercase tracking-[0.2em]">
                 <th class="py-2 px-3 w-[80px]">Date</th>
                 <th class="py-2 px-3 w-[120px]">Transaction</th>
-                <th class="py-2 px-3 w-[220px]">Details</th>
+                <th class="py-2 px-3 w-[280px]">Details</th>
                 <th class="py-2 px-3 w-[100px] text-right">Amount</th>
                 <th class="py-2 px-3 w-[100px] text-right">Payments</th>
                 <th class="py-2 px-3 w-[110px] text-right">Balance</th>
@@ -827,28 +810,8 @@ class ZohoLedgerApp {
           <div class="mt-auto border-t border-${theme}-100 pt-4">
             
             <div class="flex justify-between items-end mb-6">
-                <!-- Feature: Aging Summary Widget -->
-                <div class="w-2/3 pr-8">
-                    <h4 class="text-[8px] font-black uppercase text-neutral-400 tracking-widest mb-2">Aging Summary (Days Overdue)</h4>
-                    <div class="flex border border-${theme}-100 rounded-lg overflow-hidden text-center text-[9px]">
-                        <div class="flex-1 py-1 bg-${theme}-50">
-                            <div class="font-bold text-${theme}-900">Current</div>
-                            <div class="text-neutral-500">${aging.current.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
-                        </div>
-                        <div class="flex-1 py-1 border-l border-${theme}-100">
-                            <div class="font-bold text-${theme}-900">1-30</div>
-                            <div class="text-neutral-500">${aging.days30.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
-                        </div>
-                        <div class="flex-1 py-1 border-l border-${theme}-100">
-                            <div class="font-bold text-${theme}-900">31-60</div>
-                            <div class="text-neutral-500">${aging.days60.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
-                        </div>
-                        <div class="flex-1 py-1 border-l border-${theme}-100 bg-red-50">
-                            <div class="font-bold text-red-700">60+</div>
-                            <div class="text-red-500">${aging.days90.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Feature: Removed Aging Summary -->
+                <div class="w-2/3 pr-8"></div> 
 
                 <div class="w-1/3 space-y-2">
                   <h4 class="text-[9px] font-black uppercase text-${theme}-400 tracking-widest text-right">Account Summary</h4>
@@ -1039,41 +1002,77 @@ class ZohoLedgerApp {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "SOA_Detailed");
-    XLSX.writeFile(wb, `InsightPRO_SOA_${Date.now()}.xlsx`);
+    XLSX.writeFile(wb, `SOA_${projectName.replace(/[^a-z0-9]/gi, '_')}.xlsx`);
     this.hideLoading();
   }
 
   downloadPDF() {
-    this.showLoading(85, "Generating HD Multi-Page PDF...");
-    const original = document.getElementById('pdf-content');
-    if (!original) return;
+    this.showLoading(85, "Rendering High-Def PDF...");
     
-    const tempContainer = document.getElementById('pdf-export-temp');
-    tempContainer.innerHTML = '';
+    // Select the Rendered Page
+    const element = this.targets.renderArea.querySelector('.a4-page');
     
-    const clone = original.cloneNode(true);
-    clone.style.transform = 'none';
-    clone.style.margin = '0';
-    clone.style.boxShadow = 'none';
-    clone.style.width = '210mm';
-    
-    tempContainer.appendChild(clone);
-    tempContainer.classList.remove('view-hidden');
-    tempContainer.style.display = 'block';
+    if (!element) {
+        alert("No statement generated to export.");
+        this.hideLoading();
+        return;
+    }
 
+    const clone = element.cloneNode(true);
+    
+    // Explicitly set dimensions and background on the clone to prevent transparent/empty render
+    clone.style.width = '210mm';
+    clone.style.minHeight = '297mm';
+    clone.style.background = 'white';
+    clone.style.margin = '0';
+    clone.style.transform = 'none';
+    clone.style.boxShadow = 'none';
+    clone.style.padding = '10mm'; 
+
+    // Create a container wrapper to center it or just hold it
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.top = '0';
+    wrapper.style.left = '0';
+    wrapper.style.zIndex = '5000'; // Make it visible on top
+    wrapper.style.width = '100vw'; // Use vw/vh to cover viewport fully
+    wrapper.style.height = '100vh';
+    wrapper.style.backgroundColor = 'white'; // White background prevents black screen
+    wrapper.style.display = 'flex';
+    wrapper.style.justifyContent = 'center';
+    wrapper.style.alignItems = 'flex-start';
+    wrapper.style.overflow = 'hidden'; // Prevent scrollbars affecting capture
+    
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+    
+    // Scroll to top to ensure capture isn't cutoff
+    window.scrollTo(0, 0);
+    
     const opt = {
-      margin: [10, 0, 10, 0],
-      filename: `SOA_STATEMENT_${Date.now()}.pdf`,
+      margin: 0, 
+      filename: `SOA_${new Date().toISOString().slice(0,10)}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      html2canvas: { 
+        scale: 2, 
+        useCORS: true, 
+        scrollY: 0,
+        scrollX: 0,
+        logging: false,
+        width: 794, // Approx 210mm in px at 96 DPI
+        windowWidth: 794
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(tempContainer).save().then(() => {
-      tempContainer.classList.add('view-hidden');
-      tempContainer.style.display = 'none';
-      tempContainer.innerHTML = '';
+    html2pdf().set(opt).from(clone).save().then(() => {
+      // Cleanup after save
+      document.body.removeChild(wrapper);
+      this.hideLoading();
+    }).catch(err => {
+      console.error("PDF Gen Error", err);
+      alert("PDF Generation Failed: " + err.message);
+      if(document.body.contains(wrapper)) document.body.removeChild(wrapper);
       this.hideLoading();
     });
   }
@@ -1100,6 +1099,11 @@ class ZohoLedgerApp {
     this.views.loadingOverlay.classList.remove('view-hidden');
     this.views.loadingProgress.style.width = `${prog}%`;
     this.views.loadingText.innerText = txt.toUpperCase();
+    
+    // Feature: Skeleton Loading
+    // Hide actual content, show skeleton
+    if(this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
+    if(this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
   }
 
   hideLoading() {
@@ -1107,6 +1111,11 @@ class ZohoLedgerApp {
     setTimeout(() => {
       this.views.loadingBar.classList.add('view-hidden');
       this.views.loadingOverlay.classList.add('view-hidden');
+      
+      // Feature: Skeleton Loading
+      // Show actual content, hide skeleton
+      if(this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
+      if(this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
     }, 800);
   }
 
