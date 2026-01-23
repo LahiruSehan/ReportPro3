@@ -122,8 +122,10 @@ class ZohoLedgerApp {
     this.btns.logout.onclick = () => this.logout();
     this.btns.downloadPdf.onclick = () => this.downloadPDF();
     this.btns.downloadExcel.onclick = () => this.downloadExcel();
-    this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
+    // Disabled multi-select buttons in UI logic
+    this.btns.selectAll.style.display = 'none'; 
     this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
+    
     this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
     this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
     
@@ -310,15 +312,21 @@ class ZohoLedgerApp {
   }
 
   async handleCustomerClick(id) {
+    // Single Customer Selection Logic: Replace existing
     if (this.state.selectedCustomerIds.has(id)) {
-      this.state.selectedCustomerIds.delete(id);
-      Object.keys(this.state.dataStore).forEach(mod => {
-        if (this.state.dataStore[mod][id]) delete this.state.dataStore[mod][id];
-      });
+        // If clicking the same one, maybe deselect? Or just do nothing? 
+        // Let's allow deselect to clear view
+        this.state.selectedCustomerIds.delete(id);
+        this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
     } else {
-      this.state.selectedCustomerIds.add(id);
-      await this.syncCustomerData(id);
+        // Clear all others first
+        this.state.selectedCustomerIds.clear();
+        this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} }; // Clear data store for fresh view
+        
+        this.state.selectedCustomerIds.add(id);
+        await this.syncCustomerData(id);
     }
+    
     this.renderCustomerList();
     this.updateUIVisuals();
   }
@@ -477,7 +485,7 @@ class ZohoLedgerApp {
           type: 'Credit Note',
           ref: cn.creditnote_number,
           amount: 0, // Moved to payment column
-          payment: parseFloat(cn.total) || 0, // Treated as payment
+          payment: parseFloat(cn.total) || 0, // Treated as payment for logic
           raw: cn,
           sortDate: new Date(cn.date)
         });
@@ -496,11 +504,24 @@ class ZohoLedgerApp {
       `;
 
       transactions.forEach(tx => {
+        // Calculation Logic
         runningBalance += tx.amount;
         runningBalance -= tx.payment;
         
         totalInvoiced += (tx.amount > 0 ? tx.amount : 0);
         totalReceived += tx.payment;
+
+        // Display Logic for Payment Column (Red for CN, Green for Pay)
+        let paymentDisplay = '';
+        if (tx.payment !== 0) {
+            if (tx.type === 'Credit Note') {
+                // Show as negative red for deduction
+                paymentDisplay = `<span class="text-red-600 font-bold">-${tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>`;
+            } else {
+                // Show as green for payment
+                paymentDisplay = `<span class="text-emerald-600 font-bold">${tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>`;
+            }
+        }
 
         let detailsHtml = '';
         if (tx.type === 'Invoice') {
@@ -510,16 +531,12 @@ class ZohoLedgerApp {
             detailsHtml += `<div class="space-y-1 mt-1">`;
             det.line_items.forEach(li => {
               const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-              const total = parseFloat(li.item_total || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
               detailsHtml += `
-                <div class="pl-2 border-l-2 border-indigo-100">
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-[9px] font-bold text-neutral-700">${li.name}</span>
-                        <span class="text-[9px] font-mono font-bold text-neutral-900">${total}</span>
-                    </div>
-                    <div class="text-[8px] text-neutral-400 font-mono">
-                        ${li.quantity} <span class="mx-0.5 text-[7px]">✕</span> ${rate}
-                    </div>
+                <div class="flex justify-between items-center text-[9px] border-l-2 border-indigo-100 pl-2">
+                    <span class="font-bold text-neutral-800">${li.name}</span>
+                    <span class="font-medium text-neutral-600 font-mono text-[8px] whitespace-nowrap">
+                        ${li.quantity} <span class="text-[7px] text-neutral-400">x</span> ${this.state.currency} ${rate}
+                    </span>
                 </div>`;
             });
             detailsHtml += `</div>`;
@@ -537,16 +554,12 @@ class ZohoLedgerApp {
              detailsHtml += `<div class="space-y-1 mt-1">`;
             det.line_items.forEach(li => {
               const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-              const total = parseFloat(li.item_total || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
               detailsHtml += `
-                <div class="pl-2 border-l-2 border-red-100">
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-[9px] font-bold text-neutral-700">${li.name}</span>
-                        <span class="text-[9px] font-mono font-bold text-red-900">-${total}</span>
-                    </div>
-                    <div class="text-[8px] text-neutral-400 font-mono">
-                        ${li.quantity} <span class="mx-0.5 text-[7px]">✕</span> ${rate}
-                    </div>
+                <div class="flex justify-between items-center text-[9px] border-l-2 border-red-100 pl-2">
+                    <span class="font-bold text-neutral-800">${li.name}</span>
+                    <span class="font-medium text-neutral-600 font-mono text-[8px] whitespace-nowrap">
+                        ${li.quantity} <span class="text-[7px] text-neutral-400">x</span> ${this.state.currency} ${rate}
+                    </span>
                 </div>`;
             });
             detailsHtml += `</div>`;
@@ -561,8 +574,8 @@ class ZohoLedgerApp {
             <td class="py-1.5 px-3 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
               ${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
             </td>
-            <td class="py-1.5 px-3 align-top text-right font-bold text-emerald-600">
-              ${tx.payment !== 0 ? tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
+            <td class="py-1.5 px-3 align-top text-right">
+              ${paymentDisplay}
             </td>
             <td class="py-1.5 px-3 align-top text-right font-black text-indigo-900">
               ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
@@ -664,7 +677,7 @@ class ZohoLedgerApp {
             const runTotalCell = row.children[5];
             
             const amtRaw = amtCell.innerText.replace(/,/g, '');
-            const payRaw = payCell.innerText.replace(/,/g, '');
+            const payRaw = payCell.innerText.replace(/,/g, '').replace('-',''); // strip minus for calc if present
             
             const amt = parseFloat(amtRaw) || 0;
             const pay = parseFloat(payRaw) || 0;
