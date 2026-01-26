@@ -7,7 +7,7 @@
   
   <link rel="icon" type="image/png" href="https://i.ibb.co/7mmBhMJ/LOGO.png">
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Updated html2pdf library -->
+  <!-- html2pdf library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Chart.js for Trend Chart -->
@@ -71,7 +71,7 @@
       transform-origin: top center;
       transition: transform 0.2s ease;
       overflow: hidden;
-      box-sizing: border-box;
+      box-sizing: border-box; /* CRITICAL for PDF sizing */
     }
 
     /* Print Specific Logic - CRITICAL FIX */

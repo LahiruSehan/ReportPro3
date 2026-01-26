@@ -495,13 +495,30 @@ class ZohoLedgerApp {
     this.views.customerList.innerHTML = '';
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
       const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
+      
+      // LOGIC FOR TAGS
+      let tagHtml = '';
+      const balance = parseFloat(c.outstanding_receivable_amount || 0);
+      const credits = parseFloat(c.unused_credits_receivable_amount || 0);
+
+      if (balance > 0) {
+        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-red-900/30 text-red-400 border border-red-500/30 text-[7px] font-black rounded uppercase inline-block">DUE ${balance.toLocaleString()}</span>`;
+      } else if (credits > 0) {
+        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-yellow-900/30 text-yellow-400 border border-yellow-500/30 text-[7px] font-black rounded uppercase inline-block">CREDIT ${credits.toLocaleString()}</span>`;
+      } else {
+        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30 text-[7px] font-black rounded uppercase inline-block">PAID</span>`;
+      }
+
       const div = document.createElement('div');
-      div.className = `flex items-center space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-all group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
+      div.className = `flex items-start space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-all group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
       div.innerHTML = `
-        <div class="w-4 h-4 rounded border border-white/20 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
+        <div class="mt-0.5 w-4 h-4 rounded border border-white/20 flex-shrink-0 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
           ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
         </div>
-        <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white tracking-widest">${c.contact_name}</span>
+        <div class="flex flex-col overflow-hidden">
+            <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white tracking-widest">${c.contact_name}</span>
+            ${tagHtml}
+        </div>
       `;
       div.onclick = () => this.handleCustomerClick(c.contact_id);
       this.views.customerList.appendChild(div);
@@ -711,15 +728,6 @@ class ZohoLedgerApp {
           // No filter, normal behavior
           runningBalance = systemOpeningBalance;
       }
-
-      // Feature: Trend Chart Logic (Last 6 Months)
-      // We need a separate pass for the trend chart because it usually shows ALL history trends, not just filtered.
-      // But keeping it consistent with the view is safer. Let's just track the running balance after each transaction.
-      // Actually simpler: Just track end-of-month balances for the displayed period.
-      transactions.forEach(t => {
-          // Logic calculation for display rows is done later, but for chart we can do it here if needed.
-          // Let's do it in the render loop.
-      });
 
       let rowsHtml = `
         <tr class="bg-${theme}-50 font-black italic">
@@ -1087,14 +1095,24 @@ class ZohoLedgerApp {
         return;
     }
 
-    // Temporarily fix styles for PDF generation to avoid layout shifts
+    // 1. SAVE ORIGINAL STYLES
     const originalTransform = element.style.transform;
     const originalMargin = element.style.margin;
+    const originalPosition = element.style.position;
+    const originalLeft = element.style.left;
+    const originalTop = element.style.top;
     
-    element.style.transform = 'scale(1)'; // Reset zoom
-    element.style.margin = '0'; // Remove centering margin
-    element.style.width = '210mm'; // Force A4 width explicitly
+    // 2. FORCE PDF LAYOUT
+    // We position it ABSOLUTELY at 0,0 to ensure HTML2Canvas sees the whole thing
+    // without the sidebar pushing it.
+    element.style.transform = 'scale(1)'; 
+    element.style.margin = '0'; 
+    element.style.width = '210mm'; 
     element.style.maxWidth = '210mm';
+    element.style.position = 'fixed';
+    element.style.left = '0';
+    element.style.top = '0';
+    element.style.zIndex = '9999'; // Ensure it's on top of everything
     
     const opt = {
       margin: 0, 
@@ -1105,6 +1123,8 @@ class ZohoLedgerApp {
         useCORS: true, 
         scrollY: 0,
         scrollX: 0,
+        x: 0, // CRITICAL FIX: Force capture start X
+        y: 0, // CRITICAL FIX: Force capture start Y
         logging: false,
         width: 794, // Approx 210mm in px at 96 DPI
         windowWidth: 794
@@ -1113,16 +1133,25 @@ class ZohoLedgerApp {
     };
 
     html2pdf().set(opt).from(element).save().then(() => {
-      // Cleanup after save
+      // 3. RESTORE ORIGINAL STYLES
       element.style.transform = originalTransform;
       element.style.margin = originalMargin;
-      element.style.width = '210mm'; // Reset to CSS default
+      element.style.width = '210mm';
+      element.style.position = originalPosition;
+      element.style.left = originalLeft;
+      element.style.top = originalTop;
+      element.style.zIndex = '';
+      
       this.hideLoading();
     }).catch(err => {
       console.error("PDF Gen Error", err);
       alert("PDF Generation Failed: " + err.message);
+      
+      // Restore on error too
       element.style.transform = originalTransform;
       element.style.margin = originalMargin;
+      element.style.position = originalPosition;
+      
       this.hideLoading();
     });
   }
