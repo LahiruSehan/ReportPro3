@@ -163,11 +163,60 @@
     /* Modal Styling Fix */
     .modal-overlay { z-index: 5000 !important; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
 
-    /* Print Logic */
+    /* Print Logic - Revamped */
     @media print {
-      body { background: white !important; }
-      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 210mm !important; min-height: 297mm !important; }
-      .no-print { display: none !important; }
+      body * {
+        visibility: hidden;
+      }
+      
+      #statement-render-target, #statement-render-target * {
+        visibility: visible;
+      }
+
+      /* Reset Body */
+      body {
+        background: white !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+
+      /* Layout Reset */
+      #view-dashboard, main, #view-ledger-container, #area-ledger {
+        position: static !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        display: block !important;
+      }
+
+      /* Target Print Area */
+      #statement-render-target {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Page Style */
+      .a4-page {
+        margin: 0 !important;
+        box-shadow: none !important;
+        transform: none !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-height: auto !important;
+        page-break-after: always;
+        border: none !important;
+      }
+
+      .no-print, .zoom-controls, header, aside, .modal-overlay {
+        display: none !important;
+      }
     }
 
     tr { break-inside: avoid; page-break-inside: avoid; }
@@ -332,6 +381,7 @@
             <div class="flex items-center gap-4">
               <div class="flex gap-2">
                 <button id="btn-download-pdf" disabled class="px-4 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-indigo-700 transition-colors">Export PDF</button>
+                <button id="btn-print-statement" disabled class="px-4 py-2 bg-neutral-700 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-neutral-600 transition-colors flex items-center gap-2"><i class="ph ph-printer"></i> Print</button>
                 <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-emerald-700 transition-colors">Export Excel</button>
               </div>
               <div class="h-6 w-px bg-white/10"></div>

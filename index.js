@@ -170,6 +170,7 @@ class ZohoLedgerApp {
       resetConfig: document.getElementById('btn-reset-config'),
       downloadPdf: document.getElementById('btn-download-pdf'),
       downloadExcel: document.getElementById('btn-download-excel'),
+      printStatement: document.getElementById('btn-print-statement'), // New Print Button
       emailComposer: document.getElementById('btn-email-composer'),
       logout: document.getElementById('btn-logout'),
       selectAll: document.getElementById('btn-select-all'),
@@ -214,6 +215,7 @@ class ZohoLedgerApp {
     if(this.btns.logout) this.btns.logout.onclick = () => this.logout();
     if(this.btns.downloadPdf) this.btns.downloadPdf.onclick = () => this.downloadPDF();
     if(this.btns.downloadExcel) this.btns.downloadExcel.onclick = () => this.downloadExcel();
+    if(this.btns.printStatement) this.btns.printStatement.onclick = () => this.printStatement(); // Bind Print
     if(this.btns.emailComposer) this.btns.emailComposer.onclick = () => this.openEmailComposer();
     
     // Safety checks for optional buttons
@@ -623,11 +625,13 @@ class ZohoLedgerApp {
       this.targets.renderArea.innerHTML = '';
       if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = true;
       if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = true;
+      if(this.btns.printStatement) this.btns.printStatement.disabled = true;
       return;
     }
     this.targets.emptyState.classList.add('view-hidden');
     if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = false;
     if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = false;
+    if(this.btns.printStatement) this.btns.printStatement.disabled = false;
 
     const theme = this.state.theme;
     const projectName = this.inputs.orgSelect && this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex] ? this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex].text : 'Project Context N/A';
@@ -708,15 +712,6 @@ class ZohoLedgerApp {
           // No filter, normal behavior
           runningBalance = systemOpeningBalance;
       }
-
-      // Feature: Trend Chart Logic (Last 6 Months)
-      // We need a separate pass for the trend chart because it usually shows ALL history trends, not just filtered.
-      // But keeping it consistent with the view is safer. Let's just track the running balance after each transaction.
-      // Actually simpler: Just track end-of-month balances for the displayed period.
-      transactions.forEach(t => {
-          // Logic calculation for display rows is done later, but for chart we can do it here if needed.
-          // Let's do it in the render loop.
-      });
 
       let rowsHtml = `
         <tr class="bg-${theme}-50 font-black italic">
@@ -1066,6 +1061,13 @@ class ZohoLedgerApp {
     this.hideLoading();
   }
 
+  // --- NEW: PRINT LOGIC ---
+  printStatement() {
+      // Browser's native print is superior for layout fidelity
+      window.print();
+  }
+
+  // --- REVAMPED PDF LOGIC ---
   downloadPDF() {
     this.showLoading(85, "Rendering High-Def PDF...");
     
@@ -1078,55 +1080,52 @@ class ZohoLedgerApp {
         return;
     }
 
+    // 1. Create a pristine clone for PDF generation
     const clone = element.cloneNode(true);
     
-    // Explicitly set dimensions and background on the clone to prevent transparent/empty render
-    clone.style.width = '210mm';
-    clone.style.minHeight = '297mm';
+    // 2. Strict styling to match A4 PDF standards and reset any UI transforms
+    // We use a fixed width container logic to ensure html2pdf sees exactly what we want.
+    // 210mm at 96 DPI is approx 794px. We set it explicitly.
+    clone.style.width = '794px'; 
+    clone.style.minHeight = '1123px'; // 297mm
     clone.style.background = 'white';
     clone.style.margin = '0';
+    clone.style.padding = '40px'; // Matching the 10mm padding roughly
     clone.style.transform = 'none';
     clone.style.boxShadow = 'none';
-    clone.style.padding = '10mm'; 
-
-    // Create a container wrapper to center it or just hold it
+    clone.style.border = 'none';
+    
+    // 3. Create a temporary container that is NOT influenced by flexbox or the app's layout
+    // This container is absolutely positioned off-screen or z-indexed below but visible to the renderer.
     const wrapper = document.createElement('div');
     wrapper.style.position = 'fixed';
     wrapper.style.top = '0';
     wrapper.style.left = '0';
-    wrapper.style.zIndex = '5000'; // Make it visible on top
-    wrapper.style.width = '100%';
-    wrapper.style.height = '100%';
-    wrapper.style.backgroundColor = 'rgba(0,0,0,0.8)'; // Dim background
-    wrapper.style.display = 'flex';
-    wrapper.style.justifyContent = 'center';
-    wrapper.style.alignItems = 'flex-start';
-    wrapper.style.overflow = 'auto';
+    wrapper.style.width = '794px';
+    wrapper.style.zIndex = '-9999'; 
+    wrapper.style.background = 'white';
     
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
-    
-    // Scroll to top to ensure capture isn't cutoff
-    window.scrollTo(0, 0);
     
     const opt = {
       margin: 0, 
       filename: `SOA_${new Date().toISOString().slice(0,10)}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { 
-        scale: 2, 
+        scale: 2, // High resolution
         useCORS: true, 
         scrollY: 0,
         scrollX: 0,
         logging: false,
-        width: 794, // Approx 210mm in px at 96 DPI
-        windowWidth: 794
+        width: 794,
+        windowWidth: 794 // Crucial to prevent "half empty" bug on wide screens
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(clone).save().then(() => {
-      // Cleanup after save
+    html2pdf().set(opt).from(wrapper).save().then(() => {
+      // Cleanup
       document.body.removeChild(wrapper);
       this.hideLoading();
     }).catch(err => {
