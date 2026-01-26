@@ -7,8 +7,9 @@
   
   <link rel="icon" type="image/png" href="https://i.ibb.co/7mmBhMJ/LOGO.png">
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- html2pdf library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- Core PDF/Image Generation Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Chart.js for Trend Chart -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -74,55 +75,14 @@
       box-sizing: border-box; /* CRITICAL for PDF sizing */
     }
 
-    /* Print Specific Logic - CRITICAL FIX */
+    /* Print Specific Logic */
     @media print {
-      /* Hide everything by default */
-      body * {
-        visibility: hidden;
-      }
-      
-      /* Reset body background */
-      body {
-        background: white !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: visible !important;
-      }
-
-      /* Isolate the statement page */
-      #statement-render-target, 
-      #statement-render-target * {
-        visibility: visible;
-      }
-
-      #statement-render-target {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0 !important;
-        padding: 0 !important;
-      }
-
-      /* Force A4 styling on the page element */
-      .a4-page {
-        margin: 0 !important;
-        box-shadow: none !important;
-        transform: none !important;
-        width: 100% !important; /* Let the printer handle width */
-        max-width: 210mm !important;
-        min-height: auto !important;
-        page-break-after: always;
-        visibility: visible !important;
-        background: white !important;
-        color: black !important;
-        padding: 10mm !important; /* Maintain internal padding */
-      }
-
-      /* Hide tools inside the render area if any leak through */
+      body * { visibility: hidden; }
+      body { background: white !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+      #statement-render-target, #statement-render-target * { visibility: visible; }
+      #statement-render-target { position: absolute; left: 0; top: 0; width: 100%; margin: 0 !important; padding: 0 !important; }
+      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 100% !important; max-width: 210mm !important; min-height: auto !important; page-break-after: always; visibility: visible !important; background: white !important; color: black !important; padding: 10mm !important; }
       .no-print { display: none !important; }
-      
-      /* Prevent page breaks inside table rows */
       tr { break-inside: avoid; page-break-inside: avoid; }
     }
 
@@ -371,6 +331,7 @@
               <div class="flex gap-2">
                 <button id="btn-print" disabled class="px-4 py-2 bg-neutral-700 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-neutral-600 transition-colors flex items-center gap-2"><i class="ph ph-printer text-lg"></i> Print</button>
                 <button id="btn-download-pdf" disabled class="px-4 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-indigo-700 transition-colors flex items-center gap-2"><i class="ph ph-file-pdf text-lg"></i> PDF</button>
+                <button id="btn-download-image" disabled class="px-4 py-2 bg-purple-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-purple-700 transition-colors flex items-center gap-2"><i class="ph ph-image text-lg"></i> Image</button>
                 <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-emerald-700 transition-colors flex items-center gap-2"><i class="ph ph-file-xls text-lg"></i> Excel</button>
               </div>
               <div class="h-6 w-px bg-white/10"></div>

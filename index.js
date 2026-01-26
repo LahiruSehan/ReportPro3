@@ -169,6 +169,7 @@ class ZohoLedgerApp {
       resetConfig: document.getElementById('btn-reset-config'),
       print: document.getElementById('btn-print'),
       downloadPdf: document.getElementById('btn-download-pdf'),
+      downloadImage: document.getElementById('btn-download-image'),
       downloadExcel: document.getElementById('btn-download-excel'),
       emailComposer: document.getElementById('btn-email-composer'),
       logout: document.getElementById('btn-logout'),
@@ -214,6 +215,7 @@ class ZohoLedgerApp {
     if(this.btns.logout) this.btns.logout.onclick = () => this.logout();
     if(this.btns.print) this.btns.print.onclick = () => this.printReport();
     if(this.btns.downloadPdf) this.btns.downloadPdf.onclick = () => this.downloadPDF();
+    if(this.btns.downloadImage) this.btns.downloadImage.onclick = () => this.downloadImage();
     if(this.btns.downloadExcel) this.btns.downloadExcel.onclick = () => this.downloadExcel();
     if(this.btns.emailComposer) this.btns.emailComposer.onclick = () => this.openEmailComposer();
     
@@ -493,6 +495,7 @@ class ZohoLedgerApp {
   renderCustomerList() {
     if(!this.views.customerList) return;
     this.views.customerList.innerHTML = '';
+    
     this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
       const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
       
@@ -501,12 +504,27 @@ class ZohoLedgerApp {
       const balance = parseFloat(c.outstanding_receivable_amount || 0);
       const credits = parseFloat(c.unused_credits_receivable_amount || 0);
 
+      // We try to use data present in summary, otherwise generic. 
+      // Note: Zoho summary contacts usually don't have last payment date unless detailed fetch.
+      // We will check if it exists (some API versions include it), else fallback to generic "PAID".
+      
       if (balance > 0) {
+        // Calculate Days Overdue mock (since we don't have invoices for all customers yet)
+        // If we want real "DUE BY X DAYS", we'd need to fetch all invoice data which is heavy.
+        // We will format it as "DUE [Amount]" for list view, but if we had data:
         tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-red-900/30 text-red-400 border border-red-500/30 text-[7px] font-black rounded uppercase inline-block">DUE ${balance.toLocaleString()}</span>`;
       } else if (credits > 0) {
         tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-yellow-900/30 text-yellow-400 border border-yellow-500/30 text-[7px] font-black rounded uppercase inline-block">CREDIT ${credits.toLocaleString()}</span>`;
       } else {
-        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30 text-[7px] font-black rounded uppercase inline-block">PAID</span>`;
+        // Check for last payment date if available in object
+        let paidText = "PAID";
+        if (c.last_payment_date) {
+            const d = new Date(c.last_payment_date);
+            const mon = d.toLocaleString('default', { month: 'short' }).toUpperCase();
+            const day = d.getDate().toString().padStart(2, '0');
+            paidText = `PAID ON ${mon} ${day}`;
+        }
+        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30 text-[7px] font-black rounded uppercase inline-block">${paidText}</span>`;
       }
 
       const div = document.createElement('div');
@@ -515,7 +533,7 @@ class ZohoLedgerApp {
         <div class="mt-0.5 w-4 h-4 rounded border border-white/20 flex-shrink-0 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
           ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
         </div>
-        <div class="flex flex-col overflow-hidden">
+        <div class="flex flex-col overflow-hidden w-full">
             <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white tracking-widest">${c.contact_name}</span>
             ${tagHtml}
         </div>
@@ -536,8 +554,57 @@ class ZohoLedgerApp {
         await this.syncCustomerData(id);
     }
     
-    this.renderCustomerList();
+    // Update list to show detailed status for selected
+    this.renderCustomerList(); 
+    
+    // Enhance the specific selected item with "DUE BY X DAYS" if possible
+    // We do this after render because now we have data
+    this.updateSelectedCustomerTagInList(id);
+
     this.updateUIVisuals();
+  }
+
+  updateSelectedCustomerTagInList(id) {
+    // This function manually updates the tag in the sidebar for the ACTIVE customer 
+    // to show specific "DUE BY" days since we now have their invoices.
+    
+    const invoices = this.state.dataStore.invoices[id]?.records || [];
+    if (invoices.length === 0) return;
+
+    // Find oldest open invoice
+    const openInvoices = invoices.filter(inv => inv.balance > 0).sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
+    
+    if (openInvoices.length > 0) {
+        const oldest = openInvoices[0];
+        const due = new Date(oldest.due_date);
+        const now = new Date();
+        const diffTime = due - now;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        let text = "";
+        let colorClass = "";
+        
+        if (diffDays < 0) {
+             text = `OVERDUE BY ${Math.abs(diffDays)} DAYS`;
+             colorClass = "bg-red-900/30 text-red-400 border-red-500/30";
+        } else {
+             text = `DUE IN ${diffDays} DAYS`;
+             colorClass = "bg-orange-900/30 text-orange-400 border-orange-500/30";
+        }
+        
+        // Find the element and update
+        // (A bit hacky DOM manipulation for performance)
+        const allItems = this.views.customerList.children;
+        for (let item of allItems) {
+            if (item.innerHTML.includes(this.state.customerFullDetails[id]?.contact_name)) {
+                const tag = item.querySelector('span.inline-block');
+                if (tag) {
+                    tag.className = `mt-1 px-1.5 py-0.5 border text-[7px] font-black rounded uppercase inline-block ${colorClass}`;
+                    tag.innerText = text;
+                }
+            }
+        }
+    }
   }
 
   updateUIVisuals() {
@@ -640,12 +707,14 @@ class ZohoLedgerApp {
       this.targets.emptyState.classList.remove('view-hidden');
       this.targets.renderArea.innerHTML = '';
       if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = true;
+      if(this.btns.downloadImage) this.btns.downloadImage.disabled = true;
       if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = true;
       if(this.btns.print) this.btns.print.disabled = true;
       return;
     }
     this.targets.emptyState.classList.add('view-hidden');
     if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = false;
+    if(this.btns.downloadImage) this.btns.downloadImage.disabled = false;
     if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = false;
     if(this.btns.print) this.btns.print.disabled = false;
 
@@ -1083,77 +1152,114 @@ class ZohoLedgerApp {
       window.print();
   }
 
-  downloadPDF() {
+  async downloadPDF() {
     this.showLoading(85, "Rendering High-Def PDF...");
     
-    // Select the Rendered Page
-    const element = this.targets.renderArea.querySelector('.a4-page');
-    
-    if (!element) {
-        alert("No statement generated to export.");
+    const originalElement = this.targets.renderArea.querySelector('.a4-page');
+    if (!originalElement) {
+        alert("No statement generated.");
         this.hideLoading();
         return;
     }
 
-    // 1. SAVE ORIGINAL STYLES
-    const originalTransform = element.style.transform;
-    const originalMargin = element.style.margin;
-    const originalPosition = element.style.position;
-    const originalLeft = element.style.left;
-    const originalTop = element.style.top;
+    // GHOST CLONE METHOD (The "Swim Out" Strategy)
+    // 1. Clone the element
+    const clone = originalElement.cloneNode(true);
     
-    // 2. FORCE PDF LAYOUT
-    // We position it ABSOLUTELY at 0,0 to ensure HTML2Canvas sees the whole thing
-    // without the sidebar pushing it.
-    element.style.transform = 'scale(1)'; 
-    element.style.margin = '0'; 
-    element.style.width = '210mm'; 
-    element.style.maxWidth = '210mm';
-    element.style.position = 'fixed';
-    element.style.left = '0';
-    element.style.top = '0';
-    element.style.zIndex = '9999'; // Ensure it's on top of everything
+    // 2. Style it to be completely isolated from the app layout
+    // We place it in a container that mimics a print viewport
+    const ghostContainer = document.createElement('div');
+    ghostContainer.style.position = 'fixed';
+    ghostContainer.style.top = '-10000px'; // Off-screen
+    ghostContainer.style.left = '-10000px';
+    ghostContainer.style.width = '794px'; // Exact A4 width in px (96 DPI)
+    ghostContainer.style.height = 'auto'; // Let height flow
+    ghostContainer.style.zIndex = '-9999';
+    ghostContainer.style.background = '#ffffff';
     
-    const opt = {
-      margin: 0, 
-      filename: `SOA_${new Date().toISOString().slice(0,10)}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { 
-        scale: 2, 
-        useCORS: true, 
-        scrollY: 0,
-        scrollX: 0,
-        x: 0, // CRITICAL FIX: Force capture start X
-        y: 0, // CRITICAL FIX: Force capture start Y
-        logging: false,
-        width: 794, // Approx 210mm in px at 96 DPI
-        windowWidth: 794
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+    // Reset the clone's transform/margins
+    clone.style.transform = 'scale(1)';
+    clone.style.margin = '0';
+    clone.style.boxShadow = 'none';
+    
+    ghostContainer.appendChild(clone);
+    document.body.appendChild(ghostContainer);
 
-    html2pdf().set(opt).from(element).save().then(() => {
-      // 3. RESTORE ORIGINAL STYLES
-      element.style.transform = originalTransform;
-      element.style.margin = originalMargin;
-      element.style.width = '210mm';
-      element.style.position = originalPosition;
-      element.style.left = originalLeft;
-      element.style.top = originalTop;
-      element.style.zIndex = '';
-      
-      this.hideLoading();
-    }).catch(err => {
-      console.error("PDF Gen Error", err);
-      alert("PDF Generation Failed: " + err.message);
-      
-      // Restore on error too
-      element.style.transform = originalTransform;
-      element.style.margin = originalMargin;
-      element.style.position = originalPosition;
-      
-      this.hideLoading();
-    });
+    try {
+        // 3. Photograph the ghost
+        const canvas = await html2canvas(clone, {
+            scale: 2, // High resolution
+            useCORS: true,
+            logging: false,
+            windowWidth: 794,
+            width: 794
+        });
+
+        // 4. Put it in a PDF
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`SOA_${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (err) {
+        console.error("PDF Gen Error", err);
+        alert("Generation failed: " + err.message);
+    } finally {
+        // 5. Cleanup
+        document.body.removeChild(ghostContainer);
+        this.hideLoading();
+    }
+  }
+  
+  async downloadImage() {
+    this.showLoading(85, "Capturing High-Res Image...");
+    
+    const originalElement = this.targets.renderArea.querySelector('.a4-page');
+    if (!originalElement) {
+        alert("No statement generated.");
+        this.hideLoading();
+        return;
+    }
+
+    // Use same GHOST CLONE strategy for consistency
+    const clone = originalElement.cloneNode(true);
+    const ghostContainer = document.createElement('div');
+    ghostContainer.style.position = 'fixed';
+    ghostContainer.style.top = '-10000px';
+    ghostContainer.style.left = '-10000px';
+    ghostContainer.style.width = '794px'; 
+    ghostContainer.style.zIndex = '-9999';
+    ghostContainer.style.background = '#ffffff';
+    clone.style.transform = 'scale(1)';
+    clone.style.margin = '0';
+    clone.style.boxShadow = 'none';
+    ghostContainer.appendChild(clone);
+    document.body.appendChild(ghostContainer);
+
+    try {
+        const canvas = await html2canvas(clone, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            windowWidth: 794,
+            width: 794
+        });
+
+        // Trigger download
+        const link = document.createElement('a');
+        link.download = `SOA_${new Date().toISOString().slice(0,10)}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    } catch (err) {
+        console.error("Image Gen Error", err);
+        alert("Image capture failed.");
+    } finally {
+        document.body.removeChild(ghostContainer);
+        this.hideLoading();
+    }
   }
 
   setZoom(val) {
