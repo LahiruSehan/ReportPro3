@@ -7,6 +7,7 @@
   
   <link rel="icon" type="image/png" href="https://i.ibb.co/7mmBhMJ/LOGO.png">
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Updated html2pdf library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Chart.js for Trend Chart -->
@@ -73,6 +74,58 @@
       box-sizing: border-box;
     }
 
+    /* Print Specific Logic - CRITICAL FIX */
+    @media print {
+      /* Hide everything by default */
+      body * {
+        visibility: hidden;
+      }
+      
+      /* Reset body background */
+      body {
+        background: white !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+
+      /* Isolate the statement page */
+      #statement-render-target, 
+      #statement-render-target * {
+        visibility: visible;
+      }
+
+      #statement-render-target {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      /* Force A4 styling on the page element */
+      .a4-page {
+        margin: 0 !important;
+        box-shadow: none !important;
+        transform: none !important;
+        width: 100% !important; /* Let the printer handle width */
+        max-width: 210mm !important;
+        min-height: auto !important;
+        page-break-after: always;
+        visibility: visible !important;
+        background: white !important;
+        color: black !important;
+        padding: 10mm !important; /* Maintain internal padding */
+      }
+
+      /* Hide tools inside the render area if any leak through */
+      .no-print { display: none !important; }
+      
+      /* Prevent page breaks inside table rows */
+      tr { break-inside: avoid; page-break-inside: avoid; }
+    }
+
     .statement-view-container { 
       padding-bottom: 5cm;
       display: flex;
@@ -95,11 +148,6 @@
       border-radius: 4px;
     }
     @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-    /* PDF Generation Helper */
-    #pdf-export-temp {
-      position: fixed; left: 0; top: 0; width: 100%; height: 100%; z-index: -100; pointer-events: none; opacity: 0;
-    }
 
     /* Color balls hover effect */
     .color-ball { transition: transform 0.2s, border-color 0.2s; cursor: pointer; }
@@ -163,63 +211,6 @@
     /* Modal Styling Fix */
     .modal-overlay { z-index: 5000 !important; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
 
-    /* Print Logic - Revamped */
-    @media print {
-      body * {
-        visibility: hidden;
-      }
-      
-      #statement-render-target, #statement-render-target * {
-        visibility: visible;
-      }
-
-      /* Reset Body */
-      body {
-        background: white !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: visible !important;
-      }
-
-      /* Layout Reset */
-      #view-dashboard, main, #view-ledger-container, #area-ledger {
-        position: static !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        width: 100% !important;
-        height: auto !important;
-        overflow: visible !important;
-        display: block !important;
-      }
-
-      /* Target Print Area */
-      #statement-render-target {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-      }
-
-      /* Page Style */
-      .a4-page {
-        margin: 0 !important;
-        box-shadow: none !important;
-        transform: none !important;
-        width: 100% !important;
-        max-width: none !important;
-        min-height: auto !important;
-        page-break-after: always;
-        border: none !important;
-      }
-
-      .no-print, .zoom-controls, header, aside, .modal-overlay {
-        display: none !important;
-      }
-    }
-
-    tr { break-inside: avoid; page-break-inside: avoid; }
     .toggle-checkbox:checked { right: 0; border-color: #68D391; }
     .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
   </style>
@@ -232,8 +223,6 @@
     <span id="loading-text">INITIALIZING...</span>
   </div>
   
-  <div id="pdf-export-temp" class="view-hidden"></div>
-
   <!-- BG Slideshow Container -->
   <div id="bg-slideshow"></div>
 
@@ -380,9 +369,9 @@
           <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01] no-print">
             <div class="flex items-center gap-4">
               <div class="flex gap-2">
-                <button id="btn-download-pdf" disabled class="px-4 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-indigo-700 transition-colors">Export PDF</button>
-                <button id="btn-print-statement" disabled class="px-4 py-2 bg-neutral-700 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-neutral-600 transition-colors flex items-center gap-2"><i class="ph ph-printer"></i> Print</button>
-                <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-emerald-700 transition-colors">Export Excel</button>
+                <button id="btn-print" disabled class="px-4 py-2 bg-neutral-700 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-neutral-600 transition-colors flex items-center gap-2"><i class="ph ph-printer text-lg"></i> Print</button>
+                <button id="btn-download-pdf" disabled class="px-4 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-indigo-700 transition-colors flex items-center gap-2"><i class="ph ph-file-pdf text-lg"></i> PDF</button>
+                <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-emerald-700 transition-colors flex items-center gap-2"><i class="ph ph-file-xls text-lg"></i> Excel</button>
               </div>
               <div class="h-6 w-px bg-white/10"></div>
               <div id="color-theme-picker" class="flex items-center gap-2">
