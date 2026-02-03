@@ -454,8 +454,9 @@ class ZohoLedgerApp {
     } catch (e) { console.warn("Detail fetch failed", e); }
   }
 
-  async rawRequest(url) {
-    const res = await fetch(this.proxyPrefix + encodeURIComponent(url), {
+ async rawRequest(url) {
+    // REMOVED encodeURIComponent here so the proxy can read the address
+    const res = await fetch(this.proxyPrefix + url, {
       headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
     });
     if (res.status === 401) throw new Error("Session Expired");
