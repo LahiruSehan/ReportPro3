@@ -5,7 +5,8 @@
 
 class ZohoLedgerApp {
   constructor() {
-    this.proxyPrefix = "https://cors-anywhere.herokuapp.com/";
+
+    this.proxyPrefix = "https://lahirusehan-proxy.onrender.com/";
     this.initStorage();
     this.state = {
       accessToken: localStorage.getItem('zoho_access_token'),
