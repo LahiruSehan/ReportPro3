@@ -511,29 +511,32 @@ class ZohoLedgerApp {
       // We will check if it exists (some API versions include it), else fallback to generic "PAID".
       
       if (balance > 0) {
-        const fmtBal = balance.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-        tagHtml = `<span class="cust-badge cust-badge-due">DUE ${fmtBal}</span>`;
+        // Calculate Days Overdue mock (since we don't have invoices for all customers yet)
+        // If we want real "DUE BY X DAYS", we'd need to fetch all invoice data which is heavy.
+        // We will format it as "DUE [Amount]" for list view, but if we had data:
+        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-red-900/30 text-red-400 border border-red-500/30 text-[7px] font-black rounded uppercase inline-block">DUE ${balance.toLocaleString()}</span>`;
       } else if (credits > 0) {
-        const fmtCred = credits.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-        tagHtml = `<span class="cust-badge cust-badge-credit">CR ${fmtCred}</span>`;
+        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-yellow-900/30 text-yellow-400 border border-yellow-500/30 text-[7px] font-black rounded uppercase inline-block">CREDIT ${credits.toLocaleString()}</span>`;
       } else {
-        let paidText = "SETTLED";
+        // Check for last payment date if available in object
+        let paidText = "PAID";
         if (c.last_payment_date) {
             const d = new Date(c.last_payment_date);
             const mon = d.toLocaleString('default', { month: 'short' }).toUpperCase();
-            paidText = `PAID ${mon}`;
+            const day = d.getDate().toString().padStart(2, '0');
+            paidText = `PAID ON ${mon} ${day}`;
         }
-        tagHtml = `<span class="cust-badge cust-badge-paid">${paidText}</span>`;
+        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30 text-[7px] font-black rounded uppercase inline-block">${paidText}</span>`;
       }
 
       const div = document.createElement('div');
-      div.className = `cust-list-item flex items-start space-x-3 p-3 rounded-xl cursor-pointer transition-all ${isSelected ? 'cust-list-selected' : ''}`;
+      div.className = `flex items-start space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-all group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
       div.innerHTML = `
-        <div class="cust-check mt-0.5 w-4 h-4 rounded flex-shrink-0 flex items-center justify-center ${isSelected ? 'cust-check-on' : 'cust-check-off'}">
-          ${isSelected ? '<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
+        <div class="mt-0.5 w-4 h-4 rounded border border-white/20 flex-shrink-0 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
+          ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
         </div>
-        <div class="flex flex-col overflow-hidden w-full" style="gap:5px;">
-            <span class="cust-name-text truncate" style="letter-spacing:0.01em;line-height:1.3">${c.contact_name}</span>
+        <div class="flex flex-col overflow-hidden w-full">
+            <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white tracking-widest">${c.contact_name}</span>
             ${tagHtml}
         </div>
       `;
@@ -725,10 +728,7 @@ class ZohoLedgerApp {
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'Valued Client';
-      // opening_balance from full contact fetch; fall back to 0 (Zoho returns it as a string)
       const systemOpeningBalance = parseFloat(customer.opening_balance) || 0;
-      // Log for debugging
-      console.log('[SOA] Customer:', clientName, '| opening_balance raw:', customer.opening_balance, '| parsed:', systemOpeningBalance);
       
       let runningBalance = systemOpeningBalance;
       let balanceBroughtForward = systemOpeningBalance; // For filtered view
@@ -800,20 +800,12 @@ class ZohoLedgerApp {
           runningBalance = systemOpeningBalance;
       }
 
-      const obFmt = (n) => Math.abs(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-      const obLabel = this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE';
-      // Opening balance: if positive it's a debit (amount owed), if negative it's a credit
-      const obDebit  = balanceBroughtForward > 0 ? obFmt(balanceBroughtForward) : '';
-      const obCredit = balanceBroughtForward < 0 ? obFmt(balanceBroughtForward) : '';
-      const obBalance = obFmt(Math.abs(balanceBroughtForward));
-
       let rowsHtml = `
         <tr class="bg-${theme}-50 font-black italic">
-          <td class="py-3 px-2 border-b" colspan="2">${obLabel}</td>
+          <td class="py-3 px-2 border-b" colspan="2">${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}</td>
           <td class="py-3 px-2 border-b text-left italic opacity-60">Balance brought forward</td>
-          <td class="py-3 px-2 border-b text-right font-bold">${obDebit}</td>
-          <td class="py-3 px-2 border-b text-right font-bold">${obCredit}</td>
-          <td class="py-3 px-2 border-b text-right font-black">${obBalance}</td>
+          <td class="py-3 px-2 border-b text-right" colspan="2">---</td>
+          <td class="py-3 px-2 border-b text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
         </tr>
       `;
 
