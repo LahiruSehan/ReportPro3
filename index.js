@@ -437,6 +437,7 @@ class ZohoLedgerApp {
               opt.value = org.organization_id; opt.innerText = org.name;
               this.inputs.orgSelect.appendChild(opt);
             });
+            if (res.organizations.length === 0) throw new Error("No organizations returned. Your session token may have expired — please reconnect.");
             if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
             this.inputs.orgSelect.value = this.state.selectedOrgId;
         }
