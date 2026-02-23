@@ -511,22 +511,19 @@ class ZohoLedgerApp {
       // We will check if it exists (some API versions include it), else fallback to generic "PAID".
       
       if (balance > 0) {
-        // Calculate Days Overdue mock (since we don't have invoices for all customers yet)
-        // If we want real "DUE BY X DAYS", we'd need to fetch all invoice data which is heavy.
-        // We will format it as "DUE [Amount]" for list view, but if we had data:
-        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-red-900/30 text-red-400 border border-red-500/30 text-[7px] font-black rounded uppercase inline-block">DUE ${balance.toLocaleString()}</span>`;
+        const fmtBal = balance >= 1000 ? (balance/1000).toFixed(1)+'k' : balance.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+        tagHtml = `<span class="cust-badge cust-badge-due">DUE ${fmtBal}</span>`;
       } else if (credits > 0) {
-        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-yellow-900/30 text-yellow-400 border border-yellow-500/30 text-[7px] font-black rounded uppercase inline-block">CREDIT ${credits.toLocaleString()}</span>`;
+        const fmtCred = credits >= 1000 ? (credits/1000).toFixed(1)+'k' : credits.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+        tagHtml = `<span class="cust-badge cust-badge-credit">CR ${fmtCred}</span>`;
       } else {
-        // Check for last payment date if available in object
-        let paidText = "PAID";
+        let paidText = "SETTLED";
         if (c.last_payment_date) {
             const d = new Date(c.last_payment_date);
             const mon = d.toLocaleString('default', { month: 'short' }).toUpperCase();
-            const day = d.getDate().toString().padStart(2, '0');
-            paidText = `PAID ON ${mon} ${day}`;
+            paidText = `PAID ${mon}`;
         }
-        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30 text-[7px] font-black rounded uppercase inline-block">${paidText}</span>`;
+        tagHtml = `<span class="cust-badge cust-badge-paid">${paidText}</span>`;
       }
 
       const div = document.createElement('div');
@@ -535,8 +532,8 @@ class ZohoLedgerApp {
         <div class="mt-0.5 w-4 h-4 rounded border border-white/20 flex-shrink-0 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
           ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
         </div>
-        <div class="flex flex-col overflow-hidden w-full">
-            <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white tracking-widest">${c.contact_name}</span>
+        <div class="flex flex-col overflow-hidden w-full" style="gap:4px;">
+            <span class="truncate font-bold text-[11px] text-neutral-200 group-hover:text-white" style="letter-spacing:0.01em;line-height:1.3">${c.contact_name}</span>
             ${tagHtml}
         </div>
       `;

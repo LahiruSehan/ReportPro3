@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>BIZSENSE STATEMENT PRO</title>
   
-  <link rel="icon" type="image/png" href="https://i.ibb.co/7mmBhMJ/LOGO.png">
-  <link rel="apple-touch-icon" href="https://i.ibb.co/7mmBhMJ/LOGO.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="BizSense Pro">
@@ -333,8 +334,9 @@
     /* ===== SUPPORT MODAL ===== */
     #modal-support {
       position: fixed;
-      bottom: 5.5rem;
-      left: 1.5rem;
+      bottom: auto;
+      top: auto;
+      left: auto;
       z-index: 9100;
       background: #0f0f18;
       border: 1px solid rgba(255,255,255,0.08);
@@ -756,6 +758,78 @@
       border-radius: 8px !important;
       transition: all 0.2s !important;
     }
+    /* ===== CUSTOMER BADGES (new unified style) ===== */
+    .cust-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+      line-height: 1.5;
+      margin-top: 2px;
+      max-width: 100%;
+    }
+    .cust-badge-due {
+      background: rgba(239,68,68,0.18);
+      color: #f87171;
+      border: 1px solid rgba(239,68,68,0.3);
+    }
+    .cust-badge-credit {
+      background: rgba(245,158,11,0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245,158,11,0.25);
+    }
+    .cust-badge-paid {
+      background: rgba(34,197,94,0.12);
+      color: #4ade80;
+      border: 1px solid rgba(34,197,94,0.2);
+    }
+    body.light-mode .cust-badge-due   { background: rgba(239,68,68,0.1);  color: #dc2626; border-color: rgba(239,68,68,0.2); }
+    body.light-mode .cust-badge-credit{ background: rgba(245,158,11,0.1); color: #d97706; border-color: rgba(245,158,11,0.2); }
+    body.light-mode .cust-badge-paid  { background: rgba(34,197,94,0.08); color: #16a34a; border-color: rgba(34,197,94,0.18); }
+
+    /* ===== DETAILED TOGGLE BUTTON ===== */
+    #toggle-summary {
+      cursor: pointer;
+    }
+    #toggle-summary:hover {
+      background: rgba(99,102,241,0.2) !important;
+      border-color: rgba(99,102,241,0.4) !important;
+      transform: translateY(-1px);
+    }
+    #toggle-summary.is-summary {
+      background: rgba(99,102,241,0.06) !important;
+      border-color: rgba(99,102,241,0.15) !important;
+      color: rgba(99,102,241,0.5) !important;
+    }
+    body.light-mode #toggle-summary {
+      background: rgba(99,102,241,0.1) !important;
+      border-color: rgba(99,102,241,0.25) !important;
+      color: #4f46e5 !important;
+    }
+    body.light-mode #toggle-summary.is-summary {
+      background: rgba(0,0,0,0.04) !important;
+      border-color: rgba(0,0,0,0.1) !important;
+      color: rgba(0,0,0,0.3) !important;
+    }
+
+    /* ===== HEADER SUPPORT BUTTON (light mode) ===== */
+    body.light-mode #btn-support-header {
+      box-shadow: 0 2px 10px rgba(34,197,94,0.25) !important;
+    }
+    #btn-support-header:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(34,197,94,0.45) !important;
+      filter: brightness(1.08);
+    }
+
+    /* ===== HIDE OLD FLOATING SUPPORT BUTTON ON DASHBOARD ===== */
+    #view-dashboard ~ #btn-support { display: none; }
+
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -881,25 +955,30 @@
         
         <div class="w-px h-6 bg-white/10 mx-1"></div>
 
-        <div class="flex items-center gap-2 px-2">
-            <span class="text-[8px] font-black uppercase text-neutral-400">Detailed</span>
-            <div class="relative inline-block w-8 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="toggle" id="toggle-summary" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer border-indigo-900 left-0 checked:right-0 checked:left-auto"/>
-                <label for="toggle-summary" class="toggle-label block overflow-hidden h-4 rounded-full bg-indigo-900 cursor-pointer border border-white/10"></label>
-            </div>
-        </div>
+        <button id="toggle-summary" type="button"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all"
+          style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;"
+          data-mode="detailed"
+          title="Toggle Summary / Detailed view">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 10h16M4 14h10"/></svg>
+          <span id="toggle-summary-label">Detailed</span>
+        </button>
 
         <div class="w-px h-6 bg-white/10 mx-1"></div>
 
-        <button id="btn-email-composer" class="p-2 text-neutral-400 hover:text-white" title="Compose Email"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></button>
+        <button id="btn-email-composer" class="p-2 text-neutral-400 hover:text-white rounded-lg" title="Compose Email"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></button>
       </div>
 
-      <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2">
         <button id="btn-project-settings" class="p-2 text-neutral-500 hover:text-white" title="Sync Settings"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></button>
         <label class="theme-toggle-wrapper" for="btn-theme-toggle" title="Toggle Light/Dark Mode">
           <i class="ph ph-sun text-base"></i>
           <div id="btn-theme-toggle"></div>
         </label>
+        <button id="btn-support-header" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider text-white transition-all" style="background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 2px 10px rgba(34,197,94,0.3);" title="Contact Developer Support">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+          Support
+        </button>
         <button id="btn-logout" class="p-2 text-neutral-500 hover:text-red-500" title="Secure Logout"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"/></svg></button>
       </div>
     </header>
@@ -1098,15 +1177,37 @@
       const dtl = document.getElementById('btn-theme-toggle-login');
       if (dtl) dtl.parentElement.addEventListener('click', toggleTheme);
 
-      // ===== SUPPORT BUTTON =====
+      // ===== SUPPORT BUTTON & MODAL (declare once) =====
       const supportBtn = document.getElementById('btn-support');
+      const supportBtnHeader = document.getElementById('btn-support-header');
       const supportModal = document.getElementById('modal-support');
-      supportBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        supportModal.classList.toggle('open');
-      });
+      
+      if (supportBtn && supportModal) {
+        supportBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          supportModal.style.top = 'auto';
+          supportModal.style.bottom = '5.5rem';
+          supportModal.style.left = '1.5rem';
+          supportModal.classList.toggle('open');
+        });
+      }
+
+      if (supportBtnHeader && supportModal) {
+        supportBtnHeader.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Position modal under the button
+          const rect = supportBtnHeader.getBoundingClientRect();
+          supportModal.style.bottom = 'auto';
+          supportModal.style.top = (rect.bottom + 8) + 'px';
+          supportModal.style.left = Math.max(8, rect.right - 220) + 'px';
+          supportModal.classList.toggle('open');
+        });
+      }
+
       document.addEventListener('click', (e) => {
-        if (!supportModal.contains(e.target) && e.target !== supportBtn) {
+        if (supportModal && !supportModal.contains(e.target) 
+            && e.target !== supportBtn
+            && e.target !== supportBtnHeader) {
           supportModal.classList.remove('open');
         }
       });
@@ -1123,7 +1224,29 @@
         observer.observe(customerList, { childList: true, subtree: false });
         updateCount();
       }
-    });
+
+      // ===== DETAILED TOGGLE BUTTON (replaces broken checkbox) =====
+      const toggleBtn = document.getElementById('toggle-summary');
+      const toggleLabel = document.getElementById('toggle-summary-label');
+      if (toggleBtn) {
+        // Expose a fake checkbox-like .checked property so index.js still works
+        toggleBtn._checked = false;
+        Object.defineProperty(toggleBtn, 'checked', {
+          get: () => toggleBtn._checked,
+          set: (v) => { toggleBtn._checked = v; }
+        });
+        // Fire onchange when clicked
+        toggleBtn.addEventListener('click', () => {
+          toggleBtn._checked = !toggleBtn._checked;
+          const isSummary = toggleBtn._checked;
+          if (toggleLabel) toggleLabel.textContent = isSummary ? 'Summary' : 'Detailed';
+          if (isSummary) toggleBtn.classList.add('is-summary');
+          else toggleBtn.classList.remove('is-summary');
+          // Trigger the onchange that index.js set
+          if (typeof toggleBtn.onchange === 'function') toggleBtn.onchange({ target: toggleBtn });
+        });
+      }
+    }); // end DOMContentLoaded
   </script>
 
   <script type="module" src="index.js"></script>
