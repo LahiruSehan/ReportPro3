@@ -399,6 +399,363 @@
     }
     #modal-support .support-option.email .icon-wrap { background: rgba(99,102,241,0.2); color: #818cf8; }
     #modal-support .support-option.whatsapp .icon-wrap { background: rgba(34,197,94,0.15); color: #22c55e; }
+
+    /* ===================================================
+       COMPREHENSIVE UI FIXES & ENHANCEMENTS
+       =================================================== */
+
+    /* --- CUSTOMER LIST ITEMS --- */
+    #customer-list .customer-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.18s ease;
+      position: relative;
+      min-height: 44px;
+    }
+    #customer-list .customer-item:hover {
+      background: rgba(99,102,241,0.08);
+      border-color: rgba(99,102,241,0.2);
+    }
+    #customer-list .customer-item.active {
+      background: rgba(99,102,241,0.12);
+      border-color: rgba(99,102,241,0.35);
+    }
+    body.light-mode #customer-list .customer-item:hover {
+      background: rgba(99,102,241,0.07);
+      border-color: rgba(99,102,241,0.2);
+    }
+    body.light-mode #customer-list .customer-item.active {
+      background: rgba(99,102,241,0.1);
+      border-color: rgba(99,102,241,0.3);
+    }
+    /* Customer name - truncate cleanly */
+    #customer-list .customer-item .cust-name {
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+    /* Customer status tag - SHORT pill, no overflow */
+    #customer-list .customer-item .cust-tag {
+      display: inline-flex;
+      align-items: center;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      max-width: 68px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.6;
+    }
+    /* Tag color variants */
+    .cust-tag.tag-red    { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+    .cust-tag.tag-green  { background: rgba(34,197,94,0.12);  color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+    .cust-tag.tag-amber  { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+    .cust-tag.tag-indigo { background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }
+    .cust-tag.tag-gray   { background: rgba(255,255,255,0.07); color: #6b7280; border: 1px solid rgba(255,255,255,0.08); }
+    body.light-mode .cust-tag.tag-gray { background: rgba(0,0,0,0.05); color: #9ca3af; border-color: rgba(0,0,0,0.08); }
+    /* Customer avatar dot */
+    #customer-list .customer-item .cust-avatar {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 900;
+      color: white;
+      flex-shrink: 0;
+      letter-spacing: 0;
+    }
+
+    /* --- CHECKBOXES: visible in light AND dark mode --- */
+    input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 4px;
+      border: 1.5px solid rgba(99,102,241,0.5);
+      background: rgba(99,102,241,0.08);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    input[type="checkbox"]:checked {
+      background: #6366f1;
+      border-color: #6366f1;
+    }
+    input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      left: 4px; top: 1.5px;
+      width: 5px; height: 9px;
+      border: 2px solid white;
+      border-top: none; border-left: none;
+      transform: rotate(45deg);
+    }
+    input[type="checkbox"]:hover {
+      border-color: #6366f1;
+      background: rgba(99,102,241,0.15);
+    }
+    body.light-mode input[type="checkbox"] {
+      border-color: rgba(99,102,241,0.4);
+      background: rgba(99,102,241,0.05);
+    }
+    body.light-mode input[type="checkbox"]:checked {
+      background: #6366f1;
+      border-color: #6366f1;
+    }
+    /* Don't override toggle-checkbox with above */
+    .toggle-checkbox { appearance: auto !important; -webkit-appearance: auto !important; border: none !important; background: none !important; }
+    .toggle-checkbox::after { display: none !important; }
+
+    /* --- TOOLBAR DOWNLOAD BUTTONS: refined hover states --- */
+    #btn-print, #btn-download-pdf, #btn-download-image, #btn-download-excel {
+      transition: all 0.2s ease !important;
+      position: relative;
+      overflow: hidden;
+    }
+    #btn-print:not(:disabled):hover         { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,0.35) !important; }
+    #btn-download-pdf:not(:disabled):hover  { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(99,102,241,0.4) !important; }
+    #btn-download-image:not(:disabled):hover{ transform: translateY(-1px); box-shadow: 0 4px 14px rgba(168,85,247,0.4) !important; }
+    #btn-download-excel:not(:disabled):hover{ transform: translateY(-1px); box-shadow: 0 4px 14px rgba(16,185,129,0.4) !important; }
+
+    /* --- SIDEBAR: clean up the "arrow keys nav" badge --- */
+    .nav-hint-badge {
+      font-size: 8px;
+      font-weight: 700;
+      background: rgba(99,102,241,0.08);
+      border: 1px solid rgba(99,102,241,0.15);
+      color: rgba(99,102,241,0.6);
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    body.light-mode .nav-hint-badge {
+      background: rgba(99,102,241,0.06);
+      color: rgba(79,70,229,0.5);
+    }
+
+    /* --- CUSTOMER SEARCH INPUT: refined --- */
+    #customer-search {
+      padding: 8px 12px !important;
+      border-radius: 10px !important;
+      font-size: 12px !important;
+      border-color: rgba(99,102,241,0.15) !important;
+    }
+    #customer-search:focus {
+      border-color: rgba(99,102,241,0.5) !important;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+    }
+
+    /* --- STATUS BAR: elevated readability --- */
+    #log-message {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      opacity: 0.5;
+      transition: opacity 0.3s;
+    }
+    #log-message:not(:empty) { opacity: 1; }
+    #data-stats {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+    }
+
+    /* --- TOOLBAR BAR: better alignment --- */
+    .toolbar-section {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    /* Explorer tabs: pill style */
+    #explorer-tabs .explorer-tab {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.18s;
+      background: transparent;
+      color: rgba(255,255,255,0.4);
+    }
+    #explorer-tabs .explorer-tab:hover { background: rgba(255,255,255,0.05); color: white; }
+    #explorer-tabs .explorer-tab.active { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.3); color: #818cf8; }
+    body.light-mode #explorer-tabs .explorer-tab { color: rgba(0,0,0,0.4); }
+    body.light-mode #explorer-tabs .explorer-tab:hover { background: rgba(0,0,0,0.05); color: rgba(0,0,0,0.8); }
+    body.light-mode #explorer-tabs .explorer-tab.active { background: rgba(99,102,241,0.1); color: #4f46e5; }
+    body.light-mode #explorer-tabs { background: rgba(220,220,240,0.4) !important; }
+
+    /* --- HEADER TOOLBAR PILL: consistent bg in light mode --- */
+    body.light-mode .flex.flex-wrap.items-center.gap-2.bg-black\/40 {
+      background: rgba(220,220,240,0.5) !important;
+      border-color: rgba(0,0,0,0.06) !important;
+    }
+    body.light-mode #date-range-preset {
+      background: transparent !important;
+      color: #333 !important;
+      border: none !important;
+      padding: 0.25rem !important;
+    }
+    body.light-mode #date-range-preset option { background: white; color: #333; }
+    body.light-mode .w-px.bg-white\/10 { background: rgba(0,0,0,0.1) !important; }
+
+    /* Detailed toggle label: bigger and more visible */
+    body.light-mode #toggle-summary + .toggle-label { background-color: #c7c7e8 !important; }
+    body.light-mode .toggle-checkbox { border-color: #c7c7e8 !important; }
+
+    /* --- MODAL ENHANCEMENTS --- */
+    #modal-settings .glass-card,
+    #modal-config .glass-card {
+      box-shadow: 0 24px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    /* Module selector labels: cleaner in light */
+    body.light-mode #module-selector label {
+      background: rgba(99,102,241,0.05) !important;
+      border-color: rgba(99,102,241,0.1) !important;
+    }
+    body.light-mode #module-selector label:hover {
+      border-color: rgba(99,102,241,0.4) !important;
+      background: rgba(99,102,241,0.08) !important;
+    }
+    body.light-mode #modal-settings h3,
+    body.light-mode #modal-config h3 { color: #111 !important; }
+    body.light-mode #modal-settings .text-xs { color: #333 !important; }
+    body.light-mode #btn-close-settings { background: rgba(0,0,0,0.05) !important; border-color: rgba(0,0,0,0.08) !important; color: #333 !important; }
+    body.light-mode code#display-redirect-uri { background: rgba(0,0,0,0.05) !important; border-color: rgba(0,0,0,0.08) !important; color: #4f46e5 !important; }
+    body.light-mode .p-4.bg-white\/5 { background: rgba(0,0,0,0.03) !important; border-color: rgba(0,0,0,0.06) !important; }
+
+    /* --- ZOOM CONTROLS: move up to avoid support button overlap --- */
+    .zoom-controls { bottom: 5.5rem !important; right: 1.5rem !important; }
+
+    /* --- BUSINESS QUOTE: remove mono font, use italic serif feel --- */
+    #business-quote { font-family: 'Space Grotesk', sans-serif !important; font-style: italic; opacity: 0.7; }
+
+    /* --- REGISTRY HEADER: polish --- */
+    .registry-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .registry-title {
+      font-size: 9px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: #818cf8;
+    }
+    body.light-mode .registry-title { color: #4f46e5; }
+
+    /* --- EMPTY STATE: nicer --- */
+    #empty-state {
+      opacity: 0.18 !important;
+      gap: 0;
+    }
+    #empty-state svg { width: 48px; height: 48px; stroke-width: 1; margin-bottom: 16px; }
+    #empty-state p { letter-spacing: 0.3em; font-size: 10px; }
+    body.light-mode #empty-state { filter: none !important; opacity: 0.3 !important; }
+    body.light-mode #empty-state svg { stroke: #6366f1; }
+    body.light-mode #empty-state p { color: #6366f1; }
+
+    /* --- ICON BUTTON hover polish (logout, settings, email) --- */
+    header button[id] {
+      border-radius: 8px;
+      transition: background 0.15s, color 0.15s, transform 0.15s;
+    }
+    header button[id]:hover { background: rgba(255,255,255,0.06); transform: scale(1.08); }
+    body.light-mode header button[id]:hover { background: rgba(0,0,0,0.05); }
+
+    /* --- UPDATE LOGO BUTTON: light mode --- */
+    body.light-mode button[onclick] {
+      background: rgba(0,0,0,0.04) !important;
+      border-color: rgba(0,0,0,0.1) !important;
+      color: #333 !important;
+    }
+    body.light-mode button[onclick]:hover {
+      background: rgba(0,0,0,0.08) !important;
+    }
+
+    /* --- HEADER LOGO: subtle glow in dark --- */
+    header img { filter: drop-shadow(0 0 6px rgba(99,102,241,0.3)); transition: filter 0.3s; }
+    body.light-mode header img { filter: none; }
+
+    /* --- COLOR THEME PICKER BALLS: light mode border --- */
+    body.light-mode .color-ball { border-color: rgba(0,0,0,0.1) !important; }
+
+    /* --- SMOOTH TRANSITIONS: all interactive elements --- */
+    button, select, input, label, a { transition: opacity 0.15s, transform 0.15s, background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s; }
+
+    /* Glowing indigo accent line below header */
+    header::after {
+      content: '';
+      display: block;
+      position: absolute;
+      bottom: -1px;
+      left: 5%;
+      width: 90%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(99,102,241,0.4), transparent);
+      pointer-events: none;
+    }
+    header { position: relative; }
+
+    /* Sidebar customer count badge */
+    #customer-count-badge {
+      font-size: 8px;
+      font-weight: 800;
+      background: rgba(99,102,241,0.12);
+      color: #818cf8;
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 99px;
+      padding: 2px 8px;
+      min-width: 24px;
+      text-align: center;
+    }
+    body.light-mode #customer-count-badge { background: rgba(99,102,241,0.08); color: #4f46e5; }
+
+    /* "ARROW KEYS NAV" replacement styling */
+    .text-\[8px\].font-black.bg-white\/5.px-2.py-1.rounded.text-neutral-500 {
+      font-size: 8px !important;
+      background: rgba(99,102,241,0.08) !important;
+      border: 1px solid rgba(99,102,241,0.15) !important;
+      color: rgba(99,102,241,0.6) !important;
+      border-radius: 6px !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 3px !important;
+    }
+    body.light-mode .text-\[8px\].font-black.bg-white\/5.px-2.py-1.rounded.text-neutral-500 {
+      color: rgba(79,70,229,0.5) !important;
+      background: rgba(99,102,241,0.06) !important;
+    }
+
+    /* Update Logo button refinement */
+    button[onclick="document.getElementById('logo-upload').click()"] {
+      font-size: 8px !important;
+      letter-spacing: 0.08em !important;
+      border-radius: 8px !important;
+      transition: all 0.2s !important;
+    }
   </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -551,9 +908,12 @@
       <aside class="hidden lg:flex w-80 flex-col gap-4 no-print">
         <div class="solid-card p-6 flex-grow flex flex-col overflow-hidden">
           <div class="flex justify-between items-center mb-4">
-            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
+            <div class="flex items-center gap-2">
+              <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
+              <span id="customer-count-badge">0</span>
+            </div>
             <div class="flex gap-1">
-              <span class="text-[8px] font-black bg-white/5 px-2 py-1 rounded text-neutral-500">ARROW KEYS NAV</span>
+              <span class="text-[8px] font-black bg-white/5 px-2 py-1 rounded text-neutral-500" title="Use arrow keys to navigate customers">⌨ Nav</span>
             </div>
           </div>
           <input type="text" id="customer-search" placeholder="Search customer..." class="w-full mb-4 text-xs">
@@ -647,20 +1007,20 @@
       <h3 class="text-xl font-black uppercase tracking-tight">Dataset Control</h3>
       <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Select Zoho modules to analyze</p>
       <div id="module-selector" class="grid grid-cols-2 gap-3">
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="invoices" checked class="accent-indigo-500 w-4 h-4">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+          <input type="checkbox" value="invoices" checked>
           <span class="text-xs font-bold uppercase tracking-widest">Invoices</span>
         </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="estimates" class="accent-indigo-500 w-4 h-4">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+          <input type="checkbox" value="estimates">
           <span class="text-xs font-bold uppercase tracking-widest">Estimates</span>
         </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="salesorders" class="accent-indigo-500 w-4 h-4">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+          <input type="checkbox" value="salesorders">
           <span class="text-xs font-bold uppercase tracking-widest">Sales Orders</span>
         </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="creditnotes" class="accent-indigo-500 w-4 h-4">
+        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-all">
+          <input type="checkbox" value="creditnotes">
           <span class="text-xs font-bold uppercase tracking-widest">Credit Notes</span>
         </label>
       </div>
@@ -750,6 +1110,19 @@
           supportModal.classList.remove('open');
         }
       });
+
+      // ===== CUSTOMER COUNT BADGE =====
+      const customerList = document.getElementById('customer-list');
+      const countBadge = document.getElementById('customer-count-badge');
+      if (customerList && countBadge) {
+        const updateCount = () => {
+          const items = customerList.querySelectorAll('[data-customer-id], .customer-item, li, div[class*="cursor"]');
+          countBadge.textContent = items.length || '0';
+        };
+        const observer = new MutationObserver(updateCount);
+        observer.observe(customerList, { childList: true, subtree: false });
+        updateCount();
+      }
     });
   </script>
 
