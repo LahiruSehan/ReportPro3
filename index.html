@@ -1173,6 +1173,9 @@
       // ===== SUPPORT BUTTON =====
       const supportBtn = document.getElementById('btn-support');
       const supportModal = document.getElementById('modal-support');
+      const supportBtnHeader = document.getElementById('btn-support-header');
+      const supportBtnFloat = document.getElementById('btn-support');
+      
       supportBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         supportModal.classList.toggle('open');
@@ -1219,8 +1222,6 @@
       }
 
       // ===== HEADER SUPPORT BUTTON =====
-      const supportBtnHeader = document.getElementById('btn-support-header');
-      const supportModal = document.getElementById('modal-support');
       if (supportBtnHeader && supportModal) {
         supportBtnHeader.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1234,7 +1235,6 @@
       }
 
       // ===== FLOATING SUPPORT BUTTON (login page only) =====
-      const supportBtnFloat = document.getElementById('btn-support');
       if (supportBtnFloat && supportModal) {
         supportBtnFloat.addEventListener('click', (e) => {
           e.stopPropagation();
