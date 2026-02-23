@@ -465,7 +465,9 @@ class ZohoLedgerApp {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.message || "API Rejected Request");
     }
-    return res.json();
+    const data = await res.json();
+    console.log('[BizSense DEBUG]', url, JSON.stringify(data).slice(0, 500));
+    return data;
   }
 
   startAuth(force = false) {
