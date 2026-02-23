@@ -406,80 +406,7 @@
        COMPREHENSIVE UI FIXES & ENHANCEMENTS
        =================================================== */
 
-    /* --- CUSTOMER LIST ITEMS --- */
-    #customer-list .customer-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 10px;
-      cursor: pointer;
-      border: 1px solid transparent;
-      transition: all 0.18s ease;
-      position: relative;
-      min-height: 44px;
-    }
-    #customer-list .customer-item:hover {
-      background: rgba(99,102,241,0.08);
-      border-color: rgba(99,102,241,0.2);
-    }
-    #customer-list .customer-item.active {
-      background: rgba(99,102,241,0.12);
-      border-color: rgba(99,102,241,0.35);
-    }
-    body.light-mode #customer-list .customer-item:hover {
-      background: rgba(99,102,241,0.07);
-      border-color: rgba(99,102,241,0.2);
-    }
-    body.light-mode #customer-list .customer-item.active {
-      background: rgba(99,102,241,0.1);
-      border-color: rgba(99,102,241,0.3);
-    }
-    /* Customer name - truncate cleanly */
-    #customer-list .customer-item .cust-name {
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1;
-      min-width: 0;
-    }
-    /* Customer status tag - SHORT pill, no overflow */
-    #customer-list .customer-item .cust-tag {
-      display: inline-flex;
-      align-items: center;
-      font-size: 8px;
-      font-weight: 800;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      padding: 2px 7px;
-      border-radius: 999px;
-      white-space: nowrap;
-      flex-shrink: 0;
-      max-width: 68px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      line-height: 1.6;
-    }
-    /* Tag color variants */
-    .cust-tag.tag-red    { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
-    .cust-tag.tag-green  { background: rgba(34,197,94,0.12);  color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
-    .cust-tag.tag-amber  { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
-    .cust-tag.tag-indigo { background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }
-    .cust-tag.tag-gray   { background: rgba(255,255,255,0.07); color: #6b7280; border: 1px solid rgba(255,255,255,0.08); }
-    body.light-mode .cust-tag.tag-gray { background: rgba(0,0,0,0.05); color: #9ca3af; border-color: rgba(0,0,0,0.08); }
-    /* Customer avatar dot */
-    #customer-list .customer-item .cust-avatar {
-      width: 26px; height: 26px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #4f46e5, #7c3aed);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 9px; font-weight: 900;
-      color: white;
-      flex-shrink: 0;
-      letter-spacing: 0;
-    }
+    /* customer item styles moved to cust-list-item classes above */
 
     /* --- CHECKBOXES: visible in light AND dark mode --- */
     input[type="checkbox"] {
@@ -758,7 +685,73 @@
       border-radius: 8px !important;
       transition: all 0.2s !important;
     }
-    /* ===== CUSTOMER BADGES (new unified style) ===== */
+    /* ===== CUSTOMER LIST ITEMS — FINAL CLEAN STYLES ===== */
+    .cust-list-item {
+      border: 1px solid transparent;
+    }
+    .cust-list-item:hover {
+      background: rgba(239, 68, 68, 0.07) !important;
+      border-color: rgba(239, 68, 68, 0.2) !important;
+    }
+    .cust-list-item:hover .cust-name-text {
+      color: #f87171 !important;
+    }
+    .cust-list-item:hover .cust-check-off {
+      border-color: rgba(239, 68, 68, 0.5) !important;
+    }
+    .cust-list-selected {
+      background: rgba(99, 102, 241, 0.1) !important;
+      border-color: rgba(99, 102, 241, 0.3) !important;
+    }
+    .cust-list-selected .cust-name-text {
+      color: #a5b4fc !important;
+    }
+    /* Name text — always visible, never disappears */
+    .cust-name-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: #d4d4d8;
+      display: block;
+      transition: color 0.15s;
+    }
+    body.light-mode .cust-name-text {
+      color: #3f3f46 !important;
+    }
+    body.light-mode .cust-list-item:hover .cust-name-text {
+      color: #dc2626 !important;
+    }
+    body.light-mode .cust-list-item:hover {
+      background: rgba(239, 68, 68, 0.05) !important;
+      border-color: rgba(239, 68, 68, 0.2) !important;
+    }
+    body.light-mode .cust-list-selected {
+      background: rgba(99, 102, 241, 0.08) !important;
+      border-color: rgba(99, 102, 241, 0.25) !important;
+    }
+    body.light-mode .cust-list-selected .cust-name-text {
+      color: #4f46e5 !important;
+    }
+    /* Checkbox inside list */
+    .cust-check {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      transition: all 0.15s;
+    }
+    .cust-check-off {
+      border: 1.5px solid rgba(255,255,255,0.15);
+      background: transparent;
+    }
+    .cust-check-on {
+      background: #6366f1;
+      border: 1.5px solid #6366f1;
+      color: white;
+    }
+    body.light-mode .cust-check-off {
+      border-color: rgba(0,0,0,0.18);
+    }
     .cust-badge {
       display: inline-flex;
       align-items: center;
@@ -1177,37 +1170,15 @@
       const dtl = document.getElementById('btn-theme-toggle-login');
       if (dtl) dtl.parentElement.addEventListener('click', toggleTheme);
 
-      // ===== SUPPORT BUTTON & MODAL (declare once) =====
+      // ===== SUPPORT BUTTON =====
       const supportBtn = document.getElementById('btn-support');
-      const supportBtnHeader = document.getElementById('btn-support-header');
       const supportModal = document.getElementById('modal-support');
-      
-      if (supportBtn && supportModal) {
-        supportBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          supportModal.style.top = 'auto';
-          supportModal.style.bottom = '5.5rem';
-          supportModal.style.left = '1.5rem';
-          supportModal.classList.toggle('open');
-        });
-      }
-
-      if (supportBtnHeader && supportModal) {
-        supportBtnHeader.addEventListener('click', (e) => {
-          e.stopPropagation();
-          // Position modal under the button
-          const rect = supportBtnHeader.getBoundingClientRect();
-          supportModal.style.bottom = 'auto';
-          supportModal.style.top = (rect.bottom + 8) + 'px';
-          supportModal.style.left = Math.max(8, rect.right - 220) + 'px';
-          supportModal.classList.toggle('open');
-        });
-      }
-
+      supportBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        supportModal.classList.toggle('open');
+      });
       document.addEventListener('click', (e) => {
-        if (supportModal && !supportModal.contains(e.target) 
-            && e.target !== supportBtn
-            && e.target !== supportBtnHeader) {
+        if (!supportModal.contains(e.target) && e.target !== supportBtn) {
           supportModal.classList.remove('open');
         }
       });
@@ -1246,6 +1217,41 @@
           if (typeof toggleBtn.onchange === 'function') toggleBtn.onchange({ target: toggleBtn });
         });
       }
+
+      // ===== HEADER SUPPORT BUTTON =====
+      const supportBtnHeader = document.getElementById('btn-support-header');
+      const supportModal = document.getElementById('modal-support');
+      if (supportBtnHeader && supportModal) {
+        supportBtnHeader.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Position modal under the button
+          const rect = supportBtnHeader.getBoundingClientRect();
+          supportModal.style.bottom = 'auto';
+          supportModal.style.top = (rect.bottom + 8) + 'px';
+          supportModal.style.left = Math.max(8, rect.right - 220) + 'px';
+          supportModal.classList.toggle('open');
+        });
+      }
+
+      // ===== FLOATING SUPPORT BUTTON (login page only) =====
+      const supportBtnFloat = document.getElementById('btn-support');
+      if (supportBtnFloat && supportModal) {
+        supportBtnFloat.addEventListener('click', (e) => {
+          e.stopPropagation();
+          supportModal.style.top = 'auto';
+          supportModal.style.bottom = '5.5rem';
+          supportModal.style.left = '1.5rem';
+          supportModal.classList.toggle('open');
+        });
+      }
+
+      document.addEventListener('click', (e) => {
+        if (supportModal && !supportModal.contains(e.target) 
+            && e.target !== supportBtnHeader 
+            && e.target !== supportBtnFloat) {
+          supportModal.classList.remove('open');
+        }
+      });
     }); // end DOMContentLoaded
   </script>
 
