@@ -635,11 +635,14 @@ class ZohoLedgerApp {
     this.showLoading(50, `Mapping SOA Data: ${customer.contact_name}`);
     
     try {
-        const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
-        this.state.customerFullDetails[id] = cRes.contact;
-        // Feature: Dynamic Currency
-        this.state.currency = cRes.contact.currency_symbol || cRes.contact.currency_code || 'LKR';
-    } catch(e) { console.warn("SOA Context fetch failed", e); }
+    const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
+    this.state.customerFullDetails[id] = cRes.contact;
+
+    console.log('CONTACT FULL', cRes.contact);
+
+    // Feature: Dynamic Currency
+    this.state.currency = cRes.contact.currency_symbol || cRes.contact.currency_code || 'LKR';
+} catch(e) { console.warn("SOA Context fetch failed", e); }
 
     const modulesToSync = ['invoices', 'creditnotes', 'customerpayments']; 
     
@@ -731,7 +734,13 @@ class ZohoLedgerApp {
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'Valued Client';
-      const systemOpeningBalance = parseFloat(customer.opening_balance) || 0;
+      const systemOpeningBalance =
+  parseFloat(
+    customer.opening_balance ??
+    customer.opening_balances?.[0]?.opening_balance ??
+    customer.outstanding_receivable_amount ??
+    0
+  ) || 0;
       
       let runningBalance = systemOpeningBalance;
       let balanceBroughtForward = systemOpeningBalance; // For filtered view
@@ -1014,32 +1023,37 @@ class ZohoLedgerApp {
     });
   }
 
-  recalculateAllLedgers() {
-    const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
-    let runningTotal = 0;
-    
-    // Attempting to maintain balance after manual row removal
-    rows.forEach(row => {
-        if (row.classList.contains('ledger-item-row')) {
-            const amtCell = row.children[3];
-            const payCell = row.children[4];
-            const runTotalCell = row.children[5];
-            
-            const amtRaw = amtCell.innerText.replace(/,/g, '');
-            const payRaw = payCell.innerText.replace(/,/g, '');
-            
-            const amt = parseFloat(amtRaw) || 0;
-            const pay = parseFloat(payRaw) || 0;
-            
-            // Invoices/Incomes are positive in column 3, CNs are negative in col 3.
-            // Payments are in column 4.
-            runningTotal += amt; 
-            runningTotal -= pay;
-            
-            runTotalCell.innerText = runningTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
-        }
-    });
+recalculateAllLedgers() {
+  const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
+  let runningTotal = 0;
+
+  const openingRow = rows[0];
+  if (openingRow) {
+    const openingText = openingRow.children[5]?.innerText?.replace(/,/g, '');
+    runningTotal = parseFloat(openingText) || 0;
   }
+
+  rows.forEach((row, index) => {
+    if (index === 0) return;
+
+    if (row.classList.contains('ledger-item-row')) {
+      const amtCell = row.children[3];
+      const payCell = row.children[4];
+      const runTotalCell = row.children[5];
+
+      const amtRaw = amtCell.innerText.replace(/,/g, '');
+      const payRaw = payCell.innerText.replace(/,/g, '');
+
+      const amt = parseFloat(amtRaw) || 0;
+      const pay = parseFloat(payRaw) || 0;
+
+      runningTotal += amt;
+      runningTotal -= pay;
+
+      runTotalCell.innerText = runningTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
+    }
+  });
+}
 
   downloadExcel() {
     this.showLoading(80, "Aggregating SOA Workbook...");
@@ -1057,7 +1071,13 @@ class ZohoLedgerApp {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'N/A';
       
-      const openingBalance = parseFloat(customer.opening_balance) || 0;
+      const openingBalance =
+  parseFloat(
+    customer.opening_balance ??
+    customer.opening_balances?.[0]?.opening_balance ??
+    customer.outstanding_receivable_amount ??
+    0
+  ) || 0;
       let runningBalance = openingBalance;
       
       data.push({
