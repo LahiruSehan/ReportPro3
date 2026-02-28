@@ -1,142 +1,158 @@
 /**
- * BIZSENSE STATEMENT PRO - ENTERPRISE SOA ENGINE
- * Transaction-level Statement of Accounts with Nested Item Details
+ * BIZSENSE PRO — Statement Engine
+ * Zoho Books · Ledger SOA + Sales Statement Builder
  */
 
-class ZohoLedgerApp {
+class BizSensePro {
   constructor() {
-
-    this.proxyPrefix = "https://lahirusehan-proxy.onrender.com/";
-    this.initStorage();
+    this.initConfig();
     this.state = {
       accessToken: localStorage.getItem('zoho_access_token'),
       organizations: [],
       selectedOrgId: localStorage.getItem('zoho_selected_org_id'),
       currentOrgDetails: null,
       customers: [],
-      customerFullDetails: {}, 
+      customerFullDetails: {},
       selectedCustomerIds: new Set(),
-      activeModules: new Set(JSON.parse(localStorage.getItem('active_modules')) || ['invoices', 'creditnotes', 'payments']), 
-      dataStore: { invoices: {}, creditnotes: {}, payments: {} },
+      activeModules: new Set(
+        JSON.parse(localStorage.getItem('active_modules') || '["invoices","creditnotes","customerpayments"]')
+      ),
+      dataStore: { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} },
       invoiceDetailsCache: {},
+      itemGroupCache: {},
       customLogo: localStorage.getItem('biz_logo') || null,
-      zoom: 0.75,
+      zoom: 0.8,
       activeView: 'ledger',
+      statementMode: 'ledger',  // 'ledger' | 'sales'
       explorerModule: 'invoices',
-      currency: 'LKR', // Will be dynamic
-      theme: 'indigo', 
+      currency: localStorage.getItem('biz_currency') || 'LKR',
+      theme: localStorage.getItem('biz_theme') || 'blue',
       isSummaryMode: false,
       filterDateStart: null,
       filterDateEnd: null,
-      notesContent: localStorage.getItem('biz_notes') || "Please ensure payment is made by the due date. Thank you for your business.",
+      notesContent: localStorage.getItem('biz_notes') || 'Please ensure payment is made by the due date. Thank you for your business.',
+      builderConfig: JSON.parse(localStorage.getItem('builder_config') || JSON.stringify({
+        showHeader: true,
+        showCustomer: true,
+        showOpening: true,
+        showPayments: true,
+        showCredits: true,
+        showSummary: true,
+        showNotes: true,
+        colDate: true,
+        colRef: true,
+        colGroup: true,
+        colItem: true,
+        colUnit: true,
+        colRate: true,
+        colAmount: true,
+        colBalance: true,
+        groupBy: 'none',
+        sortBy: 'date_asc',
+        formulaBags: false,
+        bagsPackSize: 16.5,
+        formulaOverdue: true,
+      })),
       colors: [
-        { name: 'indigo', hex: '#4f46e5' },
-        { name: 'blue', hex: '#2563eb' },
-        { name: 'emerald', hex: '#059669' },
-        { name: 'rose', hex: '#e11d48' },
-        { name: 'amber', hex: '#d97706' },
-        { name: 'slate', hex: '#475569' },
-        { name: 'cyan', hex: '#06b6d4' },
-        { name: 'violet', hex: '#8b5cf6' },
-        { name: 'fuchsia', hex: '#d946ef' }
+        { name: 'blue',    primary: '#1d4ed8', accent: '#3b82f6', light: '#eff6ff' },
+        { name: 'indigo',  primary: '#4338ca', accent: '#6366f1', light: '#eef2ff' },
+        { name: 'violet',  primary: '#6d28d9', accent: '#8b5cf6', light: '#f5f3ff' },
+        { name: 'rose',    primary: '#be123c', accent: '#f43f5e', light: '#fff1f2' },
+        { name: 'emerald', primary: '#065f46', accent: '#059669', light: '#ecfdf5' },
+        { name: 'amber',   primary: '#b45309', accent: '#f59e0b', light: '#fffbeb' },
+        { name: 'slate',   primary: '#334155', accent: '#64748b', light: '#f8fafc' },
+        { name: 'cyan',    primary: '#0e7490', accent: '#06b6d4', light: '#ecfeff' },
       ],
       quotes: [
-        "\"Revenue is vanity, profit is sanity, but cash is king.\"",
-        "\"Opportunities don't happen. You create them.\"",
-        "\"Success usually comes to those who are too busy to be looking for it.\"",
-        "\"Don't count the days, make the days count.\"",
-        "\"The best way to predict the future is to create it.\"",
-        "\"Quality means doing it right when no one is looking.\""
-      ]
+        '"Revenue is vanity, profit is sanity, but cash is king."',
+        '"Opportunities don\'t happen. You create them."',
+        '"The best way to predict the future is to create it."',
+        '"Quality means doing it right when no one is looking."',
+        '"Success usually comes to those too busy to be looking for it."',
+        '"Don\'t count the days, make the days count."',
+      ],
     };
 
     this.handleOAuthCallback();
     this.init();
   }
 
-  initStorage() {
-    const savedConfig = localStorage.getItem('zoho_config');
-    this.config = savedConfig ? JSON.parse(savedConfig) : { clientId: '', region: 'com' };
+  // ─────────────────────────────────────────
+  // CONFIG (proxy URL configurable)
+  // ─────────────────────────────────────────
+  initConfig() {
+    const saved = localStorage.getItem('zoho_config');
+    this.config = saved ? JSON.parse(saved) : {
+      clientId: '',
+      region: 'com',
+    };
   }
 
+  get proxyPrefix() {
+    return 'https://lahirusehan-proxy.onrender.com/';
+  }
+
+  // ─────────────────────────────────────────
+  // INIT
+  // ─────────────────────────────────────────
   init() {
     document.addEventListener('DOMContentLoaded', () => {
       this.cacheDOM();
       this.bindEvents();
-      this.renderColorPicker(); 
+      this.renderColorPicker();
       this.updateConfigStatus();
       this.checkSession();
-      this.initLandingUI(); // Start landing animations
-      setTimeout(() => this.autoFitZoom(), 1000);
+      this.initLandingUI();
+      this.applyBuilderConfigToUI();
+      setTimeout(() => this.autoFitZoom(), 800);
       window.addEventListener('resize', () => this.autoFitZoom());
-      
-      // Inject No-Scrollbar Style for Preview Area
-      const style = document.createElement('style');
-      style.innerHTML = `
-        #area-ledger::-webkit-scrollbar { display: none; }
-        #area-ledger { -ms-overflow-style: none; scrollbar-width: none; }
-      `;
-      document.head.appendChild(style);
-      
-      // Keyboard Navigation
-      document.addEventListener('keydown', (e) => this.handleKeyboardNav(e));
     });
   }
 
   initLandingUI() {
-    // 1. Background Slideshow Logic
-    const bgContainer = document.getElementById('bg-slideshow');
-    if (!bgContainer) return;
-
-    const images = [
-      'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop', // Sky
-      'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop', // Data
-      'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2032&auto=format&fit=crop', // Meeting
-      'https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2011&auto=format&fit=crop', // Finance
-      'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2069&auto=format&fit=crop'  // Office
+    const bg = document.getElementById('bg-slideshow');
+    if (!bg) return;
+    const imgs = [
+      'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2032&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2011&auto=format&fit=crop',
     ];
-
-    // Inject images
-    bgContainer.innerHTML = '';
-    images.forEach((url, i) => {
-        const div = document.createElement('div');
-        div.className = `bg-slide ${i === 0 ? 'active' : ''}`;
-        div.style.backgroundImage = `url(${url})`;
-        bgContainer.appendChild(div);
-    });
-
-    // Rotate Backgrounds
-    let currentSlide = 0;
+    bg.innerHTML = imgs.map((url, i) =>
+      `<div class="bg-slide${i === 0 ? ' active' : ''}" style="background-image:url(${url})"></div>`
+    ).join('');
+    let cur = 0;
     setInterval(() => {
-        const slides = document.querySelectorAll('.bg-slide');
-        if (slides.length > 0) {
-            slides[currentSlide].classList.remove('active');
-            currentSlide = (currentSlide + 1) % slides.length;
-            slides[currentSlide].classList.add('active');
-        }
-    }, 4000); // 4 seconds
+      const slides = bg.querySelectorAll('.bg-slide');
+      slides[cur].classList.remove('active');
+      cur = (cur + 1) % slides.length;
+      slides[cur].classList.add('active');
+    }, 4500);
 
-    // 2. Rotate Quotes
-    const quoteEl = document.getElementById('business-quote');
-    if (quoteEl) {
-        let qIdx = 0;
-        setInterval(() => {
-            qIdx = (qIdx + 1) % this.state.quotes.length;
-            quoteEl.style.opacity = '0';
-            setTimeout(() => {
-                quoteEl.innerText = this.state.quotes[qIdx];
-                quoteEl.style.opacity = '1';
-            }, 500); // Wait for fade out
-        }, 5000); // 5 seconds
+    const qEl = document.getElementById('business-quote');
+    if (qEl) {
+      let qi = 0;
+      setInterval(() => {
+        qi = (qi + 1) % this.state.quotes.length;
+        qEl.style.opacity = '0';
+        setTimeout(() => { qEl.textContent = this.state.quotes[qi]; qEl.style.opacity = '1'; }, 500);
+      }, 5000);
     }
+
+    // Prefill config fields
+    if (document.getElementById('cfg-client-id')) document.getElementById('cfg-client-id').value = this.config.clientId || '';
+    if (document.getElementById('cfg-region')) document.getElementById('cfg-region').value = this.config.region || 'com';
+    const redirectUri = window.location.origin + window.location.pathname;
+    const disp = document.getElementById('display-redirect-uri');
+    if (disp) disp.textContent = redirectUri;
   }
 
   cacheDOM() {
     this.views = {
       landing: document.getElementById('view-landing'),
       dashboard: document.getElementById('view-dashboard'),
-      configModal: document.getElementById('modal-config'),
       settingsModal: document.getElementById('modal-settings'),
+      emailModal: document.getElementById('modal-email'),
       loadingContainer: document.getElementById('loading-container'),
       loadingProgress: document.getElementById('loading-progress'),
       loadingText: document.getElementById('loading-text'),
@@ -147,37 +163,51 @@ class ZohoLedgerApp {
       skeletonLoader: document.getElementById('skeleton-loader'),
       ledgerView: document.getElementById('view-ledger-container'),
       explorerView: document.getElementById('view-explorer-container'),
-      bgSlideshow: document.getElementById('bg-slideshow')
+      emptyState: document.getElementById('empty-state'),
+      builderPanel: document.getElementById('builder-panel'),
     };
-    
     this.inputs = {
       orgSelect: document.getElementById('select-organization'),
       search: document.getElementById('customer-search'),
-      clientId: document.getElementById('cfg-client-id'),
-      region: document.getElementById('cfg-region'),
-      displayRedirect: document.getElementById('display-redirect-uri'),
-      moduleCheckboxes: document.querySelectorAll('#module-selector input'),
       logoUpload: document.getElementById('logo-upload'),
       dateRangePreset: document.getElementById('date-range-preset'),
       dateStart: document.getElementById('date-start'),
       dateEnd: document.getElementById('date-end'),
-      toggleSummary: document.getElementById('toggle-summary')
+      toggleSummary: document.getElementById('toggle-summary'),
+      moduleCheckboxes: document.querySelectorAll('#module-selector input'),
+      moduleCards: document.querySelectorAll('.module-card'),
+      // Builder
+      blHeader: document.getElementById('bl-header'),
+      blCustomer: document.getElementById('bl-customer'),
+      blOpening: document.getElementById('bl-opening'),
+      blPayments: document.getElementById('bl-payments'),
+      blCredits: document.getElementById('bl-credits'),
+      blSummary: document.getElementById('bl-summary'),
+      blNotes: document.getElementById('bl-notes'),
+      colDate: document.getElementById('col-date'),
+      colRef: document.getElementById('col-ref'),
+      colGroup: document.getElementById('col-group'),
+      colItem: document.getElementById('col-item'),
+      colUnit: document.getElementById('col-unit'),
+      colRate: document.getElementById('col-rate'),
+      colAmount: document.getElementById('col-amount'),
+      colBalance: document.getElementById('col-balance'),
+      groupBy: document.getElementById('group-by'),
+      sortBy: document.getElementById('sort-by'),
+      formulaBags: document.getElementById('formula-bags'),
+      bagsPackSize: document.getElementById('bags-pack-size'),
+      formulaOverdue: document.getElementById('formula-overdue'),
     };
-
     this.btns = {
       connect: document.getElementById('btn-connect'),
       saveConfig: document.getElementById('btn-save-config'),
-      resetConfig: document.getElementById('btn-reset-config'),
       print: document.getElementById('btn-print'),
       downloadPdf: document.getElementById('btn-download-pdf'),
       downloadImage: document.getElementById('btn-download-image'),
       downloadExcel: document.getElementById('btn-download-excel'),
       emailComposer: document.getElementById('btn-email-composer'),
       logout: document.getElementById('btn-logout'),
-      selectAll: document.getElementById('btn-select-all'),
       clearAll: document.getElementById('btn-clear-all'),
-      openConfig: document.getElementById('btn-open-config-landing'),
-      closeConfig: document.getElementById('btn-close-config'),
       openSettings: document.getElementById('btn-project-settings'),
       closeSettings: document.getElementById('btn-close-settings'),
       applySettings: document.getElementById('btn-apply-settings'),
@@ -185,9 +215,14 @@ class ZohoLedgerApp {
       zoomOut: document.getElementById('btn-zoom-out'),
       zoomFit: document.getElementById('btn-zoom-fit'),
       toggleLedger: document.getElementById('btn-view-ledger'),
-      toggleExplorer: document.getElementById('btn-view-explorer')
+      toggleExplorer: document.getElementById('btn-view-explorer'),
+      modeLedger: document.getElementById('btn-mode-ledger'),
+      modeSales: document.getElementById('btn-mode-sales'),
+      toggleBuilder: document.getElementById('btn-toggle-builder'),
+      builderApply: document.getElementById('btn-builder-apply'),
+      closeEmail: document.getElementById('btn-close-email'),
+      copyEmail: document.getElementById('btn-copy-email'),
     };
-
     this.targets = {
       renderArea: document.getElementById('statement-render-target'),
       emptyState: document.getElementById('empty-state'),
@@ -197,198 +232,90 @@ class ZohoLedgerApp {
       explorerTabs: document.getElementById('explorer-tabs'),
       explorerThead: document.getElementById('explorer-thead'),
       explorerTbody: document.getElementById('explorer-tbody'),
-      colorPicker: document.getElementById('color-theme-picker')
+      colorPicker: document.getElementById('color-theme-picker'),
     };
-
-    const redirectUri = window.location.origin + window.location.pathname;
-    if (this.inputs.displayRedirect) this.inputs.displayRedirect.innerText = redirectUri;
-    this.inputs.moduleCheckboxes.forEach(cb => {
-        if (this.state.activeModules.has(cb.value)) cb.checked = true;
-    });
   }
 
   bindEvents() {
-    if(this.btns.connect) this.btns.connect.onclick = () => this.startAuth();
-    if(this.btns.saveConfig) this.btns.saveConfig.onclick = () => this.saveConfig();
-    if(this.btns.resetConfig) this.btns.resetConfig.onclick = () => this.wipeConfiguration();
-    if(this.btns.openConfig) this.btns.openConfig.onclick = () => this.toggleConfig(true);
-    if(this.btns.closeConfig) this.btns.closeConfig.onclick = () => this.toggleConfig(false);
-    if(this.btns.logout) this.btns.logout.onclick = () => this.logout();
-    if(this.btns.print) this.btns.print.onclick = () => this.printReport();
-    if(this.btns.downloadPdf) this.btns.downloadPdf.onclick = () => this.downloadPDF();
-    if(this.btns.downloadImage) this.btns.downloadImage.onclick = () => this.downloadImage();
-    if(this.btns.downloadExcel) this.btns.downloadExcel.onclick = () => this.downloadExcel();
-    if(this.btns.emailComposer) this.btns.emailComposer.onclick = () => this.openEmailComposer();
-    
-    // Safety checks for optional buttons
-    if(this.btns.selectAll) {
-        this.btns.selectAll.style.display = 'none'; // Ensure hidden if exists
-        this.btns.selectAll.onclick = () => this.toggleAllCustomers(true);
-    }
-    if(this.btns.clearAll) this.btns.clearAll.onclick = () => this.toggleAllCustomers(false);
-    
-    if(this.btns.openSettings) this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
-    if(this.btns.closeSettings) this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
-    
-    if(this.btns.toggleLedger) this.btns.toggleLedger.onclick = () => this.switchView('ledger');
-    if(this.btns.toggleExplorer) this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
+    if (this.btns.connect) this.btns.connect.onclick = () => this.startAuth();
+    if (this.btns.saveConfig) this.btns.saveConfig.onclick = () => this.saveConfig();
+    if (this.btns.logout) this.btns.logout.onclick = () => this.logout();
+    if (this.btns.print) this.btns.print.onclick = () => window.print();
+    if (this.btns.downloadPdf) this.btns.downloadPdf.onclick = () => this.downloadPDF();
+    if (this.btns.downloadImage) this.btns.downloadImage.onclick = () => this.downloadImage();
+    if (this.btns.downloadExcel) this.btns.downloadExcel.onclick = () => this.downloadExcel();
+    if (this.btns.emailComposer) this.btns.emailComposer.onclick = () => this.openEmailComposer();
+    if (this.btns.closeEmail) this.btns.closeEmail.onclick = () => this.views.emailModal.classList.add('view-hidden');
+    if (this.btns.copyEmail) this.btns.copyEmail.onclick = () => this.copyEmailToClipboard();
+    if (this.btns.clearAll) this.btns.clearAll.onclick = () => this.clearAllCustomers();
+    if (this.btns.openSettings) this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
+    if (this.btns.closeSettings) this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
+    if (this.btns.applySettings) this.btns.applySettings.onclick = () => this.applySettings();
+    if (this.btns.zoomIn) this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
+    if (this.btns.zoomOut) this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
+    if (this.btns.zoomFit) this.btns.zoomFit.onclick = () => this.autoFitZoom();
+    if (this.btns.toggleLedger) this.btns.toggleLedger.onclick = () => this.switchView('ledger');
+    if (this.btns.toggleExplorer) this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
+    if (this.btns.modeLedger) this.btns.modeLedger.onclick = () => this.switchStatementMode('ledger');
+    if (this.btns.modeSales) this.btns.modeSales.onclick = () => this.switchStatementMode('sales');
+    if (this.btns.toggleBuilder) this.btns.toggleBuilder.onclick = () => this.toggleBuilderPanel();
+    if (this.btns.builderApply) this.btns.builderApply.onclick = () => this.applyBuilderAndRender();
 
-    if(this.btns.applySettings) {
-        this.btns.applySettings.onclick = () => {
-          this.state.activeModules.clear();
-          this.inputs.moduleCheckboxes.forEach(cb => { if(cb.checked) this.state.activeModules.add(cb.value); });
-          localStorage.setItem('active_modules', JSON.stringify(Array.from(this.state.activeModules)));
-          this.views.settingsModal.classList.add('view-hidden');
-          this.syncAllActiveCustomers();
-        };
-    }
+    if (this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
+    if (this.inputs.logoUpload) this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
+    if (this.inputs.orgSelect) this.inputs.orgSelect.onchange = (e) => this.handleOrgSwitch(e.target.value);
+    if (this.inputs.dateRangePreset) this.inputs.dateRangePreset.onchange = (e) => this.handleDatePreset(e.target.value);
+    if (this.inputs.dateStart) this.inputs.dateStart.onchange = () => this.updateDateFilter();
+    if (this.inputs.dateEnd) this.inputs.dateEnd.onchange = () => this.updateDateFilter();
+    if (this.inputs.toggleSummary) this.inputs.toggleSummary.onchange = () => {
+      this.state.isSummaryMode = this.inputs.toggleSummary.checked;
+      this.renderStatementUI();
+    };
 
-    if(this.btns.zoomIn) this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
-    if(this.btns.zoomOut) this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
-    if(this.btns.zoomFit) this.btns.zoomFit.onclick = () => this.autoFitZoom();
-    
-    if(this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
-    if(this.inputs.logoUpload) this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
-    if(this.inputs.orgSelect) this.inputs.orgSelect.onchange = (e) => this.handleOrgSwitch(e.target.value);
-    
-    // Feature: Date Filter
-    if(this.inputs.dateRangePreset) this.inputs.dateRangePreset.onchange = (e) => this.handleDatePreset(e.target.value);
-    if(this.inputs.dateStart) this.inputs.dateStart.onchange = () => this.updateDateFilter();
-    if(this.inputs.dateEnd) this.inputs.dateEnd.onchange = () => this.updateDateFilter();
-    
-    // Feature: Summary Toggle
-    if(this.inputs.toggleSummary) {
-        this.inputs.toggleSummary.onchange = (e) => {
-            this.state.isSummaryMode = !this.state.isSummaryMode;
-            this.renderStatementUI();
-        };
-    }
-  }
+    // Module card toggle visual
+    this.inputs.moduleCards.forEach(card => {
+      const cb = card.querySelector('input[type="checkbox"]');
+      if (cb) {
+        cb.onchange = () => card.classList.toggle('checked', cb.checked);
+      }
+    });
 
-  handleKeyboardNav(e) {
-    if (this.state.activeView !== 'ledger' || this.state.customers.length === 0) return;
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-
-    e.preventDefault();
-    const currentId = Array.from(this.state.selectedCustomerIds)[0];
-    let idx = this.state.customers.findIndex(c => c.contact_id === currentId);
-    
-    if (e.key === 'ArrowDown') idx = idx < this.state.customers.length - 1 ? idx + 1 : 0;
-    if (e.key === 'ArrowUp') idx = idx > 0 ? idx - 1 : this.state.customers.length - 1;
-    
-    const nextCustomer = this.state.customers[idx];
-    if (nextCustomer) this.handleCustomerClick(nextCustomer.contact_id);
-  }
-
-  handleDatePreset(val) {
-    const now = new Date();
-    const container = document.getElementById('custom-date-container');
-    if(container) container.classList.add('hidden');
-    
-    if (val === 'all') {
-        this.state.filterDateStart = null;
-        this.state.filterDateEnd = null;
-    } else if (val === 'this_month') {
-        this.state.filterDateStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        this.state.filterDateEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    } else if (val === 'last_month') {
-        this.state.filterDateStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        this.state.filterDateEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-    } else if (val === 'this_year') {
-        this.state.filterDateStart = new Date(now.getFullYear(), 0, 1);
-        this.state.filterDateEnd = new Date(now.getFullYear(), 11, 31);
-    } else if (val === 'custom') {
-        if(container) container.classList.remove('hidden');
-        return; 
-    }
-    this.renderStatementUI();
-  }
-
-  updateDateFilter() {
-    const s = this.inputs.dateStart ? this.inputs.dateStart.value : null;
-    const e = this.inputs.dateEnd ? this.inputs.dateEnd.value : null;
-    if (s) this.state.filterDateStart = new Date(s);
-    if (e) this.state.filterDateEnd = new Date(e);
-    this.renderStatementUI();
-  }
-
-  renderColorPicker() {
-    if(!this.targets.colorPicker) return;
-    this.targets.colorPicker.innerHTML = '';
-    this.state.colors.forEach(c => {
-      const ball = document.createElement('div');
-      ball.className = `w-5 h-5 rounded-full color-ball border border-white/20 ${this.state.theme === c.name ? 'ring-2 ring-white' : ''}`;
-      ball.style.backgroundColor = c.hex;
-      ball.title = c.name.toUpperCase();
-      ball.onclick = () => {
-        this.state.theme = c.name;
-        this.renderColorPicker(); // Update active ring
-        this.renderStatementUI(); // Re-render with new colors
+    // Bags formula toggle
+    if (this.inputs.formulaBags) {
+      this.inputs.formulaBags.onchange = () => {
+        const row = document.getElementById('bags-pack-row');
+        if (row) row.style.display = this.inputs.formulaBags.checked ? 'block' : 'none';
       };
-      this.targets.colorPicker.appendChild(ball);
+    }
+
+    // Keyboard nav
+    document.addEventListener('keydown', (e) => {
+      if (this.state.activeView !== 'ledger' || !this.state.customers.length) return;
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const currentId = Array.from(this.state.selectedCustomerIds)[0];
+      let idx = this.state.customers.findIndex(c => c.contact_id === currentId);
+      if (e.key === 'ArrowDown') idx = idx < this.state.customers.length - 1 ? idx + 1 : 0;
+      if (e.key === 'ArrowUp') idx = idx > 0 ? idx - 1 : this.state.customers.length - 1;
+      const next = this.state.customers[idx];
+      if (next) this.handleCustomerClick(next.contact_id);
     });
   }
 
-  async handleOrgSwitch(orgId) {
-    this.showLoading(20, "Re-indexing Project Context...");
-    this.state.selectedOrgId = orgId;
-    localStorage.setItem('zoho_selected_org_id', orgId);
-    
-    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
-    this.state.invoiceDetailsCache = {};
-    this.state.selectedCustomerIds = new Set();
-    this.state.customerFullDetails = {};
-    this.state.customLogo = localStorage.getItem('biz_logo') || null;
-
-    try {
-      await this.fetchOrganizationDetails();
-      await this.fetchCustomers();
-      this.renderCustomerList();
-      this.updateUIVisuals();
-      this.log(`Project Loaded: ${this.state.currentOrgDetails?.name}`);
-    } catch (err) {
-      this.log(`Load Error: ${err.message}`);
-    } finally {
-      this.hideLoading();
-    }
+  // ─────────────────────────────────────────
+  // CONFIG & AUTH
+  // ─────────────────────────────────────────
+  saveConfig() {
+    const clientId = (document.getElementById('cfg-client-id')?.value || '').trim();
+    const region = document.getElementById('cfg-region')?.value || 'com';
+    this.config = { clientId, region };
+    localStorage.setItem('zoho_config', JSON.stringify(this.config));
+    this.updateConfigStatus();
+    this.log('Config saved');
   }
 
-  switchView(view) {
-    this.state.activeView = view;
-    this.views.ledgerView.classList.toggle('view-hidden', view !== 'ledger');
-    this.views.explorerView.classList.toggle('view-hidden', view !== 'explorer');
-    
-    // Hide bg in dashboard
-    if(this.views.bgSlideshow) {
-        if(view === 'ledger' || view === 'explorer') this.views.bgSlideshow.classList.add('view-hidden');
-    }
-
-    if(this.btns.toggleLedger) {
-        this.btns.toggleLedger.classList.toggle('bg-indigo-600', view === 'ledger');
-        this.btns.toggleLedger.classList.toggle('text-white', view === 'ledger');
-        this.btns.toggleLedger.classList.toggle('text-neutral-500', view !== 'ledger');
-    }
-    
-    if(this.btns.toggleExplorer) {
-        this.btns.toggleExplorer.classList.toggle('bg-indigo-600', view === 'explorer');
-        this.btns.toggleExplorer.classList.toggle('text-white', view === 'explorer');
-        this.btns.toggleExplorer.classList.toggle('text-neutral-500', view !== 'explorer');
-    }
-
-    if (view === 'explorer') this.renderExplorer();
-    else this.autoFitZoom();
-  }
-
-  handleLogoUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      this.state.customLogo = event.target.result;
-      localStorage.setItem('biz_logo', this.state.customLogo);
-      this.renderStatementUI();
-    };
-    reader.readAsDataURL(file);
+  updateConfigStatus() {
+    if (this.btns.connect) this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
   }
 
   handleOAuthCallback() {
@@ -401,146 +328,188 @@ class ZohoLedgerApp {
     }
   }
 
-  async checkSession() {
-    if (this.state.accessToken) {
-      this.showLoading(20, "Establishing Data Pipeline...");
-      try {
-        const success = await this.discoverOrganizations();
-        if (success) {
-          this.views.landing.classList.add('view-hidden');
-          this.views.dashboard.classList.remove('view-hidden');
-          // Hide BG on successful login
-          if(this.views.bgSlideshow) this.views.bgSlideshow.classList.add('view-hidden');
-          
-          await this.fetchOrganizationDetails();
-          await this.fetchCustomers();
-          this.autoFitZoom();
-        }
-      } catch (err) {
-        this.showLandingError(err.message);
-        this.logout(false);
-      }
-      this.hideLoading();
+  startAuth() {
+    if (!this.config.clientId || this.config.clientId.length < 3) {
+      this.showLandingError('Client ID is required. Please save your configuration first.');
+      return;
     }
+    const redirectUri = window.location.origin + window.location.pathname;
+    const scopes = 'ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ,ZohoBooks.items.READ';
+    const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
+    window.location.href = authUrl;
+  }
+
+  async checkSession() {
+    if (!this.state.accessToken) return;
+    this.showLoading(20, 'Connecting…');
+    try {
+      const ok = await this.discoverOrganizations();
+      if (ok) {
+        this.views.landing.classList.add('view-hidden');
+        this.views.dashboard.classList.remove('view-hidden');
+        await this.fetchOrganizationDetails();
+        await this.fetchCustomers();
+        this.autoFitZoom();
+      }
+    } catch (err) {
+      this.showLandingError(err.message);
+      this.logout(false);
+    }
+    this.hideLoading();
+  }
+
+  logout(reload = true) {
+    localStorage.removeItem('zoho_access_token');
+    if (reload) window.location.reload();
+  }
+
+  // ─────────────────────────────────────────
+  // API
+  // ─────────────────────────────────────────
+  async rawRequest(url) {
+    const res = await fetch(this.proxyPrefix + url, {
+      headers: {
+        'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    });
+    if (res.status === 401) throw new Error('Session Expired — please reconnect');
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.message || 'API request failed');
+    }
+    const data = await res.json();
+    return data;
   }
 
   async discoverOrganizations() {
-    try {
-      const url = `https://www.zohoapis.${this.config.region}/books/v3/organizations`;
-      const res = await this.rawRequest(url);
-      if (res && res.organizations) {
-        this.state.organizations = res.organizations;
-        if(this.inputs.orgSelect) {
-            this.inputs.orgSelect.innerHTML = '';
-            res.organizations.forEach(org => {
-              const opt = document.createElement('option');
-              opt.value = org.organization_id; opt.innerText = org.name;
-              this.inputs.orgSelect.appendChild(opt);
-            });
-            if (res.organizations.length === 0) throw new Error("No organizations returned. Your session token may have expired — please reconnect.");
-            if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
-            this.inputs.orgSelect.value = this.state.selectedOrgId;
-        }
-        return true;
+    const res = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/organizations`);
+    if (res && res.organizations && res.organizations.length) {
+      this.state.organizations = res.organizations;
+      const sel = this.inputs.orgSelect;
+      if (sel) {
+        sel.innerHTML = '';
+        res.organizations.forEach(org => {
+          const opt = document.createElement('option');
+          opt.value = org.organization_id;
+          opt.textContent = org.name;
+          sel.appendChild(opt);
+        });
+        if (!this.state.selectedOrgId) this.state.selectedOrgId = res.organizations[0].organization_id;
+        sel.value = this.state.selectedOrgId;
       }
-      return false;
-    } catch (e) { throw new Error(`Connectivity: ${e.message}`); }
+      return true;
+    }
+    throw new Error('No organizations returned. Session may have expired.');
   }
 
   async fetchOrganizationDetails() {
     try {
-      const url = `https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`;
-      const res = await this.rawRequest(url);
+      const res = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/settings/organization?organization_id=${this.state.selectedOrgId}`);
       if (res && res.organization) this.state.currentOrgDetails = res.organization;
-    } catch (e) { console.warn("Detail fetch failed", e); }
-  }
-
- async rawRequest(url) {
-    // REMOVED encodeURIComponent here so the proxy can read the address
-    const res = await fetch(this.proxyPrefix + url, {
-      headers: { 'Authorization': `Zoho-oauthtoken ${this.state.accessToken}`, 'X-Requested-With': 'XMLHttpRequest' }
-    });
-    if (res.status === 401) throw new Error("Session Expired");
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "API Rejected Request");
-    }
-    const data = await res.json();
-    console.log('[BizSense DEBUG]', url, JSON.stringify(data).slice(0, 500));
-    return data;
-  }
-
-  startAuth(force = false) {
-    if (!this.config.clientId || this.config.clientId.length < 3) {
-        this.showLandingError("Configuration Missing: Client ID required.");
-        this.toggleConfig(true);
-        return;
-    }
-    this.showLoading(15, "Authenticating Secure Tunnel...");
-    const redirectUri = window.location.origin + window.location.pathname;
-    const scopes = "ZohoBooks.contacts.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.salesorders.READ,ZohoBooks.creditnotes.READ,ZohoBooks.customerpayments.READ,ZohoBooks.settings.READ";
-    const prompt = force ? '&prompt=select_account' : '&prompt=consent';
-    const authUrl = `https://accounts.zoho.${this.config.region}/oauth/v2/auth?scope=${scopes}&client_id=${this.config.clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}${prompt}`;
-    window.location.href = authUrl;
+    } catch (e) { console.warn('Org details fetch failed', e); }
   }
 
   async fetchCustomers() {
-    this.showLoading(40, "Indexing Master Registry...");
+    this.showLoading(40, 'Loading customers…');
     try {
-      const url = `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`;
-      const res = await this.rawRequest(url);
+      const res = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`);
       if (res && res.contacts) {
         this.state.customers = res.contacts;
         this.renderCustomerList();
+        this.log(`${res.contacts.length} customers loaded`);
       }
     } catch (e) { this.log(`Error: ${e.message}`); }
     finally { this.hideLoading(); }
   }
 
+  async syncCustomerData(id) {
+    const customer = this.state.customers.find(c => c.contact_id === id);
+    if (!customer) return;
+    this.showLoading(50, `Loading: ${customer.contact_name}`);
+
+    // Fetch full contact
+    try {
+      const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
+      this.state.customerFullDetails[id] = cRes.contact;
+      console.log('[BizSense] Full contact:', cRes.contact);
+      // Opening balance - try multiple field names Zoho might use
+      const c = cRes.contact;
+      const ob = parseFloat(
+        c.opening_balance ?? c.opening_balances?.[0]?.opening_balance ?? c.outstanding_receivable_amount ?? 0
+      ) || 0;
+      this.state.customerFullDetails[id]._computed_opening_balance = ob;
+      this.state.currency = c.currency_symbol || c.currency_code || 'LKR';
+      localStorage.setItem('biz_currency', this.state.currency);
+    } catch (e) { console.warn('Contact detail fetch failed', e); }
+
+    // Sync modules
+    const modulesToSync = ['invoices', 'creditnotes', 'customerpayments'];
+    if (this.state.activeModules.has('estimates')) modulesToSync.push('estimates');
+    if (this.state.activeModules.has('salesorders')) modulesToSync.push('salesorders');
+
+    for (const mod of modulesToSync) {
+      try {
+        const url = `https://www.zohoapis.${this.config.region}/books/v3/${mod}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
+        const res = await this.rawRequest(url);
+        const storageKey = mod === 'customerpayments' ? 'payments' : mod;
+        if (!this.state.dataStore[storageKey]) this.state.dataStore[storageKey] = {};
+        this.state.dataStore[storageKey][id] = { customerName: customer.contact_name, records: res[mod] || [] };
+
+        // Fetch detail records for invoices, creditnotes, estimates, salesorders
+        if (['invoices', 'creditnotes', 'estimates', 'salesorders'].includes(mod)) {
+          const idKey = {
+            invoices: 'invoice_id',
+            creditnotes: 'creditnote_id',
+            estimates: 'estimate_id',
+            salesorders: 'salesorder_id',
+          }[mod];
+          for (const rec of this.state.dataStore[storageKey][id].records) {
+            const rid = rec[idKey];
+            if (rid && !this.state.invoiceDetailsCache[rid]) {
+              try {
+                const singularMod = mod === 'creditnotes' ? 'creditnote' : mod.slice(0, -1);
+                const dRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/${mod}/${rid}?organization_id=${this.state.selectedOrgId}`);
+                this.state.invoiceDetailsCache[rid] = dRes[singularMod] || dRes[mod.slice(0,-1)] || dRes;
+              } catch (e) { console.warn(`Detail fetch failed for ${mod}/${rid}`, e); }
+            }
+          }
+        }
+      } catch (e) { console.error(`Module ${mod} sync failed`, e); }
+    }
+
+    this.hideLoading();
+  }
+
+  // ─────────────────────────────────────────
+  // CUSTOMER LIST
+  // ─────────────────────────────────────────
   renderCustomerList() {
-    if(!this.views.customerList) return;
+    if (!this.views.customerList) return;
     this.views.customerList.innerHTML = '';
-    
-    this.state.customers.sort((a,b) => a.contact_name.localeCompare(b.contact_name)).forEach(c => {
+    const sorted = [...this.state.customers].sort((a, b) => a.contact_name.localeCompare(b.contact_name));
+
+    sorted.forEach(c => {
       const isSelected = this.state.selectedCustomerIds.has(c.contact_id);
-      
-      // LOGIC FOR TAGS
-      let tagHtml = '';
       const balance = parseFloat(c.outstanding_receivable_amount || 0);
       const credits = parseFloat(c.unused_credits_receivable_amount || 0);
 
-      // We try to use data present in summary, otherwise generic. 
-      // Note: Zoho summary contacts usually don't have last payment date unless detailed fetch.
-      // We will check if it exists (some API versions include it), else fallback to generic "PAID".
-      
+      let badgeHtml = '';
       if (balance > 0) {
-        // Calculate Days Overdue mock (since we don't have invoices for all customers yet)
-        // If we want real "DUE BY X DAYS", we'd need to fetch all invoice data which is heavy.
-        // We will format it as "DUE [Amount]" for list view, but if we had data:
-        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-red-900/30 text-red-400 border border-red-500/30 text-[7px] font-black rounded uppercase inline-block">DUE ${balance.toLocaleString()}</span>`;
+        badgeHtml = `<span class="cust-badge badge-due">DUE ${this.state.currency} ${balance.toLocaleString()}</span>`;
       } else if (credits > 0) {
-        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-yellow-900/30 text-yellow-400 border border-yellow-500/30 text-[7px] font-black rounded uppercase inline-block">CREDIT ${credits.toLocaleString()}</span>`;
+        badgeHtml = `<span class="cust-badge badge-credit">CR ${credits.toLocaleString()}</span>`;
       } else {
-        // Check for last payment date if available in object
-        let paidText = "PAID";
-        if (c.last_payment_date) {
-            const d = new Date(c.last_payment_date);
-            const mon = d.toLocaleString('default', { month: 'short' }).toUpperCase();
-            const day = d.getDate().toString().padStart(2, '0');
-            paidText = `PAID ON ${mon} ${day}`;
-        }
-        tagHtml = `<span class="mt-1 px-1.5 py-0.5 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30 text-[7px] font-black rounded uppercase inline-block">${paidText}</span>`;
+        badgeHtml = `<span class="cust-badge badge-ok">CLEARED</span>`;
       }
 
       const div = document.createElement('div');
-      div.className = `flex items-start space-x-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-all group ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'border border-transparent'}`;
+      div.className = `cust-item${isSelected ? ' selected' : ''}`;
       div.innerHTML = `
-        <div class="mt-0.5 w-4 h-4 rounded border border-white/20 flex-shrink-0 flex items-center justify-center group-hover:border-indigo-500 ${isSelected ? 'bg-indigo-500 border-indigo-500' : ''}">
-          ${isSelected ? '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>' : ''}
-        </div>
-        <div class="flex flex-col overflow-hidden w-full">
-            <span class="truncate font-black uppercase text-[9px] text-neutral-400 group-hover:text-white tracking-widest">${c.contact_name}</span>
-            ${tagHtml}
+        <div class="cust-checkbox">${isSelected ? '<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="cust-name">${c.contact_name}</div>
+          ${badgeHtml}
         </div>
       `;
       div.onclick = () => this.handleCustomerClick(c.contact_id);
@@ -550,68 +519,164 @@ class ZohoLedgerApp {
 
   async handleCustomerClick(id) {
     if (this.state.selectedCustomerIds.has(id)) {
-        this.state.selectedCustomerIds.delete(id);
-        this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
+      this.state.selectedCustomerIds.delete(id);
+      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
     } else {
-        this.state.selectedCustomerIds.clear();
-        this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} }; 
-        this.state.selectedCustomerIds.add(id);
-        await this.syncCustomerData(id);
+      this.state.selectedCustomerIds.clear();
+      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
+      this.state.selectedCustomerIds.add(id);
+      await this.syncCustomerData(id);
     }
-    
-    // Update list to show detailed status for selected
-    this.renderCustomerList(); 
-    
-    // Enhance the specific selected item with "DUE BY X DAYS" if possible
-    // We do this after render because now we have data
-    this.updateSelectedCustomerTagInList(id);
-
+    this.renderCustomerList();
     this.updateUIVisuals();
   }
 
-  updateSelectedCustomerTagInList(id) {
-    // This function manually updates the tag in the sidebar for the ACTIVE customer 
-    // to show specific "DUE BY" days since we now have their invoices.
-    
-    const invoices = this.state.dataStore.invoices[id]?.records || [];
-    if (invoices.length === 0) return;
-
-    // Find oldest open invoice
-    const openInvoices = invoices.filter(inv => inv.balance > 0).sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
-    
-    if (openInvoices.length > 0) {
-        const oldest = openInvoices[0];
-        const due = new Date(oldest.due_date);
-        const now = new Date();
-        const diffTime = due - now;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        let text = "";
-        let colorClass = "";
-        
-        if (diffDays < 0) {
-             text = `OVERDUE BY ${Math.abs(diffDays)} DAYS`;
-             colorClass = "bg-red-900/30 text-red-400 border-red-500/30";
-        } else {
-             text = `DUE IN ${diffDays} DAYS`;
-             colorClass = "bg-orange-900/30 text-orange-400 border-orange-500/30";
-        }
-        
-        // Find the element and update
-        // (A bit hacky DOM manipulation for performance)
-        const allItems = this.views.customerList.children;
-        for (let item of allItems) {
-            if (item.innerHTML.includes(this.state.customerFullDetails[id]?.contact_name)) {
-                const tag = item.querySelector('span.inline-block');
-                if (tag) {
-                    tag.className = `mt-1 px-1.5 py-0.5 border text-[7px] font-black rounded uppercase inline-block ${colorClass}`;
-                    tag.innerText = text;
-                }
-            }
-        }
-    }
+  clearAllCustomers() {
+    this.state.selectedCustomerIds.clear();
+    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
+    this.renderCustomerList();
+    this.updateUIVisuals();
   }
 
+  filterCustomers(term) {
+    this.views.customerList?.querySelectorAll('.cust-item').forEach(item => {
+      item.style.display = item.querySelector('.cust-name')?.textContent?.toLowerCase().includes(term.toLowerCase()) ? '' : 'none';
+    });
+  }
+
+  // ─────────────────────────────────────────
+  // VIEW SWITCHING
+  // ─────────────────────────────────────────
+  switchView(view) {
+    this.state.activeView = view;
+    this.views.ledgerView.classList.toggle('view-hidden', view !== 'ledger');
+    this.views.explorerView.classList.toggle('view-hidden', view !== 'explorer');
+
+    if (this.views.ledgerView) this.views.ledgerView.style.display = view === 'ledger' ? 'flex' : 'none';
+    if (this.views.explorerView) this.views.explorerView.style.display = view === 'explorer' ? 'flex' : 'none';
+
+    if (this.btns.toggleLedger) this.btns.toggleLedger.classList.toggle('active', view === 'ledger');
+    if (this.btns.toggleExplorer) this.btns.toggleExplorer.classList.toggle('active', view === 'explorer');
+
+    if (view === 'explorer') this.renderExplorer();
+    else this.autoFitZoom();
+  }
+
+  switchStatementMode(mode) {
+    this.state.statementMode = mode;
+    if (this.btns.modeLedger) this.btns.modeLedger.classList.toggle('active', mode === 'ledger');
+    if (this.btns.modeSales) this.btns.modeSales.classList.toggle('active', mode === 'sales');
+    this.renderStatementUI();
+  }
+
+  toggleBuilderPanel() {
+    const panel = this.views.builderPanel;
+    if (!panel) return;
+    const isHidden = panel.style.display === 'none' || !panel.style.display;
+    panel.style.display = isHidden ? 'flex' : 'none';
+  }
+
+  // ─────────────────────────────────────────
+  // BUILDER CONFIG
+  // ─────────────────────────────────────────
+  applyBuilderConfigToUI() {
+    const bc = this.state.builderConfig;
+    const set = (id, val) => { const el = this.inputs[id]; if (el) el.checked = val; };
+    const setVal = (id, val) => { const el = this.inputs[id]; if (el) el.value = val; };
+
+    set('blHeader', bc.showHeader);
+    set('blCustomer', bc.showCustomer);
+    set('blOpening', bc.showOpening);
+    set('blPayments', bc.showPayments);
+    set('blCredits', bc.showCredits);
+    set('blSummary', bc.showSummary);
+    set('blNotes', bc.showNotes);
+    set('colDate', bc.colDate);
+    set('colRef', bc.colRef);
+    set('colGroup', bc.colGroup);
+    set('colItem', bc.colItem);
+    set('colUnit', bc.colUnit);
+    set('colRate', bc.colRate);
+    set('colAmount', bc.colAmount);
+    set('colBalance', bc.colBalance);
+    setVal('groupBy', bc.groupBy);
+    setVal('sortBy', bc.sortBy);
+    set('formulaBags', bc.formulaBags);
+    setVal('bagsPackSize', bc.bagsPackSize);
+    set('formulaOverdue', bc.formulaOverdue);
+
+    const bagsRow = document.getElementById('bags-pack-row');
+    if (bagsRow) bagsRow.style.display = bc.formulaBags ? 'block' : 'none';
+  }
+
+  readBuilderConfigFromUI() {
+    const get = id => this.inputs[id]?.checked ?? true;
+    const getVal = id => this.inputs[id]?.value;
+    return {
+      showHeader: get('blHeader'),
+      showCustomer: get('blCustomer'),
+      showOpening: get('blOpening'),
+      showPayments: get('blPayments'),
+      showCredits: get('blCredits'),
+      showSummary: get('blSummary'),
+      showNotes: get('blNotes'),
+      colDate: get('colDate'),
+      colRef: get('colRef'),
+      colGroup: get('colGroup'),
+      colItem: get('colItem'),
+      colUnit: get('colUnit'),
+      colRate: get('colRate'),
+      colAmount: get('colAmount'),
+      colBalance: get('colBalance'),
+      groupBy: getVal('groupBy') || 'none',
+      sortBy: getVal('sortBy') || 'date_asc',
+      formulaBags: get('formulaBags'),
+      bagsPackSize: parseFloat(getVal('bagsPackSize')) || 16.5,
+      formulaOverdue: get('formulaOverdue'),
+    };
+  }
+
+  applyBuilderAndRender() {
+    this.state.builderConfig = this.readBuilderConfigFromUI();
+    localStorage.setItem('builder_config', JSON.stringify(this.state.builderConfig));
+    this.renderStatementUI();
+  }
+
+  // ─────────────────────────────────────────
+  // DATE FILTER
+  // ─────────────────────────────────────────
+  handleDatePreset(val) {
+    const now = new Date();
+    const container = document.getElementById('custom-date-container');
+    if (container) container.style.display = 'none';
+    if (val === 'all') { this.state.filterDateStart = null; this.state.filterDateEnd = null; }
+    else if (val === 'this_month') {
+      this.state.filterDateStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      this.state.filterDateEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (val === 'last_month') {
+      this.state.filterDateStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      this.state.filterDateEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (val === 'this_year') {
+      this.state.filterDateStart = new Date(now.getFullYear(), 0, 1);
+      this.state.filterDateEnd = new Date(now.getFullYear(), 11, 31);
+    } else if (val === 'custom') {
+      if (container) container.style.display = 'flex';
+      return;
+    }
+    this.renderStatementUI();
+  }
+
+  updateDateFilter() {
+    const s = this.inputs.dateStart?.value;
+    const e = this.inputs.dateEnd?.value;
+    if (s) this.state.filterDateStart = new Date(s);
+    if (e) this.state.filterDateEnd = new Date(e);
+    this.renderStatementUI();
+  }
+
+  // ─────────────────────────────────────────
+  // RENDER DISPATCH
+  // ─────────────────────────────────────────
   updateUIVisuals() {
     if (this.state.activeView === 'ledger') this.renderStatementUI();
     else this.renderExplorer();
@@ -620,757 +685,921 @@ class ZohoLedgerApp {
   }
 
   updateStats() {
-    let totalRecords = 0;
-    Object.values(this.state.dataStore).forEach(moduleData => {
-      Object.values(moduleData).forEach(customerData => {
-        totalRecords += (customerData.records || []).length;
-      });
+    let total = 0;
+    Object.values(this.state.dataStore).forEach(m => {
+      Object.values(m).forEach(d => { total += (d.records || []).length; });
     });
-    if(this.targets.stats) this.targets.stats.innerText = `${totalRecords} RECORDS MAPPED`;
-  }
-
-  async syncCustomerData(id) {
-    const customer = this.state.customers.find(c => c.contact_id === id);
-    if (!customer) return;
-    this.showLoading(50, `Mapping SOA Data: ${customer.contact_name}`);
-    
-    try {
-    const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
-    this.state.customerFullDetails[id] = cRes.contact;
-
-    console.log('CONTACT FULL', cRes.contact);
-
-    // Feature: Dynamic Currency
-    this.state.currency = cRes.contact.currency_symbol || cRes.contact.currency_code || 'LKR';
-} catch(e) { console.warn("SOA Context fetch failed", e); }
-
-    const modulesToSync = ['invoices', 'creditnotes', 'customerpayments']; 
-    
-    for (const module of modulesToSync) {
-      try {
-        const url = `https://www.zohoapis.${this.config.region}/books/v3/${module}?customer_id=${id}&organization_id=${this.state.selectedOrgId}`;
-        const res = await this.rawRequest(url);
-        const storageKey = module === 'customerpayments' ? 'payments' : module;
-        this.state.dataStore[storageKey][id] = { customerName: customer.contact_name, records: res[module] || [] };
-        
-        if (module === 'invoices' || module === 'creditnotes') {
-          const key = module === 'invoices' ? 'invoice_id' : 'creditnote_id';
-          for (const rec of this.state.dataStore[storageKey][id].records) {
-            const rid = rec[key];
-            if (!this.state.invoiceDetailsCache[rid]) {
-              const dRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/${module}/${rid}?organization_id=${this.state.selectedOrgId}`);
-              this.state.invoiceDetailsCache[rid] = dRes[module.slice(0, -1)];
-            }
-          }
-        }
-      } catch (e) { 
-        console.error(`Module ${module} sync fail`, e);
-      }
-    }
-    this.hideLoading();
-  }
-
-  async syncAllActiveCustomers() {
-    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
-    for (const id of Array.from(this.state.selectedCustomerIds)) {
-      await this.syncCustomerData(id);
-    }
-    this.updateUIVisuals();
-  }
-
-  renderExplorer() {
-    if(!this.targets.explorerTabs) return;
-    this.targets.explorerTabs.innerHTML = '';
-    const available = ['invoices', 'creditnotes', 'payments'];
-    available.forEach(mod => {
-      const btn = document.createElement('button');
-      btn.className = `px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${this.state.explorerModule === mod ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-neutral-500'}`;
-      btn.innerText = mod;
-      btn.onclick = () => {
-        this.state.explorerModule = mod;
-        this.renderExplorer();
-      };
-      this.targets.explorerTabs.appendChild(btn);
-    });
-
-    const moduleData = this.state.dataStore[this.state.explorerModule];
-    const allRecords = [];
-    Object.entries(moduleData || {}).forEach(([cid, data]) => {
-      data.records.forEach(r => allRecords.push({ ...r, _customer: data.customerName }));
-    });
-
-    if (allRecords.length === 0) {
-      this.targets.explorerThead.innerHTML = '';
-      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" class="py-20 text-center text-neutral-600 font-black uppercase text-[10px] tracking-widest">No matching transactional data</td></tr>';
-      return;
-    }
-
-    const headers = ['_customer', ...Object.keys(allRecords[0]).filter(k => k !== '_customer' && typeof allRecords[0][k] !== 'object')];
-    this.targets.explorerThead.innerHTML = `<tr>${headers.map(h => `<th>${h.replace('_', '')}</th>`).join('')}</tr>`;
-    this.targets.explorerTbody.innerHTML = allRecords.map(row => `<tr>${headers.map(h => `<td>${row[h] || '---'}</td>`).join('')}</tr>`).join('');
+    if (this.targets.stats) this.targets.stats.textContent = `${total} RECORDS`;
   }
 
   renderStatementUI() {
+    const { renderArea, emptyState } = this.targets;
+    const setBtnsDisabled = (v) => {
+      [this.btns.downloadPdf, this.btns.downloadImage, this.btns.downloadExcel, this.btns.print]
+        .forEach(b => { if (b) b.disabled = v; });
+    };
+
     if (this.state.selectedCustomerIds.size === 0) {
-      this.targets.emptyState.classList.remove('view-hidden');
-      this.targets.renderArea.innerHTML = '';
-      if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = true;
-      if(this.btns.downloadImage) this.btns.downloadImage.disabled = true;
-      if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = true;
-      if(this.btns.print) this.btns.print.disabled = true;
+      if (emptyState) emptyState.style.display = 'flex';
+      if (renderArea) renderArea.innerHTML = '';
+      setBtnsDisabled(true);
       return;
     }
-    this.targets.emptyState.classList.add('view-hidden');
-    if(this.btns.downloadPdf) this.btns.downloadPdf.disabled = false;
-    if(this.btns.downloadImage) this.btns.downloadImage.disabled = false;
-    if(this.btns.downloadExcel) this.btns.downloadExcel.disabled = false;
-    if(this.btns.print) this.btns.print.disabled = false;
+    if (emptyState) emptyState.style.display = 'none';
+    setBtnsDisabled(false);
 
-    const theme = this.state.theme;
-    const projectName = this.inputs.orgSelect && this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex] ? this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex].text : 'Project Context N/A';
-    
+    if (this.state.statementMode === 'sales') {
+      this.renderSalesStatement();
+    } else {
+      this.renderLedgerStatement();
+    }
+    this.autoFitZoom();
+  }
+
+  // ─────────────────────────────────────────
+  // THEME HELPERS
+  // ─────────────────────────────────────────
+  getTheme() {
+    return this.state.colors.find(c => c.name === this.state.theme) || this.state.colors[0];
+  }
+
+  getOrgName() {
+    const sel = this.inputs.orgSelect;
+    return sel?.options[sel.selectedIndex]?.text || 'Your Company';
+  }
+
+  // ─────────────────────────────────────────
+  // LEDGER SOA STATEMENT
+  // ─────────────────────────────────────────
+  renderLedgerStatement() {
+    const bc = this.state.builderConfig;
+    const theme = this.getTheme();
+    const orgName = this.getOrgName();
     let html = '';
 
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'Valued Client';
-      const systemOpeningBalance =
-  parseFloat(
-    customer.opening_balance ??
-    customer.opening_balances?.[0]?.opening_balance ??
-    customer.outstanding_receivable_amount ??
-    0
-  ) || 0;
-      
-      let runningBalance = systemOpeningBalance;
-      let balanceBroughtForward = systemOpeningBalance; // For filtered view
-      
-      let totalInvoiced = 0;
-      let totalReceived = 0;
-      let totalCredits = 0;
+      const systemOpeningBalance = customer._computed_opening_balance ?? parseFloat(customer.opening_balance) || 0;
 
-      // Feature: Trend Chart Data
-      let monthlyBalances = {};
+      let transactions = this.collectTransactions(id);
+      transactions = this.applySortAndFilter(transactions, bc);
 
-      let transactions = [];
-      
-      // 1. Collect
-      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
-        transactions.push({
-          date: inv.date,
-          type: 'Invoice',
-          ref: inv.invoice_number,
-          due_date: inv.due_date,
-          amount: parseFloat(inv.total) || 0,
-          payment: 0,
-          raw: inv,
-          sortDate: new Date(inv.date)
-        });
-      });
-
-      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
-        transactions.push({
-          date: pay.date,
-          type: 'Payment Received',
-          ref: pay.payment_number,
-          amount: 0,
-          payment: parseFloat(pay.amount) || 0,
-          raw: pay,
-          sortDate: new Date(pay.date)
-        });
-      });
-
-      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
-        transactions.push({
-          date: cn.date,
-          type: 'Credit Note',
-          ref: cn.creditnote_number,
-          amount: 0, 
-          payment: parseFloat(cn.total) || 0, 
-          raw: cn,
-          sortDate: new Date(cn.date)
-        });
-      });
-
-      transactions.sort((a,b) => a.sortDate - b.sortDate);
-
-      // Feature: Date Filter Calculations
+      // Pre-filter opening balance
+      let balanceBroughtForward = systemOpeningBalance;
       if (this.state.filterDateStart) {
-          // Calculate opening balance for the filtered period by simulating ledger up to start date
-          let tempBal = systemOpeningBalance;
-          const preTx = transactions.filter(t => t.sortDate < this.state.filterDateStart);
-          preTx.forEach(t => {
-              tempBal += t.amount;
-              tempBal -= t.payment;
-          });
-          balanceBroughtForward = tempBal;
-          // Filter transactions for display
-          transactions = transactions.filter(t => t.sortDate >= this.state.filterDateStart && (!this.state.filterDateEnd || t.sortDate <= this.state.filterDateEnd));
-          runningBalance = balanceBroughtForward; // Start running balance from new point
-      } else {
-          // No filter, normal behavior
-          runningBalance = systemOpeningBalance;
+        const allTx = this.collectTransactions(id);
+        let temp = systemOpeningBalance;
+        allTx.filter(t => t.sortDate < this.state.filterDateStart).forEach(t => { temp += t.amount - t.payment; });
+        balanceBroughtForward = temp;
       }
 
-      let rowsHtml = `
-        <tr class="bg-${theme}-50 font-black italic">
-          <td class="py-3 px-2 border-b" colspan="2">${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}</td>
-          <td class="py-3 px-2 border-b text-left italic opacity-60">Balance brought forward</td>
-          <td class="py-3 px-2 border-b text-right" colspan="2">---</td>
-          <td class="py-3 px-2 border-b text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-        </tr>
-      `;
+      let runningBalance = balanceBroughtForward;
+      let totalInvoiced = 0, totalReceived = 0, totalCredits = 0;
 
+      const openingRow = bc.showOpening ? `
+        <tr style="background:#f8fafc;">
+          <td colspan="2" style="padding:10px 8px;font-weight:800;font-style:italic;font-size:10px;">
+            ${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}
+          </td>
+          <td style="padding:10px 8px;font-size:9px;color:#64748b;font-style:italic;">Balance brought forward</td>
+          <td colspan="2" style="padding:10px 8px;text-align:right;color:#94a3b8;font-size:10px;">—</td>
+          <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+        </tr>
+      ` : '';
+
+      let rowsHtml = openingRow;
       const now = new Date();
 
       transactions.forEach(tx => {
-        runningBalance += tx.amount;
-        runningBalance -= tx.payment;
-        
-        if(tx.amount > 0) totalInvoiced += tx.amount;
-        
-        if (tx.payment > 0) {
-            if (tx.type === 'Credit Note') totalCredits += tx.payment;
-            else totalReceived += tx.payment;
-        }
+        runningBalance += tx.amount - tx.payment;
+        if (tx.amount > 0) totalInvoiced += tx.amount;
+        if (tx.payment > 0) { if (tx.type === 'Credit Note') totalCredits += tx.payment; else totalReceived += tx.payment; }
 
-        // Feature: Overdue Highlighting (Specific Days)
+        // Skip payments if showPayments is off
+        if (!bc.showPayments && tx.type === 'Payment Received') return;
+        if (!bc.showCredits && tx.type === 'Credit Note') return;
+
+        // Overdue badge
         let overdueBadge = '';
-        if (tx.type === 'Invoice' && new Date(tx.due_date) < now && (tx.raw.balance > 0 || tx.amount > 0)) { // Fallback if balance not avail
-            const diffTime = Math.abs(now - new Date(tx.due_date));
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            overdueBadge = `<span class="ml-2 px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] rounded font-bold whitespace-nowrap">OVERDUE BY ${diffDays} DAYS</span>`;
+        if (bc.formulaOverdue && tx.type === 'Invoice' && tx.due_date && new Date(tx.due_date) < now && tx.raw?.balance > 0) {
+          const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
+          overdueBadge = `<span style="margin-left:6px;padding:2px 6px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;">OVERDUE ${days}d</span>`;
         }
 
-        let paymentDisplay = '';
+        let payDisplay = '';
         if (tx.payment !== 0) {
-            if (tx.type === 'Credit Note') {
-                paymentDisplay = `<span class="text-red-600 font-bold">-${tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>`;
-            } else {
-                paymentDisplay = `<span class="text-emerald-600 font-bold">${tx.payment.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>`;
-            }
+          const color = tx.type === 'Credit Note' ? '#dc2626' : '#059669';
+          payDisplay = `<span style="color:${color};font-weight:700;">${tx.payment.toLocaleString(undefined, {minimumFractionDigits:2})}</span>`;
         }
 
-        // Feature: Summary vs Detailed Toggle
+        // Details
         let detailsHtml = '';
         if (!this.state.isSummaryMode) {
-            if (tx.type === 'Invoice') {
-              const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-              detailsHtml = `<div class="font-black text-${theme}-800 text-[10px] mb-1">INVOICE #${tx.ref} <span class="text-neutral-400 font-medium text-[8px] ml-1 whitespace-nowrap">Due: ${tx.due_date}</span>${overdueBadge}</div>`;
-              if (det && det.line_items) {
-                detailsHtml += `<div class="space-y-1 mt-1">`;
-                det.line_items.forEach(li => {
-                  const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-                  detailsHtml += `
-                    <div class="text-[9px] border-l-2 border-${theme}-100 pl-2 mb-0.5">
-                        <span class="font-bold text-neutral-800">${li.name}</span>
-                        <span class="text-neutral-500 font-mono text-[8px] ml-1">
-                            (${li.quantity} × ${rate})
-                        </span>
-                    </div>`;
-                });
-                detailsHtml += `</div>`;
-              }
-            } else if (tx.type === 'Payment Received') {
-              detailsHtml = `<div class="font-bold text-emerald-700 uppercase">Payment Received</div>`;
-              detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">Ref: ${tx.ref}</div>`;
-              if (tx.raw.invoices && tx.raw.invoices.length > 0) {
-                detailsHtml += `<div class="pl-2 opacity-80 text-[8px]">Against ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
-              }
-            } else if (tx.type === 'Credit Note') {
-              const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
-              detailsHtml = `<div class="font-black text-red-700 text-[10px] mb-1">CREDIT NOTE #${tx.ref}</div>`;
-              if (det && det.line_items) {
-                 detailsHtml += `<div class="space-y-1 mt-1">`;
-                det.line_items.forEach(li => {
-                  const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-                  detailsHtml += `
-                    <div class="text-[9px] border-l-2 border-red-100 pl-2 mb-0.5">
-                        <span class="font-bold text-neutral-800">${li.name}</span>
-                        <span class="text-neutral-600 font-mono text-[8px] ml-1">
-                            (${li.quantity} × ${rate})
-                        </span>
-                    </div>`;
-                });
-                detailsHtml += `</div>`;
-              }
+          if (tx.type === 'Invoice') {
+            const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
+            if (det?.line_items) {
+              detailsHtml = `<div style="margin-top:4px;">`;
+              det.line_items.forEach(li => {
+                const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2});
+                const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
+                detailsHtml += `
+                  <div style="font-size:9px;border-left:2px solid ${theme.accent}30;padding-left:8px;margin-bottom:3px;">
+                    ${groupName ? `<span style="font-size:8px;color:${theme.accent};font-weight:700;">${groupName} · </span>` : ''}
+                    <span style="font-weight:700;color:#1e293b;">${li.name}</span>
+                    <span style="color:#64748b;font-family:'DM Mono',monospace;font-size:8px;margin-left:4px;">(${li.quantity} × ${rate})</span>
+                  </div>`;
+              });
+              detailsHtml += `</div>`;
             }
+          } else if (tx.type === 'Payment Received') {
+            detailsHtml = `<div style="color:#059669;font-weight:700;font-size:10px;">Payment Received</div>`;
+            if (tx.raw?.invoices?.length) {
+              detailsHtml += `<div style="font-size:8px;color:#64748b;margin-top:2px;">Against: ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
+            }
+          } else if (tx.type === 'Credit Note') {
+            const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
+            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;">Credit Note #${tx.ref}</div>`;
+            if (det?.line_items) {
+              det.line_items.forEach(li => {
+                const rate = parseFloat(li.rate||0).toLocaleString(undefined,{minimumFractionDigits:2});
+                detailsHtml += `<div style="font-size:9px;border-left:2px solid #fca5a5;padding-left:8px;margin-bottom:2px;"><span style="font-weight:700;">${li.name}</span> <span style="font-size:8px;color:#64748b;">(${li.quantity} × ${rate})</span></div>`;
+              });
+            }
+          }
         } else {
-            // Summary Mode
-             if (tx.type === 'Invoice') detailsHtml = `<span class="font-bold text-${theme}-800">Invoice #${tx.ref}</span>${overdueBadge}`;
-             else if (tx.type === 'Payment Received') detailsHtml = `<span class="font-bold text-emerald-700">Payment (${tx.ref})</span>`;
-             else if (tx.type === 'Credit Note') detailsHtml = `<span class="font-bold text-red-700">Credit Note #${tx.ref}</span>`;
+          if (tx.type === 'Invoice') detailsHtml = `<span style="font-weight:700;color:${theme.primary};">Invoice #${tx.ref}</span>${overdueBadge}`;
+          else if (tx.type === 'Payment Received') detailsHtml = `<span style="font-weight:700;color:#059669;">Payment (${tx.ref})</span>`;
+          else if (tx.type === 'Credit Note') detailsHtml = `<span style="font-weight:700;color:#dc2626;">Credit Note #${tx.ref}</span>`;
         }
 
         rowsHtml += `
-          <tr class="border-b border-neutral-100 ledger-item-row group">
-            <td class="py-3 px-2 align-top font-bold text-neutral-400 whitespace-nowrap">${tx.date}</td>
-            <td class="py-3 px-2 align-top font-black text-${theme}-900 uppercase">${tx.type}</td>
-            <td class="py-3 px-2 align-top text-left text-[11px] leading-tight details-cell">${detailsHtml}</td>
-            <td class="py-3 px-2 align-top text-right font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-neutral-800'}">
-              ${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined, {minimumFractionDigits: 2}) : ''}
-            </td>
-            <td class="py-3 px-2 align-top text-right">
-              ${paymentDisplay}
-            </td>
-            <td class="py-3 px-2 align-top text-right font-black text-${theme}-900">
-              ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
-            </td>
+          <tr style="border-bottom:1px solid #f1f5f9;" class="ledger-item-row">
+            <td style="padding:10px 8px;font-weight:700;color:#64748b;font-size:10px;white-space:nowrap;">${tx.date}</td>
+            <td style="padding:10px 8px;font-weight:800;color:${theme.primary};font-size:9px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">${tx.type}</td>
+            <td style="padding:10px 8px;font-size:10px;line-height:1.4;">${detailsHtml}</td>
+            <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:10px;${tx.amount<0?'color:#dc2626;':''}" contenteditable="${!this.state.isSummaryMode}">${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined,{minimumFractionDigits:2}) : ''}</td>
+            <td style="padding:10px 8px;text-align:right;font-size:10px;" contenteditable="${!this.state.isSummaryMode}">${payDisplay}</td>
+            <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;color:${theme.primary};">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
           </tr>
         `;
       });
 
-      // Feature: Trend Chart (Mock Data Visualization Placeholder in Header)
-      const trendSvg = `<svg class="w-full h-8 opacity-50" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0 20 L0 10 Q 25 15 50 5 T 100 10 L 100 20 Z" fill="currentColor" /></svg>`;
+      const summaryHtml = bc.showSummary ? `
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;padding-top:2rem;border-top:2px solid ${theme.primary}20;">
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:${theme.accent};margin-bottom:1rem;">Account Summary</div>
+            <table style="font-size:10px;font-weight:600;color:#475569;border-collapse:collapse;">
+              <tr><td style="padding:4px 40px 4px 0;">Opening Balance</td><td style="text-align:right;">${balanceBroughtForward.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
+              <tr><td style="padding:4px 40px 4px 0;">Invoiced Amount</td><td style="text-align:right;">${totalInvoiced.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
+              <tr><td style="padding:4px 40px 4px 0;color:#059669;">Amount Received</td><td style="text-align:right;color:#059669;">${totalReceived.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
+              <tr><td style="padding:4px 40px 4px 0;color:#dc2626;">Credit Notes</td><td style="text-align:right;color:#dc2626;">${totalCredits.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
+              <tr style="border-top:1px solid #e2e8f0;">
+                <td style="padding:8px 40px 4px 0;font-weight:900;color:${theme.primary};font-size:12px;">Balance Due</td>
+                <td style="padding:8px 0 4px 0;text-align:right;font-weight:900;color:${theme.primary};font-size:12px;">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+              </tr>
+            </table>
+          </div>
+          <div style="text-align:right;">
+            <p style="font-size:10px;font-weight:800;font-style:italic;color:${theme.accent};">Official Account Statement</p>
+            <div style="margin-top:1.5rem;width:180px;border-bottom:2px solid ${theme.primary}30;"></div>
+            <p style="margin-top:6px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;">Authorized Signatory</p>
+          </div>
+        </div>
+      ` : '';
+
+      const notesHtml = bc.showNotes ? `
+        <div style="margin-top:1.5rem;padding:12px 16px;background:#f8fafc;border-radius:8px;border-left:3px solid ${theme.accent};">
+          <div id="editable-notes" contenteditable="true" style="font-size:9px;color:#64748b;line-height:1.6;">${this.state.notesContent}</div>
+        </div>
+      ` : '';
+
+      // Date range display
+      const dateRangeText = this.state.filterDateStart
+        ? `${this.state.filterDateStart.toLocaleDateString()} — ${this.state.filterDateEnd?.toLocaleDateString() || 'Present'}`
+        : 'All Transactions';
 
       html += `
         <div class="a4-page" id="pdf-content">
-          <div class="flex justify-between items-start mb-12">
-            <div class="flex-grow">
-              ${this.state.customLogo ? `<img src="${this.state.customLogo}" class="h-16 mb-6 object-contain">` : '<div class="h-16 w-48 bg-neutral-100 rounded mb-6 flex items-center justify-center text-[9px] text-neutral-400 border border-dashed border-neutral-300 uppercase font-black">Company Identity Logo</div>'}
-              <h1 class="text-2xl font-black uppercase tracking-tighter text-${theme}-900">${projectName}</h1>
-              <p class="text-[10px] text-indigo-500 font-black uppercase tracking-widest mt-1">InsightPRO Statement of Accounts (SOA)</p>
-              
-              <div class="mt-8">
-                <p class="text-[8px] font-black uppercase text-neutral-400 mb-1 tracking-widest">Customer Details</p>
-                <p class="text-xl font-black uppercase text-indigo-600">${clientName}</p>
-                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.email || ''}</p>
-                <p class="text-[10px] text-neutral-500 max-w-xs">${customer.mobile || customer.phone || ''}</p>
-              </div>
+          ${bc.showHeader ? `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:3px solid ${theme.primary};">
+            <div style="flex:1;">
+              ${this.state.customLogo 
+                ? `<img src="${this.state.customLogo}" style="height:56px;margin-bottom:1rem;object-fit:contain;display:block;">`
+                : `<div style="height:52px;width:140px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:1rem;font-size:8px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;">Your Logo</div>`
+              }
+              <div style="font-size:18px;font-weight:900;color:${theme.primary};letter-spacing:-0.02em;">${orgName}</div>
+              ${this.state.currentOrgDetails?.address ? `<div style="font-size:9px;color:#64748b;margin-top:4px;max-width:260px;line-height:1.5;">${this.state.currentOrgDetails.address}</div>` : ''}
+              ${this.state.currentOrgDetails?.phone ? `<div style="font-size:9px;color:#64748b;">T: ${this.state.currentOrgDetails.phone}</div>` : ''}
             </div>
-            <div class="text-right flex-shrink-0 w-48">
-              <div class="flex justify-end items-baseline gap-2">
-                  <h2 class="text-4xl font-black tracking-tighter leading-none text-${theme}-600">SOA</h2>
+            <div style="text-align:right;flex-shrink:0;width:180px;">
+              <div style="font-size:36px;font-weight:900;color:${theme.primary};letter-spacing:-0.04em;line-height:1;">SOA</div>
+              <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.2em;color:#94a3b8;margin-top:4px;">Statement of Accounts</div>
+              <div style="margin-top:1rem;background:${theme.primary};color:white;border-radius:10px;padding:12px 14px;">
+                <div style="font-size:8px;font-weight:700;opacity:0.8;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Balance Due</div>
+                <div style="font-size:20px;font-weight:900;letter-spacing:-0.02em;">${this.state.currency} ${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</div>
               </div>
-              <p class="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">Ref: ${new Date().toISOString().slice(0,10).replace(/-/g,'')}</p>
-              <p class="mt-1 text-[10px] font-black uppercase text-neutral-400">Date: ${new Date().toLocaleDateString()}</p>
-              
-              <!-- Feature: Trend Chart Visual -->
-              <div class="mt-4 bg-${theme}-600 text-white p-3 rounded-xl shadow-xl overflow-hidden relative">
-                <div class="relative z-10">
-                    <p class="text-[8px] font-black uppercase tracking-widest opacity-80 mb-1">Current Balance Due</p>
-                    <p class="text-2xl font-black uppercase tracking-tighter">${this.state.currency} ${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-                </div>
-                <div class="absolute bottom-0 left-0 w-full text-${theme}-800 mix-blend-multiply">
-                    ${trendSvg}
-                </div>
-              </div>
+              <div style="margin-top:8px;font-size:8px;font-weight:700;color:#94a3b8;">Dated: ${new Date().toLocaleDateString()}</div>
             </div>
           </div>
-          
-          <table class="w-full text-left border-collapse table-fixed master-ledger-table mb-12">
+          ` : ''}
+
+          ${bc.showCustomer ? `
+          <div style="margin-bottom:1.5rem;display:flex;gap:2rem;align-items:flex-start;">
+            <div style="flex:1;">
+              <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Account</div>
+              <div style="font-size:16px;font-weight:900;color:${theme.primary};">${clientName}</div>
+              ${customer.email ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.email}</div>` : ''}
+              ${customer.mobile || customer.phone ? `<div style="font-size:9px;color:#64748b;">${customer.mobile || customer.phone}</div>` : ''}
+              ${customer.billing_address?.address ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.billing_address.address}${customer.billing_address.city ? ', '+customer.billing_address.city : ''}</div>` : ''}
+            </div>
+            <div>
+              <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Period</div>
+              <div style="font-size:10px;font-weight:700;color:#1e293b;">${dateRangeText}</div>
+            </div>
+          </div>
+          ` : ''}
+
+          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1.5rem;">
             <thead>
-              <tr class="bg-${theme}-600 text-white text-[9px] font-black uppercase tracking-[0.2em]">
-                <th class="py-3 px-2 w-[85px]">Date</th>
-                <th class="py-3 px-2 w-[90px]">Transaction</th>
-                <th class="py-3 px-2 w-[240px]">Details</th>
-                <th class="py-3 px-2 w-[85px] text-right">Amount</th>
-                <th class="py-3 px-2 w-[85px] text-right">Payments</th>
-                <th class="py-3 px-2 w-[95px] text-right">Balance</th>
+              <tr style="background:${theme.primary};color:white;">
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:90px;">Date</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:95px;">Transaction</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;">Details</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;">Amount</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;">Payment</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:95px;">Balance</th>
               </tr>
             </thead>
-            <tbody class="text-[10px] ledger-rows">
-              ${rowsHtml}
-            </tbody>
+            <tbody class="ledger-rows">${rowsHtml}</tbody>
           </table>
 
-          <div class="mt-auto border-t-2 border-indigo-100 pt-8 flex justify-between items-end">
-            <div class="space-y-4">
-              <h4 class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Account Summary</h4>
-              <div class="grid grid-cols-2 gap-x-12 gap-y-2 text-[11px] font-bold text-neutral-600 uppercase">
-                <span>Opening Balance:</span><span class="text-right">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                <span>Invoiced Amount:</span><span class="text-right">${totalInvoiced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                <span>Amount Received:</span><span class="text-right text-emerald-600">${totalReceived.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                <span>Credit Notes:</span><span class="text-right text-red-600">${totalCredits.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                <span class="pt-2 border-t font-black text-indigo-900 text-sm">Balance Due:</span>
-                <span class="pt-2 border-t font-black text-indigo-900 text-sm text-right">${runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-              </div>
-            </div>
-            <div class="text-right">
-              <p class="text-[11px] font-black uppercase text-indigo-500 italic">Official Account Statement</p>
-              <div class="mt-6 h-12 w-48 border-b-2 border-indigo-200 ml-auto"></div>
-              <p class="mt-2 text-[8px] font-black uppercase tracking-widest text-neutral-400">Authorized Signatory</p>
-            </div>
-          </div>
-        </div>`;
+          ${summaryHtml}
+          ${notesHtml}
+        </div>
+      `;
     });
 
     this.targets.renderArea.innerHTML = html;
-    
-    // Save notes on change
+
     const notesDiv = document.getElementById('editable-notes');
-    if(notesDiv) {
-        notesDiv.oninput = (e) => {
-            this.state.notesContent = e.target.innerHTML;
-            localStorage.setItem('biz_notes', this.state.notesContent);
-        };
-    }
-
-    this.attachLedgerListeners();
-    this.autoFitZoom();
-  }
-
-  attachLedgerListeners() {
-    this.targets.renderArea.querySelectorAll('.row-del-btn').forEach(btn => {
-      btn.onclick = (e) => {
-        const row = e.target.closest('tr');
-        row.remove();
-        this.recalculateAllLedgers();
+    if (notesDiv) {
+      notesDiv.oninput = (e) => {
+        this.state.notesContent = e.target.innerHTML;
+        localStorage.setItem('biz_notes', this.state.notesContent);
       };
-    });
-    this.targets.renderArea.querySelectorAll('[contenteditable="true"]').forEach(cell => {
-      cell.oninput = () => this.recalculateAllLedgers();
-    });
-  }
-
-recalculateAllLedgers() {
-  const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr');
-  let runningTotal = 0;
-
-  const openingRow = rows[0];
-  if (openingRow) {
-    const openingText = openingRow.children[5]?.innerText?.replace(/,/g, '');
-    runningTotal = parseFloat(openingText) || 0;
-  }
-
-  rows.forEach((row, index) => {
-    if (index === 0) return;
-
-    if (row.classList.contains('ledger-item-row')) {
-      const amtCell = row.children[3];
-      const payCell = row.children[4];
-      const runTotalCell = row.children[5];
-
-      const amtRaw = amtCell.innerText.replace(/,/g, '');
-      const payRaw = payCell.innerText.replace(/,/g, '');
-
-      const amt = parseFloat(amtRaw) || 0;
-      const pay = parseFloat(payRaw) || 0;
-
-      runningTotal += amt;
-      runningTotal -= pay;
-
-      runTotalCell.innerText = runningTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
     }
-  });
-}
+    this.attachLedgerListeners();
+  }
 
-  downloadExcel() {
-    this.showLoading(80, "Aggregating SOA Workbook...");
-    
-    if (this.state.selectedCustomerIds.size === 0) {
-      alert("No customer selected.");
-      this.hideLoading();
+  // ─────────────────────────────────────────
+  // SALES STATEMENT (line-item grouped view)
+  // ─────────────────────────────────────────
+  renderSalesStatement() {
+    const bc = this.state.builderConfig;
+    const theme = this.getTheme();
+    const orgName = this.getOrgName();
+    let html = '';
+
+    this.state.selectedCustomerIds.forEach(id => {
+      const customer = this.state.customerFullDetails[id] || {};
+      const clientName = customer.contact_name || 'Valued Client';
+
+      // Collect invoice line items
+      let invoices = (this.state.dataStore.invoices[id]?.records || []);
+      let filtered = invoices;
+
+      if (this.state.filterDateStart) {
+        filtered = invoices.filter(inv => {
+          const d = new Date(inv.date);
+          return d >= this.state.filterDateStart && (!this.state.filterDateEnd || d <= this.state.filterDateEnd);
+        });
+      }
+
+      // Sort invoices
+      if (bc.sortBy === 'date_desc') filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
+      else if (bc.sortBy === 'date_asc') filtered.sort((a,b) => new Date(a.date) - new Date(b.date));
+      else if (bc.sortBy === 'amount_desc') filtered.sort((a,b) => parseFloat(b.total||0) - parseFloat(a.total||0));
+
+      // Collect all line items with invoice context
+      let allLineItems = [];
+      filtered.forEach(inv => {
+        const det = this.state.invoiceDetailsCache[inv.invoice_id];
+        const items = det?.line_items || [];
+        items.forEach(li => {
+          const qty = parseFloat(li.quantity || 0);
+          const rate = parseFloat(li.rate || 0);
+          const amt = parseFloat(li.item_total || li.amount || qty * rate || 0);
+          const bags = bc.formulaBags ? (qty / bc.bagsPackSize).toFixed(0) : null;
+
+          // Item group name — try multiple sources
+          const groupName = li.item_custom_fields?.find(f =>
+            f.label?.toLowerCase().includes('group') || f.customfield_id?.includes('group')
+          )?.value || li.product_type || '';
+
+          allLineItems.push({
+            date: inv.date,
+            invNumber: inv.invoice_number,
+            invId: inv.invoice_id,
+            itemName: li.name,
+            groupName,
+            qty,
+            unit: li.unit || '',
+            rate,
+            amount: amt,
+            bags,
+            isOverdue: bc.formulaOverdue && inv.due_date && new Date(inv.due_date) < new Date() && (inv.balance > 0),
+            isCreditNote: false,
+          });
+        });
+      });
+
+      // Also collect credit note line items
+      if (bc.showCredits) {
+        (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
+          if (this.state.filterDateStart && new Date(cn.date) < this.state.filterDateStart) return;
+          if (this.state.filterDateEnd && new Date(cn.date) > this.state.filterDateEnd) return;
+          const det = this.state.invoiceDetailsCache[cn.creditnote_id];
+          (det?.line_items || []).forEach(li => {
+            const qty = parseFloat(li.quantity || 0);
+            const rate = parseFloat(li.rate || 0);
+            const amt = parseFloat(li.item_total || li.amount || qty * rate || 0);
+            allLineItems.push({
+              date: cn.date,
+              invNumber: cn.creditnote_number,
+              invId: cn.creditnote_id,
+              itemName: li.name,
+              groupName: li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '',
+              qty,
+              unit: li.unit || '',
+              rate,
+              amount: -amt,
+              bags: bc.formulaBags ? (qty / bc.bagsPackSize).toFixed(0) : null,
+              isOverdue: false,
+              isCreditNote: true,
+            });
+          });
+        });
+      }
+
+      // Grouping
+      let groups = {};
+      if (bc.groupBy === 'item_group') {
+        allLineItems.forEach(li => {
+          const key = li.groupName || '(No Group)';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(li);
+        });
+      } else if (bc.groupBy === 'invoice') {
+        allLineItems.forEach(li => {
+          const key = `${li.date} — ${li.invNumber}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(li);
+        });
+      } else if (bc.groupBy === 'month') {
+        allLineItems.forEach(li => {
+          const d = new Date(li.date);
+          const key = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(li);
+        });
+      } else {
+        groups['_all'] = allLineItems;
+      }
+
+      // Build columns header
+      const cols = [];
+      if (bc.colDate) cols.push({ label: 'Bill Date', width: '80px', align: 'left' });
+      if (bc.colRef) cols.push({ label: 'Bill No.', width: '80px', align: 'left' });
+      if (bc.colGroup && bc.groupBy !== 'item_group') cols.push({ label: 'Item Group', width: '100px', align: 'left' });
+      if (bc.colItem) cols.push({ label: 'Item Name', width: 'auto', align: 'left' });
+      if (bc.colUnit) cols.push({ label: 'Unit (KG)', width: '70px', align: 'right' });
+      if (bc.formulaBags && bc.colUnit) cols.push({ label: 'Bags', width: '50px', align: 'right' });
+      if (bc.colRate) cols.push({ label: 'Unit Price', width: '80px', align: 'right' });
+      if (bc.colAmount) cols.push({ label: 'Amount', width: '90px', align: 'right' });
+
+      const thCells = cols.map(c =>
+        `<th style="padding:8px 10px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;text-align:${c.align};width:${c.width};border-right:1px solid rgba(255,255,255,0.1);">${c.label}</th>`
+      ).join('');
+
+      // Build rows
+      let salesRowsHtml = '';
+      let grandTotal = 0;
+      let grandQty = 0;
+
+      Object.entries(groups).forEach(([groupKey, items]) => {
+        let groupTotal = 0;
+        let groupQty = 0;
+
+        // Group header row
+        if (bc.groupBy !== 'none' && groupKey !== '_all') {
+          salesRowsHtml += `
+            <tr>
+              <td colspan="${cols.length}" style="padding:8px 10px;font-weight:800;font-size:10px;color:${theme.primary};background:${theme.light};border-top:2px solid ${theme.primary}20;">
+                ${groupKey}
+              </td>
+            </tr>
+          `;
+        }
+
+        items.forEach(li => {
+          const cells = [];
+          if (bc.colDate) cells.push(`<td style="padding:7px 10px;font-size:9px;color:${li.isCreditNote?'#dc2626':'#475569'};white-space:nowrap;">${li.date}</td>`);
+          if (bc.colRef) cells.push(`<td style="padding:7px 10px;font-size:9px;font-weight:700;color:${li.isCreditNote?'#dc2626':theme.primary};white-space:nowrap;">${li.invNumber}${li.isCreditNote?' (CR)':''}</td>`);
+          if (bc.colGroup && bc.groupBy !== 'item_group') cells.push(`<td style="padding:7px 10px;font-size:9px;color:#64748b;">${li.groupName}</td>`);
+          if (bc.colItem) cells.push(`<td style="padding:7px 10px;font-size:9px;font-weight:600;color:#1e293b;">${li.itemName}</td>`);
+          if (bc.colUnit) cells.push(`<td style="padding:7px 10px;font-size:9px;text-align:right;font-family:'DM Mono',monospace;">${li.qty.toLocaleString()}</td>`);
+          if (bc.formulaBags && bc.colUnit) cells.push(`<td style="padding:7px 10px;font-size:9px;text-align:right;font-family:'DM Mono',monospace;">${li.bags || ''}</td>`);
+          if (bc.colRate) cells.push(`<td style="padding:7px 10px;font-size:9px;text-align:right;font-family:'DM Mono',monospace;">${li.rate.toLocaleString(undefined,{minimumFractionDigits:2})}</td>`);
+          if (bc.colAmount) cells.push(`<td style="padding:7px 10px;font-size:9px;text-align:right;font-weight:700;font-family:'DM Mono',monospace;color:${li.amount<0?'#dc2626':'#1e293b'};">${Math.abs(li.amount).toLocaleString(undefined,{minimumFractionDigits:2})}</td>`);
+
+          salesRowsHtml += `<tr style="border-bottom:1px solid #f1f5f9;">${cells.join('')}</tr>`;
+          groupTotal += li.amount;
+          groupQty += li.qty;
+        });
+
+        // Group subtotal
+        if (bc.groupBy !== 'none' && groupKey !== '_all' && items.length > 0) {
+          const subtotalCells = cols.map((c, ci) => {
+            if (ci === 0) return `<td colspan="${cols.filter(x=>x.label!=='Unit (KG)'&&x.label!=='Bags'&&x.label!=='Unit Price'&&x.label!=='Amount').length || 1}" style="padding:6px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:${theme.primary};">Subtotal</td>`;
+            if (c.label === 'Unit (KG)') return `<td style="padding:6px 10px;font-size:9px;text-align:right;font-weight:800;font-family:'DM Mono',monospace;">${groupQty.toLocaleString()}</td>`;
+            if (c.label === 'Bags') return `<td style="padding:6px 10px;font-size:9px;text-align:right;font-weight:800;"></td>`;
+            if (c.label === 'Unit Price') return `<td style="padding:6px 10px;"></td>`;
+            if (c.label === 'Amount') return `<td style="padding:6px 10px;font-size:9px;text-align:right;font-weight:800;font-family:'DM Mono',monospace;color:${theme.primary};">${groupTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</td>`;
+            return `<td></td>`;
+          });
+          // simpler subtotal row
+          const span = cols.length - (bc.colAmount ? 1 : 0) - (bc.colUnit ? 1 : 0);
+          salesRowsHtml += `
+            <tr style="background:${theme.light};border-top:1px solid ${theme.primary}20;">
+              <td colspan="${span}" style="padding:6px 10px;font-size:9px;font-weight:800;color:${theme.primary};text-transform:uppercase;letter-spacing:0.08em;">Subtotal — ${groupKey}</td>
+              ${bc.colUnit ? `<td style="padding:6px 10px;font-size:9px;text-align:right;font-weight:800;font-family:'DM Mono',monospace;">${groupQty.toLocaleString()}</td>` : ''}
+              ${bc.colAmount ? `<td style="padding:6px 10px;font-size:9px;text-align:right;font-weight:800;font-family:'DM Mono',monospace;color:${theme.primary};">${groupTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</td>` : ''}
+            </tr>
+          `;
+        }
+
+        grandTotal += groupTotal;
+        grandQty += groupQty;
+      });
+
+      // Payments section
+      let paymentsHtml = '';
+      if (bc.showPayments) {
+        const payments = (this.state.dataStore.payments[id]?.records || []).filter(p => {
+          if (this.state.filterDateStart && new Date(p.date) < this.state.filterDateStart) return false;
+          if (this.state.filterDateEnd && new Date(p.date) > this.state.filterDateEnd) return false;
+          return true;
+        });
+        if (payments.length > 0) {
+          let paymentsTotal = 0;
+          paymentsHtml = `
+            <div style="margin-top:1.5rem;">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:${theme.accent};margin-bottom:0.5rem;">Payments Received</div>
+              <table style="width:100%;border-collapse:collapse;font-size:10px;">
+                <thead>
+                  <tr style="background:#f0fdf4;">
+                    <th style="padding:8px 10px;font-size:8px;font-weight:800;text-align:left;text-transform:uppercase;letter-spacing:0.1em;color:#059669;">Date</th>
+                    <th style="padding:8px 10px;font-size:8px;font-weight:800;text-align:left;text-transform:uppercase;letter-spacing:0.1em;color:#059669;">Reference</th>
+                    <th style="padding:8px 10px;font-size:8px;font-weight:800;text-align:left;text-transform:uppercase;letter-spacing:0.1em;color:#059669;">Against Invoice</th>
+                    <th style="padding:8px 10px;font-size:8px;font-weight:800;text-align:right;text-transform:uppercase;letter-spacing:0.1em;color:#059669;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${payments.map(p => {
+                    paymentsTotal += parseFloat(p.amount || 0);
+                    const against = p.invoices?.map(i => i.invoice_number).join(', ') || '—';
+                    return `<tr style="border-bottom:1px solid #f0fdf4;">
+                      <td style="padding:7px 10px;font-size:9px;color:#475569;">${p.date}</td>
+                      <td style="padding:7px 10px;font-size:9px;font-weight:700;color:#059669;">${p.payment_number || p.reference_number || '—'}</td>
+                      <td style="padding:7px 10px;font-size:9px;color:#64748b;">${against}</td>
+                      <td style="padding:7px 10px;font-size:9px;text-align:right;font-weight:700;color:#059669;font-family:'DM Mono',monospace;">${parseFloat(p.amount||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                    </tr>`;
+                  }).join('')}
+                  <tr style="background:#f0fdf4;">
+                    <td colspan="3" style="padding:8px 10px;font-size:9px;font-weight:800;color:#059669;text-transform:uppercase;">Total Payments</td>
+                    <td style="padding:8px 10px;font-size:9px;font-weight:900;text-align:right;color:#059669;font-family:'DM Mono',monospace;">${paymentsTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+      }
+
+      const dateRangeText = this.state.filterDateStart
+        ? `${this.state.filterDateStart.toLocaleDateString()} — ${this.state.filterDateEnd?.toLocaleDateString() || 'Present'}`
+        : 'All Transactions';
+
+      html += `
+        <div class="a4-page" id="pdf-content">
+          ${bc.showHeader ? `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:3px solid ${theme.primary};">
+            <div>
+              ${this.state.customLogo
+                ? `<img src="${this.state.customLogo}" style="height:56px;margin-bottom:8px;object-fit:contain;display:block;">`
+                : `<div style="font-size:22px;font-weight:900;color:${theme.primary};letter-spacing:-0.03em;">${orgName}</div>`
+              }
+              ${this.state.customLogo ? `<div style="font-size:16px;font-weight:900;color:${theme.primary};letter-spacing:-0.02em;">${orgName}</div>` : ''}
+              ${this.state.currentOrgDetails?.address ? `<div style="font-size:8px;color:#64748b;line-height:1.5;margin-top:2px;max-width:280px;">${this.state.currentOrgDetails.address}</div>` : ''}
+              ${this.state.currentOrgDetails?.phone ? `<div style="font-size:8px;color:#64748b;">T: ${this.state.currentOrgDetails.phone}</div>` : ''}
+              <div style="margin-top:8px;font-size:9px;font-weight:800;color:#94a3b8;">From ${dateRangeText}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:18px;font-weight:900;color:${theme.primary};">Sales Statement</div>
+              <div style="font-size:8px;font-weight:700;color:#94a3b8;margin-top:4px;">${new Date().toLocaleDateString()}</div>
+              ${bc.showCustomer ? `
+              <div style="margin-top:10px;background:${theme.light};border:1px solid ${theme.primary}20;border-radius:8px;padding:10px 14px;text-align:right;">
+                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#94a3b8;margin-bottom:4px;">Account</div>
+                <div style="font-size:13px;font-weight:900;color:${theme.primary};">${clientName}</div>
+                ${customer.email ? `<div style="font-size:8px;color:#64748b;">${customer.email}</div>` : ''}
+              </div>` : ''}
+            </div>
+          </div>
+          ` : ''}
+
+          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1rem;">
+            <thead>
+              <tr style="background:${theme.primary};color:white;">${thCells}</tr>
+            </thead>
+            <tbody>${salesRowsHtml}</tbody>
+            <tfoot>
+              <tr style="background:${theme.primary};color:white;">
+                <td colspan="${cols.length - (bc.colAmount?1:0) - (bc.colUnit?1:0)}" style="padding:10px;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;">Grand Total</td>
+                ${bc.colUnit ? `<td style="padding:10px;font-size:10px;text-align:right;font-weight:900;font-family:'DM Mono',monospace;">${grandQty.toLocaleString()}</td>` : ''}
+                ${bc.colAmount ? `<td style="padding:10px;font-size:10px;text-align:right;font-weight:900;font-family:'DM Mono',monospace;">${grandTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</td>` : ''}
+              </tr>
+            </tfoot>
+          </table>
+
+          ${paymentsHtml}
+
+          ${bc.showNotes ? `
+          <div style="margin-top:1rem;padding:10px 14px;background:#f8fafc;border-radius:8px;border-left:3px solid ${theme.accent};">
+            <div id="editable-notes" contenteditable="true" style="font-size:9px;color:#64748b;line-height:1.6;">${this.state.notesContent}</div>
+          </div>
+          ` : ''}
+        </div>
+      `;
+    });
+
+    this.targets.renderArea.innerHTML = html;
+    const notesDiv = document.getElementById('editable-notes');
+    if (notesDiv) {
+      notesDiv.oninput = (e) => {
+        this.state.notesContent = e.target.innerHTML;
+        localStorage.setItem('biz_notes', this.state.notesContent);
+      };
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // COLLECT & SORT TRANSACTIONS
+  // ─────────────────────────────────────────
+  collectTransactions(id) {
+    const txs = [];
+    (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+      txs.push({ date: inv.date, type: 'Invoice', ref: inv.invoice_number, due_date: inv.due_date, amount: parseFloat(inv.total) || 0, payment: 0, raw: inv, sortDate: new Date(inv.date) });
+    });
+    (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
+      txs.push({ date: pay.date, type: 'Payment Received', ref: pay.payment_number, amount: 0, payment: parseFloat(pay.amount) || 0, raw: pay, sortDate: new Date(pay.date) });
+    });
+    (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
+      txs.push({ date: cn.date, type: 'Credit Note', ref: cn.creditnote_number, amount: 0, payment: parseFloat(cn.total) || 0, raw: cn, sortDate: new Date(cn.date) });
+    });
+    return txs;
+  }
+
+  applySortAndFilter(transactions, bc) {
+    let txs = [...transactions];
+    if (this.state.filterDateStart) {
+      txs = txs.filter(t => t.sortDate >= this.state.filterDateStart && (!this.state.filterDateEnd || t.sortDate <= this.state.filterDateEnd));
+    }
+    if (bc.sortBy === 'date_desc') txs.sort((a, b) => b.sortDate - a.sortDate);
+    else if (bc.sortBy === 'amount_desc') txs.sort((a, b) => (b.amount || b.payment) - (a.amount || a.payment));
+    else txs.sort((a, b) => a.sortDate - b.sortDate);
+    return txs;
+  }
+
+  // ─────────────────────────────────────────
+  // LEDGER LISTENERS (editable cells)
+  // ─────────────────────────────────────────
+  attachLedgerListeners() {
+    this.targets.renderArea.querySelectorAll('[contenteditable="true"]').forEach(cell => {
+      cell.oninput = () => this.recalcLedger();
+    });
+  }
+
+  recalcLedger() {
+    const rows = this.targets.renderArea.querySelectorAll('.master-ledger-table tbody tr, .ledger-rows tr');
+    let running = 0;
+    rows.forEach((row, i) => {
+      if (i === 0) {
+        const v = row.cells[5]?.innerText?.replace(/,/g, '');
+        running = parseFloat(v) || 0;
+        return;
+      }
+      if (row.classList.contains('ledger-item-row')) {
+        const amt = parseFloat(row.cells[3]?.innerText?.replace(/,/g, '')) || 0;
+        const pay = parseFloat(row.cells[4]?.innerText?.replace(/,/g, '')) || 0;
+        running += amt - pay;
+        if (row.cells[5]) row.cells[5].innerText = running.toLocaleString(undefined, { minimumFractionDigits: 2 });
+      }
+    });
+  }
+
+  // ─────────────────────────────────────────
+  // EXPLORER
+  // ─────────────────────────────────────────
+  renderExplorer() {
+    const tabs = this.targets.explorerTabs;
+    if (!tabs) return;
+    tabs.innerHTML = '';
+    const available = ['invoices', 'creditnotes', 'payments', 'estimates', 'salesorders'];
+    available.forEach(mod => {
+      const btn = document.createElement('button');
+      btn.className = `exp-tab${this.state.explorerModule === mod ? ' active' : ''}`;
+      btn.textContent = mod.replace('customerpayments', 'payments');
+      btn.onclick = () => { this.state.explorerModule = mod; this.renderExplorer(); };
+      tabs.appendChild(btn);
+    });
+
+    const storeKey = this.state.explorerModule === 'customerpayments' ? 'payments' : this.state.explorerModule;
+    const moduleData = this.state.dataStore[storeKey] || {};
+    const allRecords = [];
+    Object.entries(moduleData).forEach(([cid, data]) => {
+      (data.records || []).forEach(r => allRecords.push({ Customer: data.customerName, ...r }));
+    });
+
+    if (allRecords.length === 0) {
+      this.targets.explorerThead.innerHTML = '';
+      this.targets.explorerTbody.innerHTML = '<tr><td colspan="100" style="padding:3rem;text-align:center;color:#94a3b8;font-size:0.75rem;font-weight:700;">No data — select a customer first</td></tr>';
       return;
     }
 
-    const data = [];
-    const projectName = this.inputs.orgSelect.options[this.inputs.orgSelect.selectedIndex]?.text || 'N/A';
+    const headers = Object.keys(allRecords[0]).filter(k => typeof allRecords[0][k] !== 'object');
+    this.targets.explorerThead.innerHTML = `<tr>${headers.map(h => `<th>${h.replace(/_/g, ' ')}</th>`).join('')}</tr>`;
+    this.targets.explorerTbody.innerHTML = allRecords.map(row =>
+      `<tr>${headers.map(h => `<td>${row[h] ?? '—'}</td>`).join('')}</tr>`
+    ).join('');
+  }
+
+  // ─────────────────────────────────────────
+  // SETTINGS MODAL
+  // ─────────────────────────────────────────
+  applySettings() {
+    this.state.activeModules.clear();
+    this.inputs.moduleCheckboxes.forEach(cb => { if (cb.checked) this.state.activeModules.add(cb.value); });
+    localStorage.setItem('active_modules', JSON.stringify(Array.from(this.state.activeModules)));
+    this.views.settingsModal.classList.add('view-hidden');
+    if (this.state.selectedCustomerIds.size > 0) {
+      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
+      for (const id of this.state.selectedCustomerIds) this.syncCustomerData(id).then(() => this.updateUIVisuals());
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // ORG SWITCH
+  // ─────────────────────────────────────────
+  async handleOrgSwitch(orgId) {
+    this.showLoading(20, 'Switching project…');
+    this.state.selectedOrgId = orgId;
+    localStorage.setItem('zoho_selected_org_id', orgId);
+    this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
+    this.state.selectedCustomerIds.clear();
+    this.state.customerFullDetails = {};
+    try {
+      await this.fetchOrganizationDetails();
+      await this.fetchCustomers();
+      this.updateUIVisuals();
+    } catch (e) { this.log(`Error: ${e.message}`); }
+    finally { this.hideLoading(); }
+  }
+
+  // ─────────────────────────────────────────
+  // COLOR PICKER
+  // ─────────────────────────────────────────
+  renderColorPicker() {
+    if (!this.targets.colorPicker) return;
+    this.targets.colorPicker.innerHTML = '';
+    this.state.colors.forEach(c => {
+      const dot = document.createElement('div');
+      dot.className = `color-dot${this.state.theme === c.name ? ' active' : ''}`;
+      dot.style.background = c.primary;
+      dot.title = c.name;
+      dot.onclick = () => {
+        this.state.theme = c.name;
+        localStorage.setItem('biz_theme', c.name);
+        this.renderColorPicker();
+        this.renderStatementUI();
+      };
+      this.targets.colorPicker.appendChild(dot);
+    });
+  }
+
+  // ─────────────────────────────────────────
+  // LOGO
+  // ─────────────────────────────────────────
+  handleLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      this.state.customLogo = ev.target.result;
+      localStorage.setItem('biz_logo', this.state.customLogo);
+      this.renderStatementUI();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ─────────────────────────────────────────
+  // EMAIL COMPOSER
+  // ─────────────────────────────────────────
+  openEmailComposer() {
+    const id = Array.from(this.state.selectedCustomerIds)[0];
+    const customer = this.state.customerFullDetails[id] || {};
+    const email = document.getElementById('email-to');
+    const subject = document.getElementById('email-subject');
+    const body = document.getElementById('email-body');
+    if (email) email.value = customer.email || '';
+    if (subject) subject.value = `Statement of Account — ${customer.contact_name || 'Customer'}`;
+    if (body) body.value = `Dear ${customer.contact_name || 'Customer'},\n\nPlease find attached your Statement of Account.\n\nIf you have any queries, please do not hesitate to contact us.\n\nKind regards,\n${this.getOrgName()}`;
+    this.views.emailModal.classList.remove('view-hidden');
+  }
+
+  copyEmailToClipboard() {
+    const subject = document.getElementById('email-subject')?.value || '';
+    const body = document.getElementById('email-body')?.value || '';
+    navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+    const btn = this.btns.copyEmail;
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000); }
+  }
+
+  // ─────────────────────────────────────────
+  // ZOOM
+  // ─────────────────────────────────────────
+  setZoom(val) {
+    this.state.zoom = Math.max(0.3, Math.min(2.5, val));
+    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
+    pages.forEach(p => { p.style.transform = `scale(${this.state.zoom})`; });
+  }
+
+  autoFitZoom() {
+    const area = this.views.areaLedger;
+    if (!area) return;
+    const w = area.clientWidth;
+    const a4w = 210 * 3.7795;
+    const fit = (w * 0.88) / a4w;
+    this.setZoom(Math.min(fit, 1.0));
+  }
+
+  // ─────────────────────────────────────────
+  // LOADING
+  // ─────────────────────────────────────────
+  showLoading(pct, txt) {
+    const lc = this.views.loadingContainer || document.getElementById('loading-container');
+    const lp = this.views.loadingProgress || document.getElementById('loading-progress');
+    const lt = this.views.loadingText || document.getElementById('loading-text');
+    if (lc) lc.classList.remove('view-hidden');
+    if (lp) lp.style.width = `${pct}%`;
+    if (lt) { lt.textContent = txt.toUpperCase(); lt.style.display = 'block'; }
+    if (this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
+    if (this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
+  }
+
+  hideLoading() {
+    const lp = this.views.loadingProgress || document.getElementById('loading-progress');
+    if (lp) lp.style.width = '100%';
+    setTimeout(() => {
+      const lc = this.views.loadingContainer || document.getElementById('loading-container');
+      const lt = this.views.loadingText || document.getElementById('loading-text');
+      if (lc) lc.classList.add('view-hidden');
+      if (lt) lt.style.display = 'none';
+      if (this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
+      if (this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
+    }, 600);
+  }
+
+  // ─────────────────────────────────────────
+  // LOG
+  // ─────────────────────────────────────────
+  log(msg) { if (this.targets.log) this.targets.log.textContent = `SYS: ${msg.toUpperCase()}`; }
+  showLandingError(msg) {
+    const el = this.views.landingError;
+    const txt = this.targets.errorText || document.getElementById('landing-error-text');
+    if (el) el.classList.remove('view-hidden');
+    if (txt) txt.textContent = msg;
+  }
+
+  // ─────────────────────────────────────────
+  // EXCEL EXPORT
+  // ─────────────────────────────────────────
+  downloadExcel() {
+    if (this.state.selectedCustomerIds.size === 0) { alert('No customer selected.'); return; }
+    this.showLoading(80, 'Building spreadsheet…');
+
+    const wb = XLSX.utils.book_new();
+    const orgName = this.getOrgName();
 
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'N/A';
-      
-      const openingBalance =
-  parseFloat(
-    customer.opening_balance ??
-    customer.opening_balances?.[0]?.opening_balance ??
-    customer.outstanding_receivable_amount ??
-    0
-  ) || 0;
-      let runningBalance = openingBalance;
-      
-      data.push({
-        'Date': '---',
-        'Transaction': 'OPENING BALANCE',
-        'Reference': '---',
-        'Details': 'Balance Brought Forward',
-        'Amount (Debit)': 0,
-        'Payment/Credit': 0,
-        'Balance': openingBalance,
-        'Customer': clientName
-      });
+      const openingBalance = customer._computed_opening_balance ?? parseFloat(customer.opening_balance) || 0;
 
-      let transactions = [];
-      
-      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
-        transactions.push({
-          date: inv.date,
-          type: 'Invoice',
-          ref: inv.invoice_number,
-          due_date: inv.due_date,
-          amount: parseFloat(inv.total) || 0,
-          payment: 0,
-          raw: inv,
-          sortDate: new Date(inv.date)
+      if (this.state.statementMode === 'sales') {
+        // Sales export — line items
+        const rows = [['Bill Date', 'Bill No.', 'Item Group', 'Item Name', 'Unit (KG)', 'Bags', 'Unit Price', 'Amount']];
+        const bc = this.state.builderConfig;
+        (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+          const det = this.state.invoiceDetailsCache[inv.invoice_id];
+          (det?.line_items || []).forEach(li => {
+            const qty = parseFloat(li.quantity || 0);
+            const rate = parseFloat(li.rate || 0);
+            const amt = parseFloat(li.item_total || qty * rate || 0);
+            const bags = bc.formulaBags ? +(qty / bc.bagsPackSize).toFixed(0) : '';
+            const group = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
+            rows.push([inv.date, inv.invoice_number, group, li.name, qty, bags, rate, amt]);
+          });
         });
-      });
-
-      (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
-        transactions.push({
-          date: pay.date,
-          type: 'Payment Received',
-          ref: pay.payment_number,
-          amount: 0,
-          payment: parseFloat(pay.amount) || 0,
-          raw: pay,
-          sortDate: new Date(pay.date)
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, clientName.slice(0, 30) + '_Sales');
+      } else {
+        // Ledger export
+        const data = [{ Date: '---', Transaction: 'OPENING BALANCE', Reference: '---', Details: 'Balance Brought Forward', Amount: 0, Payment: 0, Balance: openingBalance, Customer: clientName }];
+        let running = openingBalance;
+        const txs = this.collectTransactions(id);
+        txs.sort((a, b) => a.sortDate - b.sortDate);
+        txs.forEach(tx => {
+          running += tx.amount - tx.payment;
+          let details = '';
+          if (tx.type !== 'Payment Received') {
+            const cacheKey = tx.type === 'Invoice' ? tx.raw.invoice_id : tx.raw.creditnote_id;
+            const det = this.state.invoiceDetailsCache[cacheKey];
+            if (det?.line_items) details = det.line_items.map(li => `${li.name} (${li.quantity} × ${li.rate})`).join('; ');
+          } else { details = `Ref: ${tx.ref}`; }
+          data.push({ Date: tx.date, Transaction: tx.type, Reference: tx.ref, Details: details, Amount: tx.amount || '', Payment: tx.payment || '', Balance: running, Customer: clientName });
         });
-      });
-
-      (this.state.dataStore.creditnotes[id]?.records || []).forEach(cn => {
-        transactions.push({
-          date: cn.date,
-          type: 'Credit Note',
-          ref: cn.creditnote_number,
-          amount: 0, 
-          payment: parseFloat(cn.total) || 0, 
-          raw: cn,
-          sortDate: new Date(cn.date),
-          isCredit: true
-        });
-      });
-
-      transactions.sort((a,b) => a.sortDate - b.sortDate);
-
-      transactions.forEach(tx => {
-        runningBalance += tx.amount;
-        runningBalance -= tx.payment;
-
-        let detailStr = '';
-        if (tx.type === 'Invoice' || tx.type === 'Credit Note') {
-           const cacheKey = tx.type === 'Invoice' ? tx.raw.invoice_id : tx.raw.creditnote_id;
-           const det = this.state.invoiceDetailsCache[cacheKey];
-           if (det && det.line_items) {
-             detailStr = det.line_items.map(li => `${li.name} (${li.quantity} x ${li.rate})`).join('; ');
-           }
-        } else if (tx.type === 'Payment Received') {
-           detailStr = `Ref: ${tx.ref}`;
-        }
-
-        let debit = tx.amount;
-        let credit = tx.payment;
-        
-        data.push({
-          'Date': tx.date,
-          'Transaction': tx.type,
-          'Reference': tx.ref,
-          'Details': detailStr,
-          'Amount (Debit)': debit !== 0 ? debit : '',
-          'Payment/Credit': credit !== 0 ? (tx.isCredit ? -credit : credit) : '', 
-          'Balance': runningBalance,
-          'Customer': clientName
-        });
-      });
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, clientName.slice(0, 30) + '_Ledger');
+      }
     });
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "SOA_Detailed");
-    XLSX.writeFile(wb, `SOA_${projectName.replace(/[^a-z0-9]/gi, '_')}.xlsx`);
+    XLSX.writeFile(wb, `BizSense_${orgName.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
     this.hideLoading();
   }
 
-  printReport() {
-      // The @media print CSS in index.html handles the visibility of elements.
-      // We just need to trigger the browser's print dialog.
-      window.print();
-  }
-
+  // ─────────────────────────────────────────
+  // PDF EXPORT
+  // ─────────────────────────────────────────
   async downloadPDF() {
-    this.showLoading(85, "Rendering High-Def PDF...");
-    
-    const originalElement = this.targets.renderArea.querySelector('.a4-page');
-    if (!originalElement) {
-        alert("No statement generated.");
-        this.hideLoading();
-        return;
-    }
+    const page = this.targets.renderArea.querySelector('.a4-page');
+    if (!page) { alert('Generate a statement first.'); return; }
+    this.showLoading(80, 'Rendering PDF…');
 
-    // GHOST CLONE METHOD (The "Swim Out" Strategy)
-    // 1. Clone the element
-    const clone = originalElement.cloneNode(true);
-    
-    // 2. Style it to be completely isolated from the app layout
-    // We place it in a container that mimics a print viewport
-    const ghostContainer = document.createElement('div');
-    ghostContainer.style.position = 'fixed';
-    ghostContainer.style.top = '-10000px'; // Off-screen
-    ghostContainer.style.left = '-10000px';
-    ghostContainer.style.width = '794px'; // Exact A4 width in px (96 DPI)
-    ghostContainer.style.height = 'auto'; // Let height flow
-    ghostContainer.style.zIndex = '-9999';
-    ghostContainer.style.background = '#ffffff';
-    
-    // Reset the clone's transform/margins
-    clone.style.transform = 'scale(1)';
-    clone.style.margin = '0';
-    clone.style.boxShadow = 'none';
-    
-    ghostContainer.appendChild(clone);
-    document.body.appendChild(ghostContainer);
+    const clone = page.cloneNode(true);
+    const ghost = document.createElement('div');
+    ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;z-index:-1;background:white;';
+    clone.style.cssText = 'transform:none;margin:0;box-shadow:none;width:794px;';
+    ghost.appendChild(clone);
+    document.body.appendChild(ghost);
 
     try {
-        // 3. Photograph the ghost
-        const canvas = await html2canvas(clone, {
-            scale: 2, // High resolution
-            useCORS: true,
-            logging: false,
-            windowWidth: 794,
-            width: 794
-        });
-
-        // 4. Put it in a PDF
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`SOA_${new Date().toISOString().slice(0,10)}.pdf`);
-    } catch (err) {
-        console.error("PDF Gen Error", err);
-        alert("Generation failed: " + err.message);
-    } finally {
-        // 5. Cleanup
-        document.body.removeChild(ghostContainer);
-        this.hideLoading();
-    }
+      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, logging: false, windowWidth: 794, width: 794 });
+      const imgData = canvas.toDataURL('image/jpeg', 0.97);
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = (canvas.height * pw) / canvas.width;
+      pdf.addImage(imgData, 'JPEG', 0, 0, pw, ph);
+      pdf.save(`SOA_${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (err) { alert('PDF generation failed: ' + err.message); }
+    finally { document.body.removeChild(ghost); this.hideLoading(); }
   }
-  
+
+  // ─────────────────────────────────────────
+  // IMAGE EXPORT
+  // ─────────────────────────────────────────
   async downloadImage() {
-    this.showLoading(85, "Capturing High-Res Image...");
-    
-    const originalElement = this.targets.renderArea.querySelector('.a4-page');
-    if (!originalElement) {
-        alert("No statement generated.");
-        this.hideLoading();
-        return;
-    }
+    const page = this.targets.renderArea.querySelector('.a4-page');
+    if (!page) { alert('Generate a statement first.'); return; }
+    this.showLoading(80, 'Capturing image…');
 
-    // Use same GHOST CLONE strategy for consistency
-    const clone = originalElement.cloneNode(true);
-    const ghostContainer = document.createElement('div');
-    ghostContainer.style.position = 'fixed';
-    ghostContainer.style.top = '-10000px';
-    ghostContainer.style.left = '-10000px';
-    ghostContainer.style.width = '794px'; 
-    ghostContainer.style.zIndex = '-9999';
-    ghostContainer.style.background = '#ffffff';
-    clone.style.transform = 'scale(1)';
-    clone.style.margin = '0';
-    clone.style.boxShadow = 'none';
-    ghostContainer.appendChild(clone);
-    document.body.appendChild(ghostContainer);
+    const clone = page.cloneNode(true);
+    const ghost = document.createElement('div');
+    ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;z-index:-1;background:white;';
+    clone.style.cssText = 'transform:none;margin:0;box-shadow:none;width:794px;';
+    ghost.appendChild(clone);
+    document.body.appendChild(ghost);
 
     try {
-        const canvas = await html2canvas(clone, {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            windowWidth: 794,
-            width: 794
-        });
-
-        // Trigger download
-        const link = document.createElement('a');
-        link.download = `SOA_${new Date().toISOString().slice(0,10)}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-    } catch (err) {
-        console.error("Image Gen Error", err);
-        alert("Image capture failed.");
-    } finally {
-        document.body.removeChild(ghostContainer);
-        this.hideLoading();
-    }
-  }
-
-  setZoom(val) {
-    this.state.zoom = Math.max(0.1, Math.min(3.0, val));
-    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
-    pages.forEach(p => { p.style.transform = `scale(${this.state.zoom})`; });
-    const standardA4H_px = 29.7 * 37.8;
-    const actualHeight = original => original ? original.scrollHeight * this.state.zoom : standardA4H_px;
-    this.targets.renderArea.style.height = `${actualHeight(pages[0]) + 200}px`;
-  }
-
-  autoFitZoom() {
-    if(!this.views.areaLedger) return;
-    const wrapperW = this.views.areaLedger.clientWidth;
-    const targetW = wrapperW * 0.85;
-    const standardA4W_px = 21 * 37.8;
-    this.setZoom(targetW / standardA4W_px);
-  }
-
-  showLoading(prog, txt) {
-    const loadingContainer = this.views.loadingContainer || document.getElementById('loading-container');
-    const loadingProgress = this.views.loadingProgress || document.getElementById('loading-progress');
-    const loadingText = this.views.loadingText || document.getElementById('loading-text');
-
-    if(loadingContainer) loadingContainer.classList.remove('view-hidden');
-    if(loadingProgress) loadingProgress.style.width = `${prog}%`;
-    if(loadingText) loadingText.innerText = txt.toUpperCase();
-    
-    // Feature: Skeleton Loading
-    if(this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
-    if(this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
-  }
-
-  hideLoading() {
-    const loadingProgress = this.views.loadingProgress || document.getElementById('loading-progress');
-    if(loadingProgress) loadingProgress.style.width = '100%';
-    
-    setTimeout(() => {
-      const loadingContainer = this.views.loadingContainer || document.getElementById('loading-container');
-      if(loadingContainer) loadingContainer.classList.add('view-hidden');
-      
-      // Feature: Skeleton Loading
-      if(this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
-      if(this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
-    }, 800);
-  }
-
-  filterCustomers(term) {
-    this.views.customerList.querySelectorAll('div').forEach(item => {
-      const name = item.innerText.toLowerCase();
-      item.style.display = name.includes(term.toLowerCase()) ? 'flex' : 'none';
-    });
-  }
-
-  toggleConfig(show) { this.views.configModal.classList.toggle('view-hidden', !show); }
-  saveConfig() {
-    this.config = { clientId: document.getElementById('cfg-client-id').value.trim(), region: document.getElementById('cfg-region').value };
-    localStorage.setItem('zoho_config', JSON.stringify(this.config));
-    this.toggleConfig(false); 
-    this.updateConfigStatus();
-  }
-  updateConfigStatus() {
-    this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
-  }
-  logout(reload = true) {
-    localStorage.removeItem('zoho_access_token');
-    localStorage.removeItem('zoho_selected_org_id');
-    if(reload) window.location.reload();
-  }
-  log(m) { this.targets.log.innerText = `SYS: ${m.toUpperCase()}`; }
-  showLandingError(m) { 
-    this.views.landingError.classList.remove('view-hidden'); 
-    this.targets.errorText.innerText = m; 
-  }
-
-  toggleAllCustomers(selected) {
-    if (selected) {
-      this.state.customers.forEach(c => this.state.selectedCustomerIds.add(c.contact_id));
-      this.syncAllActiveCustomers();
-    } else {
-      this.state.selectedCustomerIds.clear();
-      this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {} };
-      this.updateUIVisuals();
-    }
-    this.renderCustomerList();
+      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, logging: false, windowWidth: 794, width: 794 });
+      const a = document.createElement('a');
+      a.download = `SOA_${new Date().toISOString().slice(0,10)}.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    } catch (err) { alert('Image capture failed: ' + err.message); }
+    finally { document.body.removeChild(ghost); this.hideLoading(); }
   }
 }
 
-window.app = new ZohoLedgerApp();
+window.app = new BizSensePro();

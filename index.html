@@ -1,439 +1,1217 @@
 <!DOCTYPE html>
-<html lang="en" data-app-theme="bizsense">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>BIZSENSE STATEMENT PRO</title>
-  
+  <title>BizSense Pro — Statement Engine</title>
   <link rel="icon" type="image/png" href="https://i.ibb.co/7mmBhMJ/LOGO.png">
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Core PDF/Image Generation Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- Chart.js for Trend Chart -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Phosphor Icons -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    
     :root {
-      --theme-primary: #6366f1;
-      --theme-secondary: #f5f3ff;
-      --theme-accent: #818cf8;
-      --app-bg: #020205;
-      --app-card: rgba(255, 255, 255, 0.03);
-      --app-text: #ffffff;
-      --app-border: rgba(255, 255, 255, 0.05);
+      --primary: #1e40af;
+      --primary-light: #3b82f6;
+      --primary-pale: #eff6ff;
+      --accent: #0ea5e9;
+      --success: #059669;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --surface: #ffffff;
+      --surface-2: #f8fafc;
+      --surface-3: #f1f5f9;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --sidebar-bg: #0f172a;
+      --sidebar-text: #cbd5e1;
+      --sidebar-accent: #3b82f6;
+      --header-bg: #ffffff;
     }
 
-    body { background-color: var(--app-bg); color: var(--app-text); font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh; overflow-x: hidden; }
+    * { box-sizing: border-box; }
+    body { 
+      background: var(--surface-2); 
+      color: var(--text-primary); 
+      font-family: 'DM Sans', sans-serif; 
+      margin: 0; 
+      min-height: 100vh; 
+      overflow-x: hidden; 
+    }
     
     .view-hidden { display: none !important; }
     
-    /* Login Glass Style (Only for Landing) */
-    .glass-card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid var(--app-border); border-radius: 1rem; }
-    
-    /* Solid App Style (For Dashboard) */
-    .solid-card { 
-        background: #09090b; /* Solid Dark */
-        border: 1px solid #27272a; 
-        border-radius: 1rem; 
-    }
-
-    /* Global Select Styles */
-    select, input[type="text"], input[type="password"], input[type="date"] { background: #1a1a2e !important; color: white !important; border: 1px solid var(--app-border) !important; padding: 0.75rem; border-radius: 0.75rem; outline: none; }
-    
-    /* Header Specific Select Fix */
-    #select-organization {
-      background: #1e1b4b !important; 
-      color: #ffffff !important;
-      border: 1px solid rgba(99, 102, 241, 0.5) !important;
-      padding: 6px 12px !important;
-      cursor: pointer;
-      font-weight: 800;
-      border-radius: 8px;
-      appearance: auto;
-    }
-    #select-organization option { background: #1e1b4b; color: white; }
-
-    /* A4 Pagination Preview Style */
-    .a4-page {
-      background: white; 
-      color: #111; 
-      padding: 10mm; 
-      min-height: 297mm; 
-      width: 210mm; 
-      margin: 1cm auto; 
-      box-shadow: 0 20px 50px rgba(0,0,0,0.4); 
-      position: relative; 
-      transform-origin: top center;
-      transition: transform 0.2s ease;
-      overflow: hidden;
-      box-sizing: border-box; /* CRITICAL for PDF sizing */
-    }
-
-    /* Print Specific Logic */
-    @media print {
-      body * { visibility: hidden; }
-      body { background: white !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
-      #statement-render-target, #statement-render-target * { visibility: visible; }
-      #statement-render-target { position: absolute; left: 0; top: 0; width: 100%; margin: 0 !important; padding: 0 !important; }
-      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 100% !important; max-width: 210mm !important; min-height: auto !important; page-break-after: always; visibility: visible !important; background: white !important; color: black !important; padding: 10mm !important; }
-      .no-print { display: none !important; }
-      tr { break-inside: avoid; page-break-inside: avoid; }
-    }
-
-    .statement-view-container { 
-      padding-bottom: 5cm;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
-    }
-    
-    [contenteditable="true"]:hover { background: #f0f4ff; outline: 1px dashed #6366f1; cursor: text; border-radius: 2px; }
-    
-    .zoom-controls { position: fixed; bottom: 4rem; right: 2rem; z-index: 100; display: flex; flex-direction: column; gap: 0.75rem; }
-    .zoom-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--theme-primary); color: white; transition: transform 0.2s; }
-    .zoom-btn:hover { transform: scale(1.1); }
-
-    /* Skeleton Loader */
-    .skeleton {
-      background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
-      background-size: 200% 100%;
-      animation: skeleton-loading 1.5s infinite;
-      border-radius: 4px;
-    }
-    @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-    /* Color balls hover effect */
-    .color-ball { transition: transform 0.2s, border-color 0.2s; cursor: pointer; }
-    .color-ball:hover { transform: scale(1.2); border-color: white; }
-
-    /* Integrated Top Loading Bar */
-    #loading-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 24px; /* Thicker bar */
-      z-index: 10000; /* Highest priority */
-      background: #000;
+    /* ─── LANDING ─── */
+    #view-landing {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
+      min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+      overflow: hidden;
+    }
+    #view-landing::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(59,130,246,0.3) 0%, transparent 60%),
+                  radial-gradient(ellipse 60% 40% at 80% 100%, rgba(14,165,233,0.15) 0%, transparent 50%);
+    }
+    .bg-slide { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0; transition: opacity 1.5s ease; }
+    .bg-slide.active { opacity: 0.08; }
+    .landing-card {
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      padding: 3rem;
+      width: 100%;
+      max-width: 440px;
+      position: relative;
+      z-index: 10;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.4);
+    }
+    .landing-logo {
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: white;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.25rem;
+    }
+    .landing-logo span { color: #3b82f6; }
+    .landing-tagline {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      margin-bottom: 2.5rem;
+    }
+    .landing-input {
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(255,255,255,0.1) !important;
+      color: white !important;
+      border-radius: 12px;
+      padding: 0.875rem 1rem;
+      width: 100%;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .landing-input:focus { border-color: rgba(59,130,246,0.6) !important; }
+    .landing-input option { background: #1e3a5f; }
+    .btn-connect {
+      width: 100%;
+      padding: 0.875rem;
+      background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+      color: white;
+      font-weight: 800;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 20px rgba(59,130,246,0.4);
+    }
+    .btn-connect:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(59,130,246,0.5); }
+    .btn-connect:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    #business-quote {
+      color: rgba(255,255,255,0.3);
+      font-size: 0.7rem;
+      font-style: italic;
+      text-align: center;
+      margin-top: 2rem;
+      transition: opacity 0.5s;
+      line-height: 1.6;
+    }
+
+    /* ─── DASHBOARD ─── */
+    #view-dashboard {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Header */
+    .app-header {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 1.25rem;
+      gap: 1rem;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      z-index: 50;
+    }
+    .app-logo {
+      font-size: 1rem;
+      font-weight: 900;
+      color: var(--primary);
+      letter-spacing: -0.03em;
+      flex-shrink: 0;
+    }
+    .app-logo span { color: var(--accent); }
+    .header-org-select {
+      background: var(--primary-pale) !important;
+      color: var(--primary) !important;
+      border: 1px solid #bfdbfe !important;
+      padding: 5px 10px !important;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      max-width: 220px;
+    }
+    .header-org-select option { background: white; color: #0f172a; }
+    .header-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+    .header-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .hbtn-ghost { background: var(--surface-3); color: var(--text-secondary); }
+    .hbtn-ghost:hover:not(:disabled) { background: var(--border); }
+    .hbtn-blue { background: #1d4ed8; color: white; }
+    .hbtn-blue:hover:not(:disabled) { background: #1e40af; }
+    .hbtn-purple { background: #7c3aed; color: white; }
+    .hbtn-purple:hover:not(:disabled) { background: #6d28d9; }
+    .hbtn-green { background: #059669; color: white; }
+    .hbtn-green:hover:not(:disabled) { background: #047857; }
+
+    /* View toggle */
+    .view-toggle {
+      display: flex;
+      background: var(--surface-3);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .vtog-btn {
+      padding: 5px 14px;
+      border-radius: 7px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .vtog-btn.active {
+      background: white;
+      color: var(--primary);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    /* ─── LAYOUT BODY ─── */
+    .app-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      gap: 0;
+    }
+
+    /* ─── SIDEBAR ─── */
+    .app-sidebar {
+      width: 260px;
+      background: var(--sidebar-bg);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid rgba(255,255,255,0.05);
+    }
+    .sidebar-header {
+      padding: 1rem 1.25rem 0.75rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    .sidebar-title {
+      font-size: 0.6rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: 0.75rem;
+    }
+    .sidebar-search {
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      color: white !important;
+      border-radius: 8px;
+      padding: 8px 12px;
+      width: 100%;
+      font-size: 0.75rem;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+    }
+    .sidebar-search::placeholder { color: rgba(255,255,255,0.25); }
+    .customer-list { flex: 1; overflow-y: auto; padding: 0.5rem; }
+    .customer-list::-webkit-scrollbar { width: 3px; }
+    .customer-list::-webkit-scrollbar-track { background: transparent; }
+    .customer-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+    .cust-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+    }
+    .cust-item:hover { background: rgba(255,255,255,0.05); }
+    .cust-item.selected { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.2); }
+    .cust-checkbox {
+      width: 16px; height: 16px;
+      border-radius: 4px;
+      border: 1.5px solid rgba(255,255,255,0.2);
+      flex-shrink: 0;
+      margin-top: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .cust-item.selected .cust-checkbox {
+      background: #3b82f6;
+      border-color: #3b82f6;
+    }
+    .cust-name {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 1.3;
+    }
+    .cust-item.selected .cust-name { color: #93c5fd; }
+    .cust-badge {
+      display: inline-block;
+      margin-top: 3px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.55rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-due { background: rgba(220,38,38,0.15); color: #f87171; border: 1px solid rgba(220,38,38,0.2); }
+    .badge-credit { background: rgba(217,119,6,0.15); color: #fbbf24; border: 1px solid rgba(217,119,6,0.2); }
+    .badge-ok { background: rgba(5,150,105,0.15); color: #34d399; border: 1px solid rgba(5,150,105,0.2); }
+    .sidebar-footer {
+      padding: 0.75rem 1.25rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.6rem;
+      color: rgba(255,255,255,0.2);
+      flex-shrink: 0;
+    }
+
+    /* ─── MAIN AREA ─── */
+    .app-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--surface-2);
+    }
+
+    /* Sub-toolbar for ledger */
+    .ledger-toolbar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Statement area */
+    .statement-area {
+      flex: 1;
+      overflow-y: auto;
+      background: #e8edf5;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .statement-area::-webkit-scrollbar { width: 6px; }
+    .statement-area::-webkit-scrollbar-track { background: transparent; }
+    .statement-area::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* A4 Page */
+    .a4-page {
+      background: white;
+      color: #111;
+      padding: 12mm 14mm;
+      min-height: 297mm;
+      width: 210mm;
+      margin: 0 auto 2rem;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06);
+      position: relative;
+      transform-origin: top center;
+      transition: transform 0.2s ease;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    [contenteditable="true"]:hover { background: #f0f7ff; outline: 1px dashed #3b82f6; cursor: text; border-radius: 2px; }
+
+    /* Empty state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+    }
+    .empty-icon {
+      width: 72px; height: 72px;
+      background: var(--surface-3);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+      font-size: 2rem;
+      color: #94a3b8;
+    }
+    .empty-title { font-weight: 800; font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+    .empty-sub { font-size: 0.75rem; color: var(--text-muted); text-align: center; max-width: 260px; }
+
+    /* ─── STATEMENT BUILDER PANEL ─── */
+    .builder-panel {
+      width: 280px;
+      background: white;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .builder-panel-header {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .builder-panel-title {
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--primary);
+    }
+    .builder-panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    .builder-panel-body::-webkit-scrollbar { width: 4px; }
+    .builder-panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .builder-section-label {
+      font-size: 0.6rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--text-muted);
+      margin: 1.25rem 0 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .builder-section-label:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+    .builder-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 0;
+    }
+    .builder-toggle-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .toggle-switch {
+      position: relative;
+      width: 32px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #e2e8f0;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 2px; top: 2px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--primary-light); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(14px); }
+    .group-select {
+      width: 100%;
+      background: var(--surface-3) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text-primary) !important;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 0.75rem;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .builder-apply-btn {
+      width: 100%;
+      padding: 10px;
+      background: var(--primary);
+      color: white;
+      font-weight: 800;
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 1rem;
+    }
+    .builder-apply-btn:hover { background: #1e3a8a; }
+
+    /* Color picker dots */
+    .color-dot {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+    .color-dot:hover { transform: scale(1.2); }
+    .color-dot.active { border-color: white; box-shadow: 0 0 0 2px #3b82f6; }
+
+    /* ─── EXPLORER ─── */
+    .explorer-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .explorer-tabs {
+      padding: 0.75rem 1rem;
+      display: flex;
+      gap: 0.5rem;
+      background: white;
+      border-bottom: 1px solid var(--border);
+    }
+    .exp-tab {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface-3);
+      color: var(--text-secondary);
+      transition: all 0.15s;
+    }
+    .exp-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .explorer-table-wrap {
+      flex: 1;
+      overflow: auto;
+    }
+    .explorer-table-wrap::-webkit-scrollbar { height: 6px; width: 6px; }
+    .explorer-table-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+    table.exp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.7rem;
+    }
+    table.exp-table thead th {
+      background: var(--surface-3);
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 800;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-secondary);
+      border-bottom: 2px solid var(--border);
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+    }
+    table.exp-table tbody td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      white-space: nowrap;
+    }
+    table.exp-table tbody tr:hover td { background: var(--primary-pale); }
+
+    /* ─── MODALS ─── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-card {
+      background: white;
+      border-radius: 20px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+      position: relative;
+    }
+    .modal-title { font-size: 1.1rem; font-weight: 900; color: var(--text-primary); margin-bottom: 0.25rem; }
+    .modal-sub { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); margin-bottom: 1.5rem; }
+    .modal-input {
+      background: var(--surface-3) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text-primary) !important;
+      border-radius: 10px;
+      padding: 10px 14px;
+      width: 100%;
+      font-size: 0.875rem;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .modal-input:focus { border-color: var(--primary-light) !important; background: white !important; }
+    .modal-label { font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .modal-btn-row { display: flex; gap: 10px; margin-top: 1.5rem; }
+    .modal-btn { flex: 1; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.75rem; cursor: pointer; border: none; transition: all 0.15s; }
+    .modal-btn-primary { background: var(--primary); color: white; }
+    .modal-btn-primary:hover { background: #1e3a8a; }
+    .modal-btn-ghost { background: var(--surface-3); color: var(--text-secondary); border: 1px solid var(--border); }
+    .modal-btn-ghost:hover { background: var(--border); }
+    .modal-module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .module-card {
+      padding: 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .module-card:hover { border-color: #93c5fd; background: var(--primary-pale); }
+    .module-card.checked { border-color: var(--primary-light); background: var(--primary-pale); }
+    .module-card input { accent-color: var(--primary); width: 14px; height: 14px; }
+    .module-card-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+
+    /* ─── LOADING BAR ─── */
+    #loading-container {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 3px;
+      z-index: 9999;
     }
     #loading-progress {
-      position: absolute;
-      top: 0;
-      left: 0;
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #4f46e5, #ec4899, #06b6d4);
+      background: linear-gradient(90deg, #1d4ed8, #3b82f6, #0ea5e9);
       background-size: 200% 100%;
-      animation: gradientFlow 2s linear infinite;
+      animation: gradientFlow 1.5s linear infinite;
       transition: width 0.3s ease-out;
-      z-index: 1;
     }
     #loading-text {
-      position: relative;
-      z-index: 2;
-      color: white;
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: 2px;
+      position: fixed;
+      top: 8px;
+      right: 1rem;
+      font-size: 0.55rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
       text-transform: uppercase;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      color: var(--primary-light);
+      z-index: 9999;
+      font-family: 'DM Mono', monospace;
+      display: none;
     }
-    @keyframes gradientFlow { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+    @keyframes gradientFlow { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
 
-    /* Login BG Slideshow */
-    #bg-slideshow { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -2; overflow: hidden; }
-    .bg-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; opacity: 0; filter: blur(8px) brightness(0.4); transform: scale(1.1); transition: opacity 2s ease-in-out, transform 10s linear; }
-    .bg-slide.active { opacity: 1; transform: scale(1); }
+    /* ─── SKELETON ─── */
+    .skeleton {
+      background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+      border-radius: 6px;
+    }
+    @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-    /* Login Card */
-    .login-card-wrapper { position: relative; border-radius: 1.5rem; overflow: hidden; padding: 2px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
-    .login-card-wrapper::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: conic-gradient(from 0deg, transparent 0deg, transparent 90deg, #6366f1 180deg, #8b5cf6 270deg, transparent 360deg); animation: rotateBorder 4s linear infinite; z-index: 0; }
-    @keyframes rotateBorder { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .login-card-content { position: relative; background: rgba(10, 10, 15, 0.75); backdrop-filter: blur(20px); z-index: 1; border-radius: 1.4rem; height: 100%; width: 100%; }
+    /* ─── ZOOM CONTROLS ─── */
+    .zoom-controls {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .zoom-btn {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: all 0.15s;
+    }
+    .zoom-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
 
-    /* Gradient Buttons */
-    .btn-gradient-primary { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); transition: all 0.3s ease; position: relative; overflow: hidden; }
-    .btn-gradient-primary:hover { background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%); transform: translateY(-1px); box-shadow: 0 10px 20px -10px rgba(124, 58, 237, 0.5); }
-    .btn-gradient-secondary { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
-    .btn-gradient-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+    /* ─── ERROR BANNER ─── */
+    .error-banner {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.75rem;
+      color: #dc2626;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 1rem;
+    }
 
-    /* Modal Styling Fix */
-    .modal-overlay { z-index: 5000 !important; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
+    /* ─── PRINT ─── */
+    @media print {
+      body * { visibility: hidden; }
+      body { background: white !important; }
+      #statement-render-target, #statement-render-target * { visibility: visible; }
+      #statement-render-target { position: absolute; left: 0; top: 0; width: 100%; }
+      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 100% !important; max-width: 210mm !important; min-height: auto !important; page-break-after: always; visibility: visible !important; background: white !important; color: black !important; padding: 10mm !important; }
+      .no-print { display: none !important; }
+      tr { break-inside: avoid; }
+    }
 
-    .toggle-checkbox:checked { right: 0; border-color: #68D391; }
-    .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
+    /* ─── DIVIDER ─── */
+    .divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+
+    /* ─── DATE FILTER ─── */
+    .date-filter-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .date-filter-row select, .date-filter-row input[type="date"] {
+      background: var(--surface-3) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text-primary) !important;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 0.72rem;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .date-filter-row label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+
+    /* Summary toggle */
+    .summary-toggle-row { display: flex; align-items: center; gap: 8px; }
+    .summary-toggle-row span { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
   </style>
 </head>
-<body class="flex flex-col min-h-screen">
+<body>
 
-  <!-- New Integrated Loading Bar -->
-  <div id="loading-container" class="view-hidden">
-    <div id="loading-progress"></div>
-    <span id="loading-text">INITIALIZING...</span>
-  </div>
-  
-  <!-- BG Slideshow Container -->
+<!-- LOADING BAR -->
+<div id="loading-container" class="view-hidden">
+  <div id="loading-progress"></div>
+</div>
+<div id="loading-text"></div>
+
+<!-- ══════════════════════════════════════════
+     LANDING VIEW
+══════════════════════════════════════════ -->
+<div id="view-landing">
   <div id="bg-slideshow"></div>
+  <div class="landing-card">
 
-  <!-- Connection Hub Modal -->
-  <div id="modal-config" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
-    <div class="glass-card p-6 md:p-10 w-full max-w-xl space-y-6 relative border-indigo-500/30 shadow-2xl">
-      <button id="btn-close-config" class="absolute top-6 right-6 text-neutral-500 text-3xl hover:text-white">&times;</button>
-      <h3 class="text-xl font-black uppercase tracking-tight flex items-center gap-2"><i class="ph ph-gear-six text-indigo-400"></i> API Handshake</h3>
-      
-      <div class="space-y-4">
-        <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
-          <p class="text-white font-black mb-2 uppercase text-[10px] tracking-widest">Authorized Redirect URI</p>
-          <code class="block p-3 bg-black/50 rounded-xl border border-white/10 font-mono text-indigo-400 text-[10px] break-all select-all" id="display-redirect-uri"></code>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="col-span-2">
-            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Zoho Data Center</label>
-            <select id="cfg-region" class="w-full text-xs font-bold">
-              <option value="com">Global / US (zoho.com)</option>
-              <option value="in">India (zoho.in)</option>
-              <option value="eu">Europe (zoho.eu)</option>
-              <option value="com.au">Australia (zoho.com.au)</option>
-            </select>
-          </div>
-          <div class="col-span-2">
-            <label class="block text-[9px] text-neutral-500 font-black mb-1.5 uppercase tracking-widest">Client ID (SPA Type Required)</label>
-            <input id="cfg-client-id" type="text" placeholder="1000.XXXX..." class="w-full text-xs font-mono">
-          </div>
-        </div>
-      </div>
-
-      <div class="flex gap-4 pt-4">
-        <button id="btn-reset-config" class="flex-1 py-4 bg-red-600/10 text-red-500 rounded-2xl font-black uppercase text-[10px]">Purge Cache</button>
-        <button id="btn-save-config" class="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl">Apply Changes</button>
-      </div>
+    <!-- Logo + Branding -->
+    <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:2rem;">
+      <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="BizSense Logo"
+        style="height:80px;object-fit:contain;margin-bottom:1.25rem;filter:drop-shadow(0 0 28px rgba(59,130,246,0.5)) brightness(1.05);">
+      <div class="landing-logo">Biz<span>Sense</span> Pro</div>
+      <div class="landing-tagline">Zoho Books Statement Engine</div>
     </div>
-  </div>
 
-  <!-- Landing Screen (Glassy) -->
-  <div id="view-landing" class="flex-grow flex flex-col items-center justify-center p-6 text-center relative z-10">
-    <div class="login-card-wrapper max-w-2xl w-full">
-      <div class="login-card-content p-10 md:p-16 flex flex-col items-center shadow-2xl relative overflow-hidden">
-        
-        <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-20 mb-8 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]">
-        
-        <div class="mb-8">
-            <h1 class="text-5xl md:text-6xl font-black uppercase tracking-tighter leading-none mb-2">BIZSENSE<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">PRO</span></h1>
-            <p class="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-300/70">Enterprise SOA Engine</p>
-        </div>
-
-        <div class="mb-10 w-full">
-            <p class="text-sm font-medium text-gray-300 mb-4">Welcome back, Financial Controller.</p>
-            <div class="h-8 flex items-center justify-center">
-                <p id="business-quote" class="text-[11px] text-gray-400 italic font-mono transition-all duration-500">"Revenue is vanity, profit is sanity, but cash is king."</p>
-            </div>
-        </div>
-        
-        <div id="landing-error" class="view-hidden my-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs text-left w-full">
-          <p class="font-black uppercase mb-1 flex items-center gap-2"><i class="ph ph-warning-circle"></i> Authorization Error</p>
-          <p id="landing-error-text" class="opacity-80"></p>
-        </div>
-        
-        <div class="flex flex-col md:flex-row gap-5 w-full max-w-md mt-2">
-          <button id="btn-connect" class="btn-gradient-primary flex-[2] py-5 text-white rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl flex items-center justify-center gap-3">
-            <i class="ph ph-lock-key text-lg"></i> Authorize Access
-          </button>
-          <button id="btn-open-config-landing" class="btn-gradient-secondary flex-1 py-5 text-neutral-300 rounded-2xl font-black uppercase text-[11px] flex items-center justify-center gap-2">
-            <i class="ph ph-gear text-lg"></i> Settings
-          </button>
-        </div>
-
-        <div class="mt-8 flex gap-4 text-gray-500/50">
-            <i class="ph ph-shield-check text-2xl" title="Secure"></i>
-            <i class="ph ph-chart-line-up text-2xl" title="Analytics"></i>
-            <i class="ph ph-globe text-2xl" title="Global"></i>
-        </div>
-      </div>
+    <div id="landing-error" class="error-banner view-hidden">
+      <i class="ph ph-warning-circle"></i>
+      <span id="landing-error-text"></span>
     </div>
-  </div>
 
-  <!-- Dashboard (Solid) -->
-  <div id="view-dashboard" class="view-hidden flex flex-col h-screen overflow-hidden">
-    <header class="p-2 md:p-3 solid-card m-2 md:m-3 flex flex-col md:flex-row items-start md:items-center justify-between no-print gap-3">
-      <div class="flex items-center space-x-6">
-        <img src="https://i.ibb.co/7mmBhMJ/LOGO.png" alt="Logo" class="h-6 md:h-8">
-        <div class="flex flex-col">
-          <label class="text-[8px] font-black uppercase text-indigo-400 mb-1">Active Project</label>
-          <select id="select-organization" class="font-black uppercase"></select>
-        </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div style="font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.3);margin-bottom:6px;">Your Redirect URI</div>
+        <div id="display-redirect-uri" style="font-family:'DM Mono',monospace;font-size:0.6rem;color:rgba(255,255,255,0.4);background:rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;word-break:break-all;border:1px solid rgba(255,255,255,0.07);"></div>
       </div>
-      
-      <div class="flex flex-wrap items-center gap-2 bg-black/40 rounded-xl p-1 border border-white/5">
-        <select id="date-range-preset" class="text-[9px] font-black uppercase bg-transparent border-none text-white focus:ring-0 cursor-pointer">
-          <option value="all">All History</option>
-          <option value="this_month">This Month</option>
-          <option value="last_month">Last Month</option>
-          <option value="this_year">This Year</option>
-          <option value="custom">Custom Range</option>
+
+      <div>
+        <div class="modal-label" style="color:rgba(255,255,255,0.4);">Zoho Client ID</div>
+        <input type="text" id="cfg-client-id" class="landing-input" placeholder="1000.XXXXXXXXXXXXXXXX">
+      </div>
+
+      <div>
+        <div class="modal-label" style="color:rgba(255,255,255,0.4);">Zoho Region</div>
+        <select id="cfg-region" class="landing-input">
+          <option value="com">Global (.com)</option>
+          <option value="eu">Europe (.eu)</option>
+          <option value="in">India (.in)</option>
+          <option value="com.au">Australia (.com.au)</option>
+          <option value="jp">Japan (.jp)</option>
         </select>
-        <div id="custom-date-container" class="hidden flex items-center gap-1 border-l border-white/10 pl-2">
-            <input type="date" id="date-start" class="bg-transparent border border-white/10 rounded text-[9px] w-24 text-white">
-            <span class="text-white">-</span>
-            <input type="date" id="date-end" class="bg-transparent border border-white/10 rounded text-[9px] w-24 text-white">
-        </div>
-        
-        <div class="w-px h-6 bg-white/10 mx-1"></div>
-
-        <div class="flex items-center gap-2 px-2">
-            <span class="text-[8px] font-black uppercase text-neutral-400">Detailed</span>
-            <div class="relative inline-block w-8 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="toggle" id="toggle-summary" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer border-indigo-900 left-0 checked:right-0 checked:left-auto"/>
-                <label for="toggle-summary" class="toggle-label block overflow-hidden h-4 rounded-full bg-indigo-900 cursor-pointer border border-white/10"></label>
-            </div>
-        </div>
-
-        <div class="w-px h-6 bg-white/10 mx-1"></div>
-
-        <button id="btn-email-composer" class="p-2 text-neutral-400 hover:text-white" title="Compose Email"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></button>
       </div>
 
-      <div class="flex items-center space-x-3">
-        <button id="btn-project-settings" class="p-2 text-neutral-500 hover:text-white" title="Sync Settings"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></button>
-        <button id="btn-logout" class="p-2 text-neutral-500 hover:text-red-500" title="Secure Logout"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"/></svg></button>
-      </div>
-    </header>
+      <button id="btn-save-config" class="btn-connect" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);box-shadow:none;">
+        <i class="ph ph-floppy-disk" style="font-size:1rem;"></i>
+        Save Configuration
+      </button>
 
-    <div class="flex flex-grow overflow-hidden px-2 md:px-4 pb-2 md:pb-4 gap-4">
-      <aside class="hidden lg:flex w-80 flex-col gap-4 no-print">
-        <div class="solid-card p-6 flex-grow flex flex-col overflow-hidden">
-          <div class="flex justify-between items-center mb-4">
-            <h4 class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Registry</h4>
-            <div class="flex gap-1">
-              <span class="text-[8px] font-black bg-white/5 px-2 py-1 rounded text-neutral-500">ARROW KEYS NAV</span>
-            </div>
-          </div>
-          <input type="text" id="customer-search" placeholder="Search customer..." class="w-full mb-4 text-xs">
-          <div id="customer-list" class="flex-grow overflow-y-auto space-y-1 custom-scrollbar"></div>
+      <div style="height:1px;background:rgba(255,255,255,0.07);"></div>
+
+      <button id="btn-connect" class="btn-connect" disabled>
+        <i class="ph ph-plug-charging" style="font-size:1rem;"></i>
+        Connect to Zoho Books
+      </button>
+    </div>
+
+    <p id="business-quote">"Revenue is vanity, profit is sanity, but cash is king."</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     DASHBOARD VIEW
+══════════════════════════════════════════ -->
+<div id="view-dashboard" class="view-hidden">
+
+  <!-- HEADER -->
+  <header class="app-header no-print">
+    <div class="app-logo">Biz<span>Sense</span></div>
+    <div class="divider"></div>
+
+    <select id="select-organization" class="header-org-select"></select>
+
+    <div class="divider"></div>
+
+    <!-- View toggle -->
+    <div class="view-toggle">
+      <button id="btn-view-ledger" class="vtog-btn active">
+        <i class="ph ph-file-text"></i> Statement
+      </button>
+      <button id="btn-view-explorer" class="vtog-btn">
+        <i class="ph ph-table"></i> Explorer
+      </button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Export buttons -->
+    <button id="btn-print" disabled class="header-btn hbtn-ghost"><i class="ph ph-printer"></i> Print</button>
+    <button id="btn-download-pdf" disabled class="header-btn hbtn-blue"><i class="ph ph-file-pdf"></i> PDF</button>
+    <button id="btn-download-image" disabled class="header-btn hbtn-purple"><i class="ph ph-image"></i> Image</button>
+    <button id="btn-download-excel" disabled class="header-btn hbtn-green"><i class="ph ph-file-xls"></i> Excel</button>
+    <button id="btn-email-composer" class="header-btn hbtn-ghost"><i class="ph ph-envelope"></i></button>
+
+    <div style="flex:1;"></div>
+
+    <!-- Color picker -->
+    <div id="color-theme-picker" class="flex items-center gap-2" style="display:flex;align-items:center;gap:6px;"></div>
+
+    <div class="divider"></div>
+
+    <!-- Logo upload -->
+    <input type="file" id="logo-upload" accept="image/*" style="display:none;">
+    <button onclick="document.getElementById('logo-upload').click()" class="header-btn hbtn-ghost" title="Update Logo">
+      <i class="ph ph-image-square"></i> Logo
+    </button>
+
+    <!-- Settings / Logout -->
+    <button id="btn-project-settings" class="header-btn hbtn-ghost" title="Dataset Settings">
+      <i class="ph ph-sliders"></i>
+    </button>
+    <button id="btn-logout" class="header-btn" style="background:#fef2f2;color:#dc2626;" title="Logout">
+      <i class="ph ph-sign-out"></i>
+    </button>
+  </header>
+
+  <!-- BODY -->
+  <div class="app-body">
+
+    <!-- SIDEBAR -->
+    <aside class="app-sidebar no-print">
+      <div class="sidebar-header">
+        <div class="sidebar-title">Customer Registry</div>
+        <input type="text" id="customer-search" class="sidebar-search" placeholder="Search customers…">
+        <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+          <button id="btn-clear-all" style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.1em;background:none;border:none;cursor:pointer;">Clear All</button>
         </div>
-      </aside>
+      </div>
+      <div id="customer-list" class="customer-list"></div>
+      <div class="sidebar-footer">
+        <div id="log-message">ENGINE_STABLE</div>
+        <div id="data-stats" style="margin-top:4px;color:rgba(255,255,255,0.15);">0 RECORDS</div>
+      </div>
+    </aside>
 
-      <main class="flex-grow solid-card flex flex-col overflow-hidden relative">
-        <div id="view-ledger-container" class="flex flex-col flex-grow overflow-hidden">
-          <div class="p-3 md:p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01] no-print">
-            <div class="flex items-center gap-4">
-              <div class="flex gap-2">
-                <button id="btn-print" disabled class="px-4 py-2 bg-neutral-700 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-neutral-600 transition-colors flex items-center gap-2"><i class="ph ph-printer text-lg"></i> Print</button>
-                <button id="btn-download-pdf" disabled class="px-4 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-indigo-700 transition-colors flex items-center gap-2"><i class="ph ph-file-pdf text-lg"></i> PDF</button>
-                <button id="btn-download-image" disabled class="px-4 py-2 bg-purple-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-purple-700 transition-colors flex items-center gap-2"><i class="ph ph-image text-lg"></i> Image</button>
-                <button id="btn-download-excel" disabled class="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl disabled:opacity-30 hover:bg-emerald-700 transition-colors flex items-center gap-2"><i class="ph ph-file-xls text-lg"></i> Excel</button>
-              </div>
-              <div class="h-6 w-px bg-white/10"></div>
-              <div id="color-theme-picker" class="flex items-center gap-2">
-                <!-- Color balls injected by JS -->
-              </div>
-            </div>
-            
-            <div class="flex items-center gap-3">
-               <label class="text-[9px] font-black uppercase text-neutral-500">Business Logo</label>
-               <input type="file" id="logo-upload" accept="image/*" class="view-hidden">
-               <button onclick="document.getElementById('logo-upload').click()" class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:bg-white/10">Update Logo</button>
+    <!-- MAIN CONTENT -->
+    <main class="app-main">
+
+      <!-- ── LEDGER VIEW ── -->
+      <div id="view-ledger-container" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+
+        <!-- Sub-toolbar -->
+        <div class="ledger-toolbar no-print">
+          <!-- Statement Mode toggle -->
+          <div class="view-toggle" style="background:#f1f5f9;">
+            <button id="btn-mode-ledger" class="vtog-btn active" style="font-size:0.6rem;">
+              <i class="ph ph-list-numbers"></i> Ledger SOA
+            </button>
+            <button id="btn-mode-sales" class="vtog-btn" style="font-size:0.6rem;">
+              <i class="ph ph-chart-bar"></i> Sales Statement
+            </button>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Date filter -->
+          <div class="date-filter-row">
+            <label>Period</label>
+            <select id="date-range-preset">
+              <option value="all">All Time</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_year">This Year</option>
+              <option value="custom">Custom…</option>
+            </select>
+            <div id="custom-date-container" class="date-filter-row" style="display:none;">
+              <input type="date" id="date-start">
+              <span style="font-size:0.7rem;color:var(--text-muted);">→</span>
+              <input type="date" id="date-end">
             </div>
           </div>
 
-          <div id="area-ledger" class="flex-grow overflow-auto bg-[#040408] p-4 md:p-12 relative custom-scrollbar">
+          <div class="divider"></div>
+
+          <!-- Summary toggle -->
+          <div class="summary-toggle-row">
+            <span>Detail</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-summary">
+              <span class="toggle-slider"></span>
+            </label>
+            <span>Summary</span>
+          </div>
+
+          <div style="flex:1;"></div>
+
+          <!-- Builder toggle -->
+          <button id="btn-toggle-builder" class="header-btn" style="background:var(--primary-pale);color:var(--primary);border:1px solid #bfdbfe;">
+            <i class="ph ph-sliders-horizontal"></i> Builder
+          </button>
+        </div>
+
+        <!-- Statement + optional Builder panel -->
+        <div style="display:flex;flex:1;overflow:hidden;">
+
+          <!-- Statement render area -->
+          <div id="area-ledger" style="flex:1;overflow-y:auto;background:#e8edf5;padding:2rem;position:relative;">
+
+            <!-- Zoom controls -->
             <div class="zoom-controls no-print">
-              <button id="btn-zoom-in" class="zoom-btn font-bold">+</button>
-              <button id="btn-zoom-out" class="zoom-btn font-bold">-</button>
-              <button id="btn-zoom-fit" class="zoom-btn">⤢</button>
+              <button id="btn-zoom-in" class="zoom-btn">+</button>
+              <button id="btn-zoom-out" class="zoom-btn">–</button>
+              <button id="btn-zoom-fit" class="zoom-btn" title="Fit">⤢</button>
             </div>
-            
-            <div id="skeleton-loader" class="statement-view-container view-hidden">
-                <div class="bg-white p-[1.5cm] w-[21cm] min-h-[29.7cm] shadow-2xl relative">
-                    <div class="flex justify-between mb-12">
-                        <div class="w-1/2 space-y-4">
-                            <div class="skeleton h-16 w-32"></div>
-                            <div class="skeleton h-8 w-64"></div>
-                            <div class="skeleton h-24 w-48 mt-8"></div>
-                        </div>
-                        <div class="w-1/3 space-y-4 flex flex-col items-end">
-                            <div class="skeleton h-12 w-24"></div>
-                            <div class="skeleton h-32 w-full rounded-xl"></div>
-                        </div>
-                    </div>
-                    <div class="space-y-3">
-                        <div class="skeleton h-8 w-full"></div>
-                        <div class="skeleton h-6 w-full"></div>
-                        <div class="skeleton h-6 w-full"></div>
-                        <div class="skeleton h-6 w-full"></div>
-                        <div class="skeleton h-6 w-full"></div>
-                    </div>
+
+            <!-- Skeleton loader -->
+            <div id="skeleton-loader" class="view-hidden" style="display:flex;justify-content:center;">
+              <div style="background:white;padding:2cm;width:21cm;min-height:20cm;border-radius:4px;box-shadow:0 4px 30px rgba(0,0,0,0.1);">
+                <div style="display:flex;justify-content:space-between;margin-bottom:2rem;gap:2rem;">
+                  <div style="flex:1;display:flex;flex-direction:column;gap:1rem;">
+                    <div class="skeleton" style="height:60px;width:140px;border-radius:8px;"></div>
+                    <div class="skeleton" style="height:24px;width:60%;"></div>
+                    <div class="skeleton" style="height:80px;width:45%;margin-top:1rem;"></div>
+                  </div>
+                  <div style="width:180px;display:flex;flex-direction:column;gap:1rem;align-items:flex-end;">
+                    <div class="skeleton" style="height:40px;width:80px;"></div>
+                    <div class="skeleton" style="height:100px;width:180px;border-radius:12px;"></div>
+                  </div>
                 </div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div class="skeleton" style="height:36px;width:100%;"></div>
+                  <div class="skeleton" style="height:24px;width:100%;"></div>
+                  <div class="skeleton" style="height:24px;width:100%;"></div>
+                  <div class="skeleton" style="height:24px;width:100%;"></div>
+                  <div class="skeleton" style="height:24px;width:100%;"></div>
+                </div>
+              </div>
             </div>
 
-            <div id="statement-render-target" class="statement-view-container"></div>
-            
-            <div id="empty-state" class="flex flex-col items-center justify-center py-40 opacity-20">
-              <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-              <p class="font-black uppercase tracking-[0.4em] text-xs">Customer Selection Required</p>
+            <!-- Statement render target -->
+            <div id="statement-render-target"></div>
+
+            <!-- Empty state -->
+            <div id="empty-state" class="empty-state">
+              <div class="empty-icon"><i class="ph ph-file-text"></i></div>
+              <div class="empty-title">No Customer Selected</div>
+              <div class="empty-sub">Select a customer from the sidebar to generate their statement</div>
+            </div>
+          </div>
+
+          <!-- Builder Panel (hidden by default) -->
+          <div id="builder-panel" class="builder-panel no-print" style="display:none;">
+            <div class="builder-panel-header">
+              <div class="builder-panel-title"><i class="ph ph-sliders-horizontal"></i> Statement Builder</div>
+              <div style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">Customize what appears in your statement</div>
+            </div>
+            <div class="builder-panel-body">
+
+              <div class="builder-section-label">Statement Sections</div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Company Header</span>
+                <label class="toggle-switch"><input type="checkbox" id="bl-header" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Customer Info Block</span>
+                <label class="toggle-switch"><input type="checkbox" id="bl-customer" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Opening Balance Row</span>
+                <label class="toggle-switch"><input type="checkbox" id="bl-opening" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Payments Section</span>
+                <label class="toggle-switch"><input type="checkbox" id="bl-payments" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Credit Notes</span>
+                <label class="toggle-switch"><input type="checkbox" id="bl-credits" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Account Summary Footer</span>
+                <label class="toggle-switch"><input type="checkbox" id="bl-summary" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Notes / Footer</span>
+                <label class="toggle-switch"><input type="checkbox" id="bl-notes" checked><span class="toggle-slider"></span></label>
+              </div>
+
+              <!-- Sales statement columns (only relevant in Sales mode) -->
+              <div class="builder-section-label">Sales Statement Columns</div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Bill Date</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-date" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Bill / Ref No.</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-ref" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Item Group Name</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-group" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Item Name</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-item" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Unit (KG / Bags)</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-unit" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Unit Price / Rate</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-rate" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Amount</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-amount" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Running Balance</span>
+                <label class="toggle-switch"><input type="checkbox" id="col-balance" checked><span class="toggle-slider"></span></label>
+              </div>
+
+              <div class="builder-section-label">Grouping & Sorting</div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:6px;">Group Rows By</div>
+                <select id="group-by" class="group-select">
+                  <option value="none">No Grouping</option>
+                  <option value="invoice">By Invoice</option>
+                  <option value="item_group">By Item Group</option>
+                  <option value="month">By Month</option>
+                </select>
+              </div>
+              <div>
+                <div class="modal-label" style="margin-bottom:6px;">Sort By</div>
+                <select id="sort-by" class="group-select">
+                  <option value="date_asc">Date ↑ (Oldest First)</option>
+                  <option value="date_desc">Date ↓ (Newest First)</option>
+                  <option value="amount_desc">Amount ↓ (Largest First)</option>
+                </select>
+              </div>
+
+              <div class="builder-section-label">Formula Fields (Sales Mode)</div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Compute Bags (Qty ÷ Pack)</span>
+                <label class="toggle-switch"><input type="checkbox" id="formula-bags"><span class="toggle-slider"></span></label>
+              </div>
+              <div id="bags-pack-row" style="display:none;margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:6px;">Pack Size (KG per bag)</div>
+                <input type="number" id="bags-pack-size" value="16.5" class="group-select" style="border-radius:8px;" placeholder="e.g. 16.5">
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Show Overdue Badges</span>
+                <label class="toggle-switch"><input type="checkbox" id="formula-overdue" checked><span class="toggle-slider"></span></label>
+              </div>
+
+              <button id="btn-builder-apply" class="builder-apply-btn">
+                <i class="ph ph-arrows-clockwise"></i> Apply & Regenerate
+              </button>
+
             </div>
           </div>
         </div>
+      </div>
 
-        <div id="view-explorer-container" class="view-hidden flex flex-col flex-grow overflow-hidden">
-          <div class="p-4 border-b border-white/5 flex gap-4 bg-black/40" id="explorer-tabs"></div>
-          <div class="flex-grow overflow-auto custom-scrollbar bg-[#040408]" id="explorer-table-container">
-            <table class="w-full text-left explorer-table" id="explorer-master-table">
-              <thead class="sticky top-0 bg-[#080810] z-10" id="explorer-thead"></thead>
-              <tbody id="explorer-tbody"></tbody>
-            </table>
-          </div>
+      <!-- ── EXPLORER VIEW ── -->
+      <div id="view-explorer-container" class="view-hidden" style="display:flex;flex-direction:column;flex:1;overflow:hidden;background:white;">
+        <div id="explorer-tabs" class="explorer-tabs"></div>
+        <div class="explorer-table-wrap">
+          <table class="exp-table" id="explorer-master-table">
+            <thead id="explorer-thead"></thead>
+            <tbody id="explorer-tbody"></tbody>
+          </table>
         </div>
-        
-        <div class="h-8 border-t border-white/5 bg-black/60 flex items-center px-6 font-mono text-[9px] text-neutral-700 justify-between no-print">
-          <span id="log-message" class="uppercase">ENGINE_STABLE</span>
-          <span id="data-stats" class="text-[8px] uppercase font-black text-indigo-900">0 RECORDS MAPPED</span>
-        </div>
-      </main>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SETTINGS MODAL
+══════════════════════════════════ -->
+<div id="modal-settings" class="modal-overlay view-hidden">
+  <div class="modal-card">
+    <div class="modal-title">Dataset Control</div>
+    <div class="modal-sub">Select Zoho modules to sync</div>
+
+    <div id="module-selector" class="modal-module-grid">
+      <label class="module-card checked" id="mc-invoices">
+        <input type="checkbox" value="invoices" checked>
+        <i class="ph ph-receipt text-blue-600" style="font-size:1.1rem;color:#2563eb;"></i>
+        <span class="module-card-label">Invoices</span>
+      </label>
+      <label class="module-card" id="mc-estimates">
+        <input type="checkbox" value="estimates">
+        <i class="ph ph-file-dashed text-amber-500" style="font-size:1.1rem;color:#d97706;"></i>
+        <span class="module-card-label">Estimates</span>
+      </label>
+      <label class="module-card" id="mc-salesorders">
+        <input type="checkbox" value="salesorders">
+        <i class="ph ph-package" style="font-size:1.1rem;color:#7c3aed;"></i>
+        <span class="module-card-label">Sales Orders</span>
+      </label>
+      <label class="module-card checked" id="mc-creditnotes">
+        <input type="checkbox" value="creditnotes" checked>
+        <i class="ph ph-arrow-u-up-left" style="font-size:1.1rem;color:#dc2626;"></i>
+        <span class="module-card-label">Credit Notes</span>
+      </label>
+    </div>
+
+    <div class="modal-btn-row">
+      <button id="btn-close-settings" class="modal-btn modal-btn-ghost">Cancel</button>
+      <button id="btn-apply-settings" class="modal-btn modal-btn-primary">Refresh Sync</button>
     </div>
   </div>
+</div>
 
-  <!-- Settings Modal -->
-  <div id="modal-settings" class="modal-overlay view-hidden fixed inset-0 flex items-center justify-center p-4">
-    <div class="glass-card p-8 w-full max-w-lg space-y-6 shadow-2xl">
-      <h3 class="text-xl font-black uppercase tracking-tight">Dataset Control</h3>
-      <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Select Zoho modules to analyze</p>
-      <div id="module-selector" class="grid grid-cols-2 gap-3">
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="invoices" checked class="accent-indigo-500 w-4 h-4">
-          <span class="text-xs font-bold uppercase tracking-widest">Invoices</span>
-        </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="estimates" class="accent-indigo-500 w-4 h-4">
-          <span class="text-xs font-bold uppercase tracking-widest">Estimates</span>
-        </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="salesorders" class="accent-indigo-500 w-4 h-4">
-          <span class="text-xs font-bold uppercase tracking-widest">Sales Orders</span>
-        </label>
-        <label class="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center gap-3 cursor-pointer hover:border-indigo-500/50">
-          <input type="checkbox" value="creditnotes" class="accent-indigo-500 w-4 h-4">
-          <span class="text-xs font-bold uppercase tracking-widest">Credit Notes</span>
-        </label>
+<!-- ══════════════════════════════════
+     EMAIL COMPOSER MODAL
+══════════════════════════════════ -->
+<div id="modal-email" class="modal-overlay view-hidden">
+  <div class="modal-card" style="max-width:520px;">
+    <div class="modal-title">Email Composer</div>
+    <div class="modal-sub">Draft a statement delivery email</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div class="modal-label">To</div>
+        <input id="email-to" type="text" class="modal-input" placeholder="customer@example.com">
       </div>
-      <div class="flex gap-4 pt-4">
-        <button id="btn-close-settings" class="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl font-black uppercase text-[10px]">Cancel</button>
-        <button id="btn-apply-settings" class="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg">Refresh Sync</button>
+      <div>
+        <div class="modal-label">Subject</div>
+        <input id="email-subject" type="text" class="modal-input">
+      </div>
+      <div>
+        <div class="modal-label">Body</div>
+        <textarea id="email-body" class="modal-input" rows="6" style="resize:vertical;"></textarea>
       </div>
     </div>
+    <div class="modal-btn-row">
+      <button id="btn-close-email" class="modal-btn modal-btn-ghost">Close</button>
+      <button id="btn-copy-email" class="modal-btn modal-btn-primary">Copy to Clipboard</button>
+    </div>
   </div>
+</div>
 
-  <script type="module" src="index.js"></script>
+<script type="module" src="index.js"></script>
 </body>
 </html>
