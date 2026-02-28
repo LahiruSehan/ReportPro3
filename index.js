@@ -110,25 +110,28 @@ class BizSensePro {
   }
 
   initLandingUI() {
+    // Background slideshow
     const bg = document.getElementById('bg-slideshow');
-    if (!bg) return;
-    const imgs = [
-      'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2032&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2011&auto=format&fit=crop',
-    ];
-    bg.innerHTML = imgs.map((url, i) =>
-      `<div class="bg-slide${i === 0 ? ' active' : ''}" style="background-image:url(${url})"></div>`
-    ).join('');
-    let cur = 0;
-    setInterval(() => {
-      const slides = bg.querySelectorAll('.bg-slide');
-      slides[cur].classList.remove('active');
-      cur = (cur + 1) % slides.length;
-      slides[cur].classList.add('active');
-    }, 4500);
+    if (bg) {
+      const imgs = [
+        'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2032&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2011&auto=format&fit=crop',
+      ];
+      bg.innerHTML = imgs.map((url, i) =>
+        `<div class="bg-slide${i === 0 ? ' active' : ''}" style="background-image:url(${url})"></div>`
+      ).join('');
+      let cur = 0;
+      setInterval(() => {
+        const slides = bg.querySelectorAll('.bg-slide');
+        slides[cur].classList.remove('active');
+        cur = (cur + 1) % slides.length;
+        slides[cur].classList.add('active');
+      }, 4500);
+    }
 
+    // Rotating quotes
     const qEl = document.getElementById('business-quote');
     if (qEl) {
       let qi = 0;
@@ -139,12 +142,23 @@ class BizSensePro {
       }, 5000);
     }
 
-    // Prefill config fields
-    if (document.getElementById('cfg-client-id')) document.getElementById('cfg-client-id').value = this.config.clientId || '';
-    if (document.getElementById('cfg-region')) document.getElementById('cfg-region').value = this.config.region || 'com';
+    // Auto-populate redirect URI
     const redirectUri = window.location.origin + window.location.pathname;
     const disp = document.getElementById('display-redirect-uri');
     if (disp) disp.textContent = redirectUri;
+
+    // Prefill saved config values
+    const clientIdEl = document.getElementById('cfg-client-id');
+    const regionEl = document.getElementById('cfg-region');
+    if (clientIdEl) {
+      clientIdEl.value = this.config.clientId || '';
+      // Re-evaluate button state live as user types
+      clientIdEl.addEventListener('input', () => this.updateConfigStatus());
+    }
+    if (regionEl) regionEl.value = this.config.region || 'com';
+
+    // Check button state based on what's already saved
+    this.updateConfigStatus();
   }
 
   cacheDOM() {
@@ -315,7 +329,9 @@ class BizSensePro {
   }
 
   updateConfigStatus() {
-    if (this.btns.connect) this.btns.connect.disabled = !(this.config.clientId && this.config.clientId.length > 5);
+    const liveInput = document.getElementById('cfg-client-id');
+    const val = (liveInput?.value || this.config.clientId || '').trim();
+    if (this.btns.connect) this.btns.connect.disabled = val.length < 5;
   }
 
   handleOAuthCallback() {
@@ -740,7 +756,7 @@ class BizSensePro {
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'Valued Client';
-      const systemOpeningBalance = customer._computed_opening_balance ?? parseFloat(customer.opening_balance) || 0;
+      const systemOpeningBalance = (customer._computed_opening_balance ?? parseFloat(customer.opening_balance)) || 0;
 
       let transactions = this.collectTransactions(id);
       transactions = this.applySortAndFilter(transactions, bc);
@@ -1504,7 +1520,7 @@ class BizSensePro {
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'N/A';
-      const openingBalance = customer._computed_opening_balance ?? parseFloat(customer.opening_balance) || 0;
+      const openingBalance = (customer._computed_opening_balance ?? parseFloat(customer.opening_balance)) || 0;
 
       if (this.state.statementMode === 'sales') {
         // Sales export — line items
