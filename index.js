@@ -20,6 +20,13 @@ class BizSensePro {
       dataStore: { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} },
       invoiceDetailsCache: {},
       itemGroupCache: {},
+      // Item Registry
+      sidebarMode: 'customers',       // 'customers' | 'items'
+      allItems: [],                   // flat list of all known items from invoice cache
+      selectedItemNames: new Set(),   // selected items for item-wise statement
+      itemGroups: JSON.parse(localStorage.getItem('item_groups') || '[]'),
+      // itemGroups format: [{ id, name, items: [itemName, ...] }]
+      activeGroupEditorId: null,      // which group is selected in the editor
       customLogo: localStorage.getItem('biz_logo') || null,
       zoom: 0.8,
       activeView: 'ledger',
@@ -268,6 +275,30 @@ class BizSensePro {
     if (this.btns.zoomIn) this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
     if (this.btns.zoomOut) this.btns.zoomOut.onclick = () => this.setZoom(this.state.zoom - 0.1);
     if (this.btns.zoomFit) this.btns.zoomFit.onclick = () => this.autoFitZoom();
+    // Sidebar mode tabs
+    const sbTabCustomers = document.getElementById('sb-tab-customers');
+    const sbTabItems = document.getElementById('sb-tab-items');
+    if (sbTabCustomers) sbTabCustomers.onclick = () => this.switchSidebarMode('customers');
+    if (sbTabItems) sbTabItems.onclick = () => this.switchSidebarMode('items');
+
+    // Item search
+    const itemSearch = document.getElementById('item-search');
+    if (itemSearch) itemSearch.oninput = (e) => this.filterItemList(e.target.value);
+
+    // Group editor
+    const btnOpenGE = document.getElementById('btn-open-group-editor');
+    if (btnOpenGE) btnOpenGE.onclick = () => this.openGroupEditor();
+    const btnCloseGE = document.getElementById('btn-close-group-editor');
+    if (btnCloseGE) btnCloseGE.onclick = () => this.closeGroupEditor();
+    const btnIgClose = document.getElementById('ig-btn-close');
+    if (btnIgClose) btnIgClose.onclick = () => this.closeGroupEditor();
+    const btnCreateGroup = document.getElementById('ig-btn-create-group');
+    if (btnCreateGroup) btnCreateGroup.onclick = () => this.createItemGroup();
+    const btnClearGroups = document.getElementById('ig-btn-clear-all-groups');
+    if (btnClearGroups) btnClearGroups.onclick = () => this.clearAllItemGroups();
+    const igItemSearch = document.getElementById('ig-item-search');
+    if (igItemSearch) igItemSearch.oninput = (e) => this.filterIgPicklist(e.target.value);
+
     if (this.btns.toggleLedger) this.btns.toggleLedger.onclick = () => this.switchView('ledger');
     if (this.btns.toggleExplorer) this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
     if (this.btns.modeLedger) this.btns.modeLedger.onclick = () => this.switchStatementMode('ledger');
@@ -452,7 +483,10 @@ class BizSensePro {
       // Opening balance - try multiple field names Zoho might use
       const c = cRes.contact;
       const ob = parseFloat(
-        c.opening_balance ?? c.opening_balances?.[0]?.opening_balance ?? c.outstanding_receivable_amount ?? 0
+        (c.opening_balance !== undefined && c.opening_balance !== null && c.opening_balance !== ''
+          ? c.opening_balance
+          : (c.opening_balances && c.opening_balances[0] ? c.opening_balances[0].opening_balance
+            : (c.outstanding_receivable_amount || 0)))
       ) || 0;
       this.state.customerFullDetails[id]._computed_opening_balance = ob;
       this.state.currency = c.currency_symbol || c.currency_code || 'LKR';
@@ -626,8 +660,8 @@ class BizSensePro {
   }
 
   readBuilderConfigFromUI() {
-    const get = id => this.inputs[id]?.checked ?? true;
-    const getVal = id => this.inputs[id]?.value;
+    const get = (id) => { const el = this.inputs[id]; return el ? (el.checked !== undefined ? el.checked : true) : true; };
+    const getVal = (id) => { const el = this.inputs[id]; return el ? el.value : undefined; };
     return {
       showHeader: get('blHeader'),
       showCustomer: get('blCustomer'),
@@ -694,10 +728,22 @@ class BizSensePro {
   // RENDER DISPATCH
   // ─────────────────────────────────────────
   updateUIVisuals() {
-    if (this.state.activeView === 'ledger') this.renderStatementUI();
-    else this.renderExplorer();
+    if (this.state.activeView === 'ledger') {
+      if (this.state.sidebarMode === 'items') {
+        this.renderItemStatement();
+      } else {
+        this.renderStatementUI();
+      }
+    } else {
+      this.renderExplorer();
+    }
     this.updateStats();
     this.autoFitZoom();
+    // Rebuild item list if in item mode (new data may have loaded)
+    if (this.state.sidebarMode === 'items') {
+      this.buildAllItemsList();
+      this.renderItemList(document.getElementById('item-search')?.value || '');
+    }
   }
 
   updateStats() {
@@ -716,7 +762,13 @@ class BizSensePro {
     };
 
     if (this.state.selectedCustomerIds.size === 0) {
-      if (emptyState) emptyState.style.display = 'flex';
+      if (emptyState) {
+        emptyState.style.display = 'flex';
+        const title = emptyState.querySelector('.empty-title');
+        const sub = emptyState.querySelector('.empty-sub');
+        if (title) title.textContent = 'No Customer Selected';
+        if (sub) sub.textContent = 'Select a customer from the sidebar to generate their statement';
+      }
       if (renderArea) renderArea.innerHTML = '';
       setBtnsDisabled(true);
       return;
@@ -741,7 +793,7 @@ class BizSensePro {
 
   getOrgName() {
     const sel = this.inputs.orgSelect;
-    return sel?.options[sel.selectedIndex]?.text || 'Your Company';
+    return (sel && sel.options && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].text : 'Your Company';
   }
 
   // ─────────────────────────────────────────
@@ -798,7 +850,7 @@ class BizSensePro {
 
         // Overdue badge
         let overdueBadge = '';
-        if (bc.formulaOverdue && tx.type === 'Invoice' && tx.due_date && new Date(tx.due_date) < now && tx.raw?.balance > 0) {
+        if (bc.formulaOverdue && tx.type === 'Invoice' && tx.due_date && new Date(tx.due_date) < now && tx.raw && tx.raw.balance > 0) {
           const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
           overdueBadge = `<span style="margin-left:6px;padding:2px 6px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;">OVERDUE ${days}d</span>`;
         }
@@ -814,7 +866,7 @@ class BizSensePro {
         if (!this.state.isSummaryMode) {
           if (tx.type === 'Invoice') {
             const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-            if (det?.line_items) {
+            if (det && det.line_items) {
               detailsHtml = `<div style="margin-top:4px;">`;
               det.line_items.forEach(li => {
                 const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2});
@@ -836,7 +888,7 @@ class BizSensePro {
           } else if (tx.type === 'Credit Note') {
             const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
             detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;">Credit Note #${tx.ref}</div>`;
-            if (det?.line_items) {
+            if (det && det.line_items) {
               det.line_items.forEach(li => {
                 const rate = parseFloat(li.rate||0).toLocaleString(undefined,{minimumFractionDigits:2});
                 detailsHtml += `<div style="font-size:9px;border-left:2px solid #fca5a5;padding-left:8px;margin-bottom:2px;"><span style="font-weight:700;">${li.name}</span> <span style="font-size:8px;color:#64748b;">(${li.quantity} × ${rate})</span></div>`;
@@ -927,7 +979,7 @@ class BizSensePro {
               <div style="font-size:16px;font-weight:900;color:${theme.primary};">${clientName}</div>
               ${customer.email ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.email}</div>` : ''}
               ${customer.mobile || customer.phone ? `<div style="font-size:9px;color:#64748b;">${customer.mobile || customer.phone}</div>` : ''}
-              ${customer.billing_address?.address ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.billing_address.address}${customer.billing_address.city ? ', '+customer.billing_address.city : ''}</div>` : ''}
+              ${(customer.billing_address && customer.billing_address.address) ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.billing_address.address}${customer.billing_address.city ? ', '+customer.billing_address.city : ''}</div>` : ''}
             </div>
             <div>
               <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Period</div>
@@ -1001,7 +1053,7 @@ class BizSensePro {
       let allLineItems = [];
       filtered.forEach(inv => {
         const det = this.state.invoiceDetailsCache[inv.invoice_id];
-        const items = det?.line_items || [];
+        const items = (det && det.line_items) ? det.line_items : [];
         items.forEach(li => {
           const qty = parseFloat(li.quantity || 0);
           const rate = parseFloat(li.rate || 0);
@@ -1036,7 +1088,7 @@ class BizSensePro {
           if (this.state.filterDateStart && new Date(cn.date) < this.state.filterDateStart) return;
           if (this.state.filterDateEnd && new Date(cn.date) > this.state.filterDateEnd) return;
           const det = this.state.invoiceDetailsCache[cn.creditnote_id];
-          (det?.line_items || []).forEach(li => {
+          (det && det.line_items ? det.line_items : []).forEach(li => {
             const qty = parseFloat(li.quantity || 0);
             const rate = parseFloat(li.rate || 0);
             const amt = parseFloat(li.item_total || li.amount || qty * rate || 0);
@@ -1356,7 +1408,7 @@ class BizSensePro {
     const headers = Object.keys(allRecords[0]).filter(k => typeof allRecords[0][k] !== 'object');
     this.targets.explorerThead.innerHTML = `<tr>${headers.map(h => `<th>${h.replace(/_/g, ' ')}</th>`).join('')}</tr>`;
     this.targets.explorerTbody.innerHTML = allRecords.map(row =>
-      `<tr>${headers.map(h => `<td>${row[h] ?? '—'}</td>`).join('')}</tr>`
+      `<tr>${headers.map(h => `<td>${(row[h] !== null && row[h] !== undefined) ? row[h] : '—'}</td>`).join('')}</tr>`
     ).join('');
   }
 
@@ -1528,12 +1580,14 @@ class BizSensePro {
         const bc = this.state.builderConfig;
         (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
           const det = this.state.invoiceDetailsCache[inv.invoice_id];
-          (det?.line_items || []).forEach(li => {
+          (det && det.line_items ? det.line_items : []).forEach(li => {
             const qty = parseFloat(li.quantity || 0);
             const rate = parseFloat(li.rate || 0);
             const amt = parseFloat(li.item_total || qty * rate || 0);
             const bags = bc.formulaBags ? +(qty / bc.bagsPackSize).toFixed(0) : '';
-            const group = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
+            const _cf = li.item_custom_fields || [];
+            const _gff = _cf.find(f => f.label && f.label.toLowerCase().includes('group'));
+            const group = (_gff && _gff.value) ? _gff.value : '';
             rows.push([inv.date, inv.invoice_number, group, li.name, qty, bags, rate, amt]);
           });
         });
@@ -1551,7 +1605,7 @@ class BizSensePro {
           if (tx.type !== 'Payment Received') {
             const cacheKey = tx.type === 'Invoice' ? tx.raw.invoice_id : tx.raw.creditnote_id;
             const det = this.state.invoiceDetailsCache[cacheKey];
-            if (det?.line_items) details = det.line_items.map(li => `${li.name} (${li.quantity} × ${li.rate})`).join('; ');
+            if (det && det.line_items) details = det.line_items.map(li => `${li.name} (${li.quantity} × ${li.rate})`).join('; ');
           } else { details = `Ref: ${tx.ref}`; }
           data.push({ Date: tx.date, Transaction: tx.type, Reference: tx.ref, Details: details, Amount: tx.amount || '', Payment: tx.payment || '', Balance: running, Customer: clientName });
         });
@@ -1616,6 +1670,503 @@ class BizSensePro {
     } catch (err) { alert('Image capture failed: ' + err.message); }
     finally { document.body.removeChild(ghost); this.hideLoading(); }
   }
+
+// ─────────────────────────────────────────
+  // SIDEBAR MODE SWITCHING
+  // ─────────────────────────────────────────
+  switchSidebarMode(mode) {
+    this.state.sidebarMode = mode;
+
+    const custList = document.getElementById('customer-list');
+    const itemList = document.getElementById('item-list');
+    const custCtrl = document.getElementById('sb-customer-controls');
+    const itemCtrl = document.getElementById('sb-item-controls');
+    const tabCust = document.getElementById('sb-tab-customers');
+    const tabItem = document.getElementById('sb-tab-items');
+
+    if (mode === 'customers') {
+      if (custList) custList.style.display = '';
+      if (itemList) itemList.style.display = 'none';
+      if (custCtrl) custCtrl.style.display = '';
+      if (itemCtrl) itemCtrl.style.display = 'none';
+      if (tabCust) tabCust.classList.add('active');
+      if (tabItem) tabItem.classList.remove('active');
+    } else {
+      if (custList) custList.style.display = 'none';
+      if (itemList) itemList.style.display = '';
+      if (custCtrl) custCtrl.style.display = 'none';
+      if (itemCtrl) itemCtrl.style.display = '';
+      if (tabCust) tabCust.classList.remove('active');
+      if (tabItem) tabItem.classList.add('active');
+      this.buildAllItemsList();
+      this.renderItemList();
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // BUILD MASTER ITEM LIST from all cached invoice data
+  // ─────────────────────────────────────────
+  buildAllItemsList() {
+    const itemMap = {}; // name -> { name, count, customers }
+    Object.values(this.state.invoiceDetailsCache).forEach(det => {
+      if (!det || !det.line_items) return;
+      (det.line_items || []).forEach(li => {
+        const name = (li.name || '').trim();
+        if (!name) return;
+        if (!itemMap[name]) itemMap[name] = { name, count: 0, customers: new Set() };
+        itemMap[name].count += 1;
+      });
+    });
+    // Also scan raw invoice records to associate customer names
+    Object.entries(this.state.dataStore.invoices || {}).forEach(([custId, data]) => {
+      (data.records || []).forEach(inv => {
+        const det = this.state.invoiceDetailsCache[inv.invoice_id];
+        if (!det || !det.line_items) return;
+        det.line_items.forEach(li => {
+          const name = (li.name || '').trim();
+          if (name && itemMap[name]) itemMap[name].customers.add(data.customerName);
+        });
+      });
+    });
+    this.state.allItems = Object.values(itemMap).sort((a, b) => a.name.localeCompare(b.name));
+    const label = document.getElementById('item-count-label');
+    if (label) label.textContent = `${this.state.allItems.length} items`;
+  }
+
+  // ─────────────────────────────────────────
+  // RENDER ITEM SIDEBAR LIST (with group headers)
+  // ─────────────────────────────────────────
+  renderItemList(filter = '') {
+    const list = document.getElementById('item-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    const items = this.state.allItems.filter(i =>
+      !filter || i.name.toLowerCase().includes(filter.toLowerCase())
+    );
+
+    if (items.length === 0) {
+      list.innerHTML = `<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);font-size:0.75rem;line-height:1.6;">
+        ${this.state.allItems.length === 0 
+          ? 'No items yet.<br>Select a customer first to load invoice data.' 
+          : 'No items match your search.'}
+      </div>`;
+      return;
+    }
+
+    // Build group membership map
+    const itemToGroups = {};
+    this.state.itemGroups.forEach(g => {
+      (g.items || []).forEach(itemName => {
+        if (!itemToGroups[itemName]) itemToGroups[itemName] = [];
+        itemToGroups[itemName].push(g.name);
+      });
+    });
+
+    // Separate grouped vs ungrouped
+    const grouped = {}; // groupName -> items[]
+    const ungrouped = [];
+    items.forEach(item => {
+      const groups = itemToGroups[item.name] || [];
+      if (groups.length > 0) {
+        groups.forEach(g => {
+          if (!grouped[g]) grouped[g] = [];
+          grouped[g].push(item);
+        });
+      } else {
+        ungrouped.push(item);
+      }
+    });
+
+    const renderItem = (item) => {
+      const isSelected = this.state.selectedItemNames.has(item.name);
+      const div = document.createElement('div');
+      div.className = `item-row${isSelected ? ' selected' : ''}`;
+      div.innerHTML = `
+        <div class="item-row-dot"></div>
+        <div class="item-row-name">${item.name}</div>
+        <div class="item-row-count">${item.count}×</div>
+      `;
+      div.onclick = () => this.handleItemClick(item.name);
+      return div;
+    };
+
+    // Render groups first
+    Object.entries(grouped).forEach(([groupName, groupItems]) => {
+      const header = document.createElement('div');
+      header.className = 'item-group-header';
+      header.innerHTML = `
+        <span class="item-group-label"><i class="ph ph-stack" style="font-size:0.65rem;margin-right:3px;"></i>${groupName}</span>
+        <span style="font-size:0.52rem;color:rgba(255,255,255,0.18);font-family:'DM Mono',monospace;">${groupItems.length}</span>
+      `;
+      list.appendChild(header);
+      groupItems.forEach(item => list.appendChild(renderItem(item)));
+    });
+
+    // Ungrouped header only if there are also groups
+    if (Object.keys(grouped).length > 0 && ungrouped.length > 0) {
+      const header = document.createElement('div');
+      header.className = 'item-group-header';
+      header.innerHTML = `<span class="item-group-label">Other Items</span><span style="font-size:0.52rem;color:rgba(255,255,255,0.18);font-family:'DM Mono',monospace;">${ungrouped.length}</span>`;
+      list.appendChild(header);
+    }
+    ungrouped.forEach(item => list.appendChild(renderItem(item)));
+  }
+
+  filterItemList(term) {
+    this.renderItemList(term);
+  }
+
+  // ─────────────────────────────────────────
+  // ITEM CLICK → Item-wise statement
+  // ─────────────────────────────────────────
+  handleItemClick(itemName) {
+    if (this.state.selectedItemNames.has(itemName)) {
+      this.state.selectedItemNames.delete(itemName);
+    } else {
+      this.state.selectedItemNames.add(itemName);
+    }
+    this.renderItemList(document.getElementById('item-search')?.value || '');
+    this.renderItemStatement();
+  }
+
+  // ─────────────────────────────────────────
+  // ITEM-WISE STATEMENT
+  // ─────────────────────────────────────────
+  renderItemStatement() {
+    const { renderArea, emptyState } = this.targets;
+    const setBtns = (v) => {
+      [this.btns.downloadPdf, this.btns.downloadImage, this.btns.downloadExcel, this.btns.print]
+        .forEach(b => { if (b) b.disabled = v; });
+    };
+
+    if (this.state.selectedItemNames.size === 0) {
+      if (emptyState) emptyState.style.display = 'flex';
+      if (renderArea) renderArea.innerHTML = '';
+      setBtns(true);
+      return;
+    }
+    if (emptyState) emptyState.style.display = 'none';
+    setBtns(false);
+
+    const theme = this.getTheme();
+    const orgName = this.getOrgName();
+    const selectedItems = Array.from(this.state.selectedItemNames);
+
+    // Collect all purchase rows across ALL customers for these items
+    const rows = []; // { customerName, date, invoiceNumber, itemName, qty, unit, rate, amount }
+
+    Object.entries(this.state.dataStore.invoices || {}).forEach(([custId, data]) => {
+      const custName = data.customerName || custId;
+      (data.records || []).forEach(inv => {
+        const det = this.state.invoiceDetailsCache[inv.invoice_id];
+        if (!det || !det.line_items) return;
+
+        // Apply date filter
+        if (this.state.filterDateStart && new Date(inv.date) < this.state.filterDateStart) return;
+        if (this.state.filterDateEnd && new Date(inv.date) > this.state.filterDateEnd) return;
+
+        det.line_items.forEach(li => {
+          const name = (li.name || '').trim();
+          if (!selectedItems.includes(name)) return;
+          const qty = parseFloat(li.quantity || 0);
+          const rate = parseFloat(li.rate || 0);
+          const amount = parseFloat(li.item_total || li.amount || qty * rate || 0);
+          rows.push({
+            customerName: custName,
+            date: inv.date,
+            invoiceNumber: inv.invoice_number,
+            itemName: name,
+            qty, unit: li.unit || '', rate, amount,
+            sortDate: new Date(inv.date),
+          });
+        });
+      });
+    });
+
+    // Sort by date
+    rows.sort((a, b) => a.sortDate - b.sortDate);
+
+    if (rows.length === 0) {
+      renderArea.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4rem;color:#94a3b8;text-align:center;">
+        <i class="ph ph-magnifying-glass" style="font-size:3rem;margin-bottom:1rem;opacity:0.3;"></i>
+        <div style="font-weight:800;font-size:0.875rem;margin-bottom:0.5rem;">No purchases found</div>
+        <div style="font-size:0.75rem;opacity:0.6;">The selected item(s) have no recorded sales in the loaded customer data.<br>Try selecting a customer first to load their invoices.</div>
+      </div>`;
+      return;
+    }
+
+    // Group by item name
+    const byItem = {};
+    rows.forEach(r => {
+      if (!byItem[r.itemName]) byItem[r.itemName] = [];
+      byItem[r.itemName].push(r);
+    });
+
+    let html = `<div class="a4-page" id="pdf-content">`;
+
+    // Header
+    html += `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:3px solid ${theme.primary};">
+        <div>
+          ${this.state.customLogo ? `<img src="${this.state.customLogo}" style="height:52px;margin-bottom:8px;object-fit:contain;display:block;">` : ''}
+          <div style="font-size:18px;font-weight:900;color:${theme.primary};letter-spacing:-0.02em;">${orgName}</div>
+          <div style="font-size:9px;color:#64748b;margin-top:2px;">Item-wise Sales Report</div>
+          ${this.state.filterDateStart ? `<div style="font-size:9px;color:#94a3b8;margin-top:2px;">${this.state.filterDateStart.toLocaleDateString()} — ${this.state.filterDateEnd?.toLocaleDateString() || 'Present'}</div>` : ''}
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:28px;font-weight:900;color:${theme.primary};line-height:1;letter-spacing:-0.03em;">ITEM</div>
+          <div style="font-size:10px;font-weight:800;color:#94a3b8;letter-spacing:0.15em;">SALES REPORT</div>
+          <div style="margin-top:8px;font-size:9px;color:#94a3b8;">${new Date().toLocaleDateString()}</div>
+          <div style="margin-top:6px;background:${theme.primary};color:white;border-radius:8px;padding:8px 12px;text-align:right;">
+            <div style="font-size:8px;opacity:0.8;text-transform:uppercase;letter-spacing:0.1em;">Items Selected</div>
+            <div style="font-size:18px;font-weight:900;">${selectedItems.length}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // One section per item
+    Object.entries(byItem).forEach(([itemName, itemRows]) => {
+      const totalQty = itemRows.reduce((s, r) => s + r.qty, 0);
+      const totalAmt = itemRows.reduce((s, r) => s + r.amount, 0);
+      const uniqueCustomers = [...new Set(itemRows.map(r => r.customerName))];
+
+      html += `
+        <div style="margin-bottom:1.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${theme.primary};border-radius:8px 8px 0 0;color:white;">
+            <div>
+              <div style="font-size:11px;font-weight:900;letter-spacing:-0.01em;">${itemName}</div>
+              <div style="font-size:8px;opacity:0.7;margin-top:1px;">${uniqueCustomers.length} customer${uniqueCustomers.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:8px;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;">Total Qty</div>
+              <div style="font-size:14px;font-weight:900;">${totalQty.toLocaleString()}</div>
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:10px;">
+            <thead>
+              <tr style="background:${theme.light};">
+                <th style="padding:7px 10px;text-align:left;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${theme.primary};border-bottom:1px solid ${theme.primary}20;">Date</th>
+                <th style="padding:7px 10px;text-align:left;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${theme.primary};border-bottom:1px solid ${theme.primary}20;">Customer</th>
+                <th style="padding:7px 10px;text-align:left;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${theme.primary};border-bottom:1px solid ${theme.primary}20;">Invoice</th>
+                <th style="padding:7px 10px;text-align:right;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${theme.primary};border-bottom:1px solid ${theme.primary}20;">Qty</th>
+                <th style="padding:7px 10px;text-align:right;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${theme.primary};border-bottom:1px solid ${theme.primary}20;">Rate</th>
+                <th style="padding:7px 10px;text-align:right;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${theme.primary};border-bottom:1px solid ${theme.primary}20;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemRows.map((r, i) => `
+                <tr style="border-bottom:1px solid #f1f5f9;background:${i%2===0?'white':'#fafbfc'};">
+                  <td style="padding:7px 10px;color:#475569;font-size:9px;white-space:nowrap;">${r.date}</td>
+                  <td style="padding:7px 10px;font-weight:700;color:#1e293b;font-size:9px;">${r.customerName}</td>
+                  <td style="padding:7px 10px;color:${theme.primary};font-weight:700;font-size:9px;">${r.invoiceNumber}</td>
+                  <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:9px;">${r.qty.toLocaleString()}${r.unit ? ' '+r.unit : ''}</td>
+                  <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:9px;">${r.rate.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                  <td style="padding:7px 10px;text-align:right;font-weight:700;font-family:'DM Mono',monospace;font-size:9px;">${r.amount.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr style="background:${theme.light};border-top:2px solid ${theme.primary}20;">
+                <td colspan="3" style="padding:8px 10px;font-size:9px;font-weight:800;color:${theme.primary};text-transform:uppercase;letter-spacing:0.08em;">Subtotal — ${itemName}</td>
+                <td style="padding:8px 10px;text-align:right;font-weight:900;font-family:'DM Mono',monospace;font-size:10px;color:${theme.primary};">${totalQty.toLocaleString()}</td>
+                <td></td>
+                <td style="padding:8px 10px;text-align:right;font-weight:900;font-family:'DM Mono',monospace;font-size:10px;color:${theme.primary};">${totalAmt.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      `;
+    });
+
+    // Grand summary
+    const grandTotal = rows.reduce((s, r) => s + r.amount, 0);
+    const grandQty = rows.reduce((s, r) => s + r.qty, 0);
+    html += `
+      <div style="margin-top:1rem;padding:12px 16px;background:${theme.primary};color:white;border-radius:10px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;opacity:0.9;">Grand Total — ${selectedItems.length} Item${selectedItems.length!==1?'s':''}</div>
+        <div style="display:flex;gap:2rem;text-align:right;">
+          <div><div style="font-size:8px;opacity:0.7;letter-spacing:0.1em;">TOTAL QTY</div><div style="font-size:16px;font-weight:900;font-family:'DM Mono',monospace;">${grandQty.toLocaleString()}</div></div>
+          <div><div style="font-size:8px;opacity:0.7;letter-spacing:0.1em;">TOTAL AMOUNT</div><div style="font-size:16px;font-weight:900;font-family:'DM Mono',monospace;">${this.state.currency} ${grandTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</div></div>
+        </div>
+      </div>
+    `;
+
+    html += `</div>`;
+    renderArea.innerHTML = html;
+    this.autoFitZoom();
+  }
+
+  // ─────────────────────────────────────────
+  // ITEM GROUP EDITOR
+  // ─────────────────────────────────────────
+  openGroupEditor() {
+    const modal = document.getElementById('modal-group-editor');
+    if (modal) modal.classList.remove('view-hidden');
+    this.buildAllItemsList();
+    this.renderIgPicklist();
+    this.renderIgGroupsList();
+  }
+
+  closeGroupEditor() {
+    const modal = document.getElementById('modal-group-editor');
+    if (modal) modal.classList.add('view-hidden');
+    this.state.activeGroupEditorId = null;
+    // Refresh item list in sidebar to show updated groups
+    this.renderItemList(document.getElementById('item-search')?.value || '');
+  }
+
+  renderIgPicklist(filter = '') {
+    const container = document.getElementById('ig-item-picklist');
+    const countEl = document.getElementById('ig-all-count');
+    if (!container) return;
+
+    const items = this.state.allItems.filter(i =>
+      !filter || i.name.toLowerCase().includes(filter.toLowerCase())
+    );
+
+    if (countEl) countEl.textContent = `(${items.length})`;
+
+    if (items.length === 0) {
+      container.innerHTML = `<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);font-size:0.75rem;">No items found</div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    items.forEach(item => {
+      // Is this item in the active group?
+      let inActiveGroup = false;
+      if (this.state.activeGroupEditorId) {
+        const activeGroup = this.state.itemGroups.find(g => g.id === this.state.activeGroupEditorId);
+        inActiveGroup = (activeGroup && activeGroup.items) ? activeGroup.items.includes(item.name) : false;
+      }
+
+      const div = document.createElement('div');
+      div.className = `ig-item-pick${inActiveGroup ? ' picked' : ''}`;
+      div.dataset.item = item.name;
+      div.innerHTML = `
+        <div class="ig-item-cb">${inActiveGroup ? '<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}</div>
+        <div class="ig-item-label">${item.name}</div>
+      `;
+      div.onclick = () => this.toggleItemInActiveGroup(item.name, div);
+      container.appendChild(div);
+    });
+  }
+
+  filterIgPicklist(term) {
+    this.renderIgPicklist(term);
+  }
+
+  toggleItemInActiveGroup(itemName, el) {
+    if (!this.state.activeGroupEditorId) {
+      // Flash the groups list to hint user to select a group
+      const gl = document.getElementById('ig-groups-list');
+      if (gl) { gl.style.outline = '2px solid rgba(59,130,246,0.5)'; setTimeout(() => gl.style.outline = '', 800); }
+      return;
+    }
+    const group = this.state.itemGroups.find(g => g.id === this.state.activeGroupEditorId);
+    if (!group) return;
+
+    if (!group.items) group.items = [];
+    const idx = group.items.indexOf(itemName);
+    if (idx > -1) {
+      group.items.splice(idx, 1);
+      el.classList.remove('picked');
+      el.querySelector('.ig-item-cb').innerHTML = '';
+    } else {
+      group.items.push(itemName);
+      el.classList.add('picked');
+      el.querySelector('.ig-item-cb').innerHTML = '<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+    this.saveItemGroups();
+    this.renderIgGroupsList(); // update count
+  }
+
+  renderIgGroupsList() {
+    const container = document.getElementById('ig-groups-list');
+    if (!container) return;
+
+    if (this.state.itemGroups.length === 0) {
+      container.innerHTML = `<div style="padding:1.5rem;text-align:center;color:rgba(255,255,255,0.2);font-size:0.75rem;line-height:1.6;">No groups yet.<br>Type a name above and click + Add.</div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    this.state.itemGroups.forEach(group => {
+      const isActive = this.state.activeGroupEditorId === group.id;
+      const chip = document.createElement('div');
+      chip.className = `ig-group-chip${isActive ? ' active' : ''}`;
+      chip.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+          <i class="ph ph-stack" style="color:${isActive?'#93c5fd':'rgba(255,255,255,0.25)'};font-size:0.9rem;flex-shrink:0;"></i>
+          <span class="ig-group-chip-name">${group.name}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="ig-group-count">${(group.items||[]).length} items</span>
+          <button class="ig-delete-btn" data-gid="${group.id}" style="background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.18);color:#f87171;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:0.65rem;font-family:'DM Sans',sans-serif;">✕</button>
+        </div>
+      `;
+      chip.onclick = (e) => {
+        if (e.target.closest('.ig-delete-btn')) return;
+        this.state.activeGroupEditorId = isActive ? null : group.id;
+        // Update assign panel
+        const panel = document.getElementById('ig-assign-panel');
+        const nameEl = document.getElementById('ig-editing-group-name');
+        if (panel) panel.style.display = this.state.activeGroupEditorId ? 'block' : 'none';
+        if (nameEl) nameEl.textContent = group.name;
+        this.renderIgGroupsList();
+        this.renderIgPicklist(document.getElementById('ig-item-search')?.value || '');
+      };
+      // Delete button
+      chip.querySelector('.ig-delete-btn').onclick = (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete group "${group.name}"?`)) return;
+        this.state.itemGroups = this.state.itemGroups.filter(g => g.id !== group.id);
+        if (this.state.activeGroupEditorId === group.id) this.state.activeGroupEditorId = null;
+        this.saveItemGroups();
+        this.renderIgGroupsList();
+        this.renderIgPicklist(document.getElementById('ig-item-search')?.value || '');
+        const panel = document.getElementById('ig-assign-panel');
+        if (panel) panel.style.display = 'none';
+      };
+      container.appendChild(chip);
+    });
+  }
+
+  createItemGroup() {
+    const input = document.getElementById('ig-new-group-name');
+    const name = (input?.value || '').trim();
+    if (!name) { if (input) { input.style.borderColor = 'rgba(220,38,38,0.5)'; setTimeout(() => input.style.borderColor = '', 1000); } return; }
+    const id = 'grp_' + Date.now();
+    this.state.itemGroups.push({ id, name, items: [] });
+    this.saveItemGroups();
+    if (input) input.value = '';
+    // Auto-select the new group
+    this.state.activeGroupEditorId = id;
+    const panel = document.getElementById('ig-assign-panel');
+    const nameEl = document.getElementById('ig-editing-group-name');
+    if (panel) panel.style.display = 'block';
+    if (nameEl) nameEl.textContent = name;
+    this.renderIgGroupsList();
+    this.renderIgPicklist(document.getElementById('ig-item-search')?.value || '');
+  }
+
+  clearAllItemGroups() {
+    if (!confirm('Delete ALL item groups? This cannot be undone.')) return;
+    this.state.itemGroups = [];
+    this.state.activeGroupEditorId = null;
+    this.saveItemGroups();
+    this.renderIgGroupsList();
+    this.renderIgPicklist('');
+    const panel = document.getElementById('ig-assign-panel');
+    if (panel) panel.style.display = 'none';
+  }
+
+  saveItemGroups() {
+    localStorage.setItem('item_groups', JSON.stringify(this.state.itemGroups));
+  }
+
 }
 
 window.app = new BizSensePro();
