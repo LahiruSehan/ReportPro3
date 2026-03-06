@@ -747,48 +747,62 @@ class BizSensePro {
     const bc = this.state.builderConfig;
     const theme = this.getTheme();
     const orgName = this.getOrgName();
+    const fmt = (n) => Number(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
     let html = '';
 
     this.state.selectedCustomerIds.forEach(id => {
       const customer = this.state.customerFullDetails[id] || {};
       const clientName = customer.contact_name || 'Valued Client';
-      const systemOpeningBalance = this.getEffectiveOpeningBalance(id);
+      const openingBalance = this.getEffectiveOpeningBalance(id);
 
       let transactions = this.collectTransactions(id);
       transactions = this.applySortAndFilter(transactions, bc);
 
-      // Pre-filter opening balance
-      let balanceBroughtForward = systemOpeningBalance;
+      // Compute balance brought forward (accounts for transactions before date filter)
+      let balanceBroughtForward = openingBalance;
       if (this.state.filterDateStart) {
         const allTx = this.collectTransactions(id);
-        let temp = systemOpeningBalance;
+        let temp = openingBalance;
         allTx.filter(t => t.sortDate < this.state.filterDateStart).forEach(t => { temp += t.amount - t.payment; });
         balanceBroughtForward = temp;
       }
 
-      let runningBalance = balanceBroughtForward;
+      // Tally totals (always on full filtered set, even if hidden by showPayments/showCredits)
       let totalInvoiced = 0, totalReceived = 0, totalCredits = 0;
+      transactions.forEach(tx => {
+        if (tx.amount > 0) totalInvoiced += tx.amount;
+        if (tx.payment > 0) {
+          if (tx.type === 'Credit Note') totalCredits += tx.payment;
+          else totalReceived += tx.payment;
+        }
+      });
+      // Final balance = opening + invoiced - received - credits
+      const finalBalance = balanceBroughtForward + totalInvoiced - totalReceived - totalCredits;
+
+      // Build table rows with per-row running balance
+      let runningBalance = balanceBroughtForward;
+      const now = new Date();
 
       const openingRow = bc.showOpening ? `
-        <tr style="background:#f8fafc;">
-          <td colspan="2" style="padding:10px 8px;font-weight:800;font-style:italic;font-size:10px;">
-            ${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}
+        <tr style="background:#f0f4ff;">
+          <td style="padding:11px 12px;font-weight:700;color:#475569;font-size:11px;white-space:nowrap;">—</td>
+          <td style="padding:11px 12px;">
+            <span style="font-size:10px;font-weight:900;color:#1e293b;text-transform:uppercase;letter-spacing:0.06em;">
+              ${this.state.filterDateStart ? 'Balance as of ' + this.state.filterDateStart.toLocaleDateString() : 'Opening Balance'}
+            </span>
           </td>
-          <td style="padding:10px 8px;font-size:9px;color:#64748b;font-style:italic;">Balance brought forward</td>
-          <td colspan="2" style="padding:10px 8px;text-align:right;color:#94a3b8;font-size:10px;">—</td>
-          <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+          <td style="padding:11px 12px;font-size:11px;color:#64748b;font-style:italic;">Balance brought forward</td>
+          <td style="padding:11px 12px;text-align:right;color:#94a3b8;font-size:12px;">—</td>
+          <td style="padding:11px 12px;text-align:right;color:#94a3b8;font-size:12px;">—</td>
+          <td style="padding:11px 12px;text-align:right;font-weight:900;font-size:13px;color:#1e293b;">${fmt(balanceBroughtForward)}</td>
         </tr>
       ` : '';
 
       let rowsHtml = openingRow;
-      const now = new Date();
 
-      transactions.forEach(tx => {
+      transactions.forEach((tx, idx) => {
         runningBalance += tx.amount - tx.payment;
-        if (tx.amount > 0) totalInvoiced += tx.amount;
-        if (tx.payment > 0) { if (tx.type === 'Credit Note') totalCredits += tx.payment; else totalReceived += tx.payment; }
 
-        // Skip payments if showPayments is off
         if (!bc.showPayments && tx.type === 'Payment Received') return;
         if (!bc.showCredits && tx.type === 'Credit Note') return;
 
@@ -796,98 +810,127 @@ class BizSensePro {
         let overdueBadge = '';
         if (bc.formulaOverdue && tx.type === 'Invoice' && tx.due_date && new Date(tx.due_date) < now && tx.raw && tx.raw.balance > 0) {
           const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
-          overdueBadge = `<span style="margin-left:6px;padding:2px 6px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;">OVERDUE ${days}d</span>`;
+          overdueBadge = `<span style="display:inline-block;margin-left:8px;padding:2px 7px;background:#fef2f2;color:#dc2626;font-size:9px;border-radius:4px;font-weight:800;letter-spacing:0.04em;">OVERDUE ${days}d</span>`;
         }
 
+        // Payment display
         let payDisplay = '';
-        if (tx.payment !== 0) {
+        if (tx.payment > 0) {
           const color = tx.type === 'Credit Note' ? '#dc2626' : '#059669';
-          payDisplay = `<span style="color:${color};font-weight:700;">${tx.payment.toLocaleString(undefined, {minimumFractionDigits:2})}</span>`;
+          payDisplay = `<span style="color:${color};font-weight:800;font-size:13px;">${fmt(tx.payment)}</span>`;
         }
 
-        // Details
+        // Build details cell
         let detailsHtml = '';
         if (!this.state.isSummaryMode) {
           if (tx.type === 'Invoice') {
             const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:3px;">Invoice #${tx.ref}</div>${overdueBadge}`;
-            if (det && det.line_items) {
-              detailsHtml += `<div style="margin-top:4px;">`;
+            detailsHtml = `<div style="font-weight:900;color:${theme.primary};font-size:12px;">${tx.ref}${overdueBadge}</div>`;
+            if (det && det.line_items && det.line_items.length) {
+              detailsHtml += `<div style="margin-top:5px;display:flex;flex-direction:column;gap:3px;">`;
               det.line_items.forEach(li => {
-                const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2});
+                const qty = parseFloat(li.quantity || 0);
+                const rate = parseFloat(li.rate || 0);
+                const lineTotal = parseFloat(li.item_total || (qty * rate) || 0);
                 const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
                 detailsHtml += `
-                  <div style="font-size:9px;border-left:2px solid ${theme.accent}30;padding-left:8px;margin-bottom:3px;">
-                    ${groupName ? `<span style="font-size:8px;color:${theme.accent};font-weight:700;">${groupName} · </span>` : ''}
-                    <span style="font-weight:700;color:#1e293b;">${li.name}</span>
-                    <span style="color:#64748b;font-family:'DM Mono',monospace;font-size:8px;margin-left:4px;">(${li.quantity} × ${rate})</span>
+                  <div style="display:flex;align-items:baseline;gap:8px;padding:4px 8px;background:#f8fafc;border-left:3px solid ${theme.primary}40;border-radius:0 4px 4px 0;">
+                    <span style="font-size:11px;font-weight:700;color:#1e293b;flex:1;">${groupName ? `<span style="color:${theme.accent};font-size:10px;">${groupName} · </span>` : ''}${li.name}</span>
+                    <span style="font-size:11px;color:#475569;white-space:nowrap;font-family:'DM Mono',monospace;">${qty % 1 === 0 ? qty.toFixed(0) : qty} × ${fmt(rate)}</span>
+                    <span style="font-size:11px;font-weight:800;color:#1e293b;white-space:nowrap;font-family:'DM Mono',monospace;">= ${fmt(lineTotal)}</span>
                   </div>`;
               });
               detailsHtml += `</div>`;
             }
           } else if (tx.type === 'Payment Received') {
-            detailsHtml = `<div style="color:#059669;font-weight:700;font-size:10px;">Payment Received</div>`;
+            detailsHtml = `<div style="font-weight:900;color:#059669;font-size:12px;">${tx.ref || 'Payment Received'}</div>`;
             if (tx.raw?.invoices?.length) {
-              detailsHtml += `<div style="font-size:8px;color:#64748b;margin-top:2px;">Against: ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
+              detailsHtml += `<div style="font-size:10px;color:#475569;margin-top:3px;">Against: ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
             }
           } else if (tx.type === 'Credit Note') {
             const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
-            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;">Credit Note #${tx.ref}</div>`;
-            if (det && det.line_items) {
+            detailsHtml = `<div style="font-weight:900;color:#dc2626;font-size:12px;">${tx.ref}</div>`;
+            if (det && det.line_items && det.line_items.length) {
+              detailsHtml += `<div style="margin-top:5px;display:flex;flex-direction:column;gap:3px;">`;
               det.line_items.forEach(li => {
-                const rate = parseFloat(li.rate||0).toLocaleString(undefined,{minimumFractionDigits:2});
-                detailsHtml += `<div style="font-size:9px;border-left:2px solid #fca5a5;padding-left:8px;margin-bottom:2px;"><span style="font-weight:700;">${li.name}</span> <span style="font-size:8px;color:#64748b;">(${li.quantity} × ${rate})</span></div>`;
+                const qty = parseFloat(li.quantity || 0);
+                const rate = parseFloat(li.rate || 0);
+                detailsHtml += `
+                  <div style="display:flex;align-items:baseline;gap:8px;padding:4px 8px;background:#fff5f5;border-left:3px solid #fca5a5;border-radius:0 4px 4px 0;">
+                    <span style="font-size:11px;font-weight:700;color:#1e293b;flex:1;">${li.name}</span>
+                    <span style="font-size:11px;color:#475569;white-space:nowrap;font-family:'DM Mono',monospace;">${qty % 1 === 0 ? qty.toFixed(0) : qty} × ${fmt(rate)}</span>
+                  </div>`;
               });
+              detailsHtml += `</div>`;
             }
           }
         } else {
-          if (tx.type === 'Invoice') detailsHtml = `<span style="font-weight:700;color:${theme.primary};">Invoice #${tx.ref}</span>${overdueBadge}`;
-          else if (tx.type === 'Payment Received') detailsHtml = `<span style="font-weight:700;color:#059669;">Payment (${tx.ref})</span>`;
-          else if (tx.type === 'Credit Note') detailsHtml = `<span style="font-weight:700;color:#dc2626;">Credit Note #${tx.ref}</span>`;
+          if (tx.type === 'Invoice') detailsHtml = `<span style="font-weight:900;color:${theme.primary};font-size:12px;">${tx.ref}</span>${overdueBadge}`;
+          else if (tx.type === 'Payment Received') detailsHtml = `<span style="font-weight:900;color:#059669;font-size:12px;">${tx.ref || 'Payment'}</span>`;
+          else if (tx.type === 'Credit Note') detailsHtml = `<span style="font-weight:900;color:#dc2626;font-size:12px;">${tx.ref}</span>`;
         }
 
+        const isEven = idx % 2 === 0;
+        const rowBg = isEven ? '#ffffff' : '#fafbff';
+        const txColor = tx.type === 'Invoice' ? theme.primary : tx.type === 'Credit Note' ? '#dc2626' : '#059669';
+
         rowsHtml += `
-          <tr style="border-bottom:1px solid #f1f5f9;" class="ledger-item-row">
-            <td style="padding:10px 8px;font-weight:700;color:#64748b;font-size:10px;white-space:nowrap;">${tx.date}</td>
-            <td style="padding:10px 8px;font-weight:800;color:${theme.primary};font-size:9px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">${tx.type}</td>
-            <td style="padding:10px 8px;font-size:10px;line-height:1.4;">${detailsHtml}</td>
-            <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:10px;${tx.amount<0?'color:#dc2626;':''}" contenteditable="${!this.state.isSummaryMode}">${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined,{minimumFractionDigits:2}) : ''}</td>
-            <td style="padding:10px 8px;text-align:right;font-size:10px;" contenteditable="${!this.state.isSummaryMode}">${payDisplay}</td>
-            <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;color:${theme.primary};">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+          <tr style="border-bottom:1px solid #e8edf5;background:${rowBg};" class="ledger-item-row">
+            <td style="padding:12px 12px;font-weight:600;color:#475569;font-size:11px;white-space:nowrap;">${tx.date}</td>
+            <td style="padding:12px 12px;">
+              <span style="display:inline-block;padding:3px 8px;background:${txColor}15;color:${txColor};font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:0.06em;border-radius:4px;white-space:nowrap;">${tx.type}</span>
+            </td>
+            <td style="padding:12px 12px;font-size:11px;line-height:1.5;">${detailsHtml}</td>
+            <td style="padding:12px 12px;text-align:right;font-weight:700;font-size:13px;color:#1e293b;" contenteditable="${!this.state.isSummaryMode}">${tx.amount > 0 ? fmt(tx.amount) : ''}</td>
+            <td style="padding:12px 12px;text-align:right;font-size:13px;" contenteditable="${!this.state.isSummaryMode}">${payDisplay}</td>
+            <td style="padding:12px 12px;text-align:right;font-weight:900;font-size:13px;color:${theme.primary};">${fmt(runningBalance)}</td>
           </tr>
         `;
       });
 
+      // Summary section
       const summaryHtml = bc.showSummary ? `
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;padding-top:2rem;border-top:2px solid ${theme.primary}20;">
-          <div>
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:${theme.accent};margin-bottom:1rem;">Account Summary</div>
-            <table style="font-size:10px;font-weight:600;color:#475569;border-collapse:collapse;">
-              <tr><td style="padding:4px 40px 4px 0;">Opening Balance</td><td style="text-align:right;">${balanceBroughtForward.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
-              <tr><td style="padding:4px 40px 4px 0;">Invoiced Amount</td><td style="text-align:right;">${totalInvoiced.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
-              <tr><td style="padding:4px 40px 4px 0;color:#059669;">Amount Received</td><td style="text-align:right;color:#059669;">${totalReceived.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
-              <tr><td style="padding:4px 40px 4px 0;color:#dc2626;">Credit Notes</td><td style="text-align:right;color:#dc2626;">${totalCredits.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>
-              <tr style="border-top:1px solid #e2e8f0;">
-                <td style="padding:8px 40px 4px 0;font-weight:900;color:${theme.primary};font-size:12px;">Balance Due</td>
-                <td style="padding:8px 0 4px 0;text-align:right;font-weight:900;color:${theme.primary};font-size:12px;">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-              </tr>
-            </table>
+        <div style="margin-top:2rem;display:flex;justify-content:space-between;align-items:flex-end;padding-top:1.5rem;border-top:2px solid ${theme.primary}20;">
+          <div style="min-width:280px;">
+            <div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:0.15em;color:${theme.accent};margin-bottom:12px;">Account Summary</div>
+            <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+              <div style="display:flex;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                <span style="font-size:11px;color:#475569;font-weight:600;">Opening Balance</span>
+                <span style="font-size:11px;font-weight:800;color:#1e293b;font-family:'DM Mono',monospace;">${fmt(balanceBroughtForward)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #e2e8f0;">
+                <span style="font-size:11px;color:#475569;font-weight:600;">Invoiced Amount</span>
+                <span style="font-size:11px;font-weight:800;color:#1e293b;font-family:'DM Mono',monospace;">+ ${fmt(totalInvoiced)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:9px 14px;background:#f0fdf4;border-bottom:1px solid #e2e8f0;">
+                <span style="font-size:11px;color:#059669;font-weight:600;">Amount Received</span>
+                <span style="font-size:11px;font-weight:800;color:#059669;font-family:'DM Mono',monospace;">− ${fmt(totalReceived)}</span>
+              </div>
+              ${totalCredits > 0 ? `
+              <div style="display:flex;justify-content:space-between;padding:9px 14px;background:#fff5f5;border-bottom:1px solid #e2e8f0;">
+                <span style="font-size:11px;color:#dc2626;font-weight:600;">Credit Notes</span>
+                <span style="font-size:11px;font-weight:800;color:#dc2626;font-family:'DM Mono',monospace;">− ${fmt(totalCredits)}</span>
+              </div>` : ''}
+              <div style="display:flex;justify-content:space-between;padding:11px 14px;background:${theme.primary};">
+                <span style="font-size:12px;color:white;font-weight:800;opacity:0.9;">Balance Due</span>
+                <span style="font-size:14px;font-weight:900;color:white;font-family:'DM Mono',monospace;">${this.state.currency} ${fmt(finalBalance)}</span>
+              </div>
+            </div>
           </div>
           <div style="text-align:right;">
             <p style="font-size:10px;font-weight:800;font-style:italic;color:${theme.accent};">Official Account Statement</p>
-            <div style="margin-top:1.5rem;width:180px;border-bottom:2px solid ${theme.primary}30;"></div>
-            <p style="margin-top:6px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;">Authorized Signatory</p>
+            <div style="margin-top:2rem;width:200px;border-bottom:2px solid ${theme.primary}40;"></div>
+            <p style="margin-top:6px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;">Authorized Signatory</p>
           </div>
         </div>
       ` : '';
 
       const notesHtml = bc.showNotes ? `
         <div style="margin-top:1.5rem;padding:12px 16px;background:#f8fafc;border-radius:8px;border-left:3px solid ${theme.accent};">
-          <div id="editable-notes" contenteditable="true" style="font-size:9px;color:#64748b;line-height:1.6;">${this.state.notesContent}</div>
+          <div id="editable-notes" contenteditable="true" style="font-size:11px;color:#475569;line-height:1.7;">${this.state.notesContent}</div>
         </div>
       ` : '';
 
-      // Date range display
       const dateRangeText = this.state.filterDateStart
         ? `${this.state.filterDateStart.toLocaleDateString()} — ${this.state.filterDateEnd?.toLocaleDateString() || 'Present'}`
         : 'All Transactions';
@@ -897,51 +940,51 @@ class BizSensePro {
           ${bc.showHeader ? `
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:3px solid ${theme.primary};">
             <div style="flex:1;">
-              ${this.state.customLogo 
+              ${this.state.customLogo
                 ? `<img src="${this.state.customLogo}" style="height:56px;margin-bottom:1rem;object-fit:contain;display:block;">`
                 : `<div style="height:52px;width:140px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:1rem;font-size:8px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;">Your Logo</div>`
               }
-              <div style="font-size:18px;font-weight:900;color:${theme.primary};letter-spacing:-0.02em;">${orgName}</div>
-              ${this.state.currentOrgDetails?.address ? `<div style="font-size:9px;color:#64748b;margin-top:4px;max-width:260px;line-height:1.5;">${this.state.currentOrgDetails.address}</div>` : ''}
-              ${this.state.currentOrgDetails?.phone ? `<div style="font-size:9px;color:#64748b;">T: ${this.state.currentOrgDetails.phone}</div>` : ''}
+              <div style="font-size:20px;font-weight:900;color:${theme.primary};letter-spacing:-0.02em;">${orgName}</div>
+              ${this.state.currentOrgDetails?.address ? `<div style="font-size:10px;color:#64748b;margin-top:4px;max-width:260px;line-height:1.5;">${this.state.currentOrgDetails.address}</div>` : ''}
+              ${this.state.currentOrgDetails?.phone ? `<div style="font-size:10px;color:#64748b;">T: ${this.state.currentOrgDetails.phone}</div>` : ''}
             </div>
-            <div style="text-align:right;flex-shrink:0;width:180px;">
-              <div style="font-size:36px;font-weight:900;color:${theme.primary};letter-spacing:-0.04em;line-height:1;">SOA</div>
-              <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.2em;color:#94a3b8;margin-top:4px;">Statement of Accounts</div>
-              <div style="margin-top:1rem;background:${theme.primary};color:white;border-radius:10px;padding:12px 14px;">
-                <div style="font-size:8px;font-weight:700;opacity:0.8;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Balance Due</div>
-                <div style="font-size:20px;font-weight:900;letter-spacing:-0.02em;">${this.state.currency} ${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:40px;font-weight:900;color:${theme.primary};letter-spacing:-0.04em;line-height:1;">SOA</div>
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.2em;color:#94a3b8;margin-top:4px;">Statement of Accounts</div>
+              <div style="margin-top:12px;background:${theme.primary};color:white;border-radius:12px;padding:14px 20px;min-width:200px;">
+                <div style="font-size:9px;font-weight:700;opacity:0.8;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:6px;">Balance Due</div>
+                <div style="font-size:22px;font-weight:900;letter-spacing:-0.02em;white-space:nowrap;">${this.state.currency} ${fmt(finalBalance)}</div>
               </div>
-              <div style="margin-top:8px;font-size:8px;font-weight:700;color:#94a3b8;">Dated: ${new Date().toLocaleDateString()}</div>
+              <div style="margin-top:8px;font-size:10px;font-weight:600;color:#94a3b8;">Dated: ${new Date().toLocaleDateString()}</div>
             </div>
           </div>
           ` : ''}
 
           ${bc.showCustomer ? `
-          <div style="margin-bottom:1.5rem;display:flex;gap:2rem;align-items:flex-start;">
+          <div style="margin-bottom:1.5rem;display:flex;gap:2rem;align-items:flex-start;padding:16px 20px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
             <div style="flex:1;">
-              <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Account</div>
-              <div style="font-size:16px;font-weight:900;color:${theme.primary};">${clientName}</div>
-              ${customer.email ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.email}</div>` : ''}
-              ${customer.mobile || customer.phone ? `<div style="font-size:9px;color:#64748b;">${customer.mobile || customer.phone}</div>` : ''}
-              ${(customer.billing_address && customer.billing_address.address) ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.billing_address.address}${customer.billing_address.city ? ', '+customer.billing_address.city : ''}</div>` : ''}
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Bill To</div>
+              <div style="font-size:17px;font-weight:900;color:${theme.primary};">${clientName}</div>
+              ${customer.email ? `<div style="font-size:11px;color:#475569;margin-top:3px;">${customer.email}</div>` : ''}
+              ${customer.mobile || customer.phone ? `<div style="font-size:11px;color:#475569;">${customer.mobile || customer.phone}</div>` : ''}
+              ${(customer.billing_address && customer.billing_address.address) ? `<div style="font-size:11px;color:#475569;margin-top:3px;">${customer.billing_address.address}${customer.billing_address.city ? ', '+customer.billing_address.city : ''}</div>` : ''}
             </div>
-            <div>
-              <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Period</div>
-              <div style="font-size:10px;font-weight:700;color:#1e293b;">${dateRangeText}</div>
+            <div style="text-align:right;">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Period</div>
+              <div style="font-size:12px;font-weight:700;color:#1e293b;">${dateRangeText}</div>
             </div>
           </div>
           ` : ''}
 
-          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1.5rem;">
+          <table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
             <thead>
               <tr style="background:${theme.primary};color:white;">
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:90px;">Date</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:95px;">Transaction</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;">Details</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;">Amount</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;">Payment</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:95px;">Balance</th>
+                <th style="padding:12px 12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;text-align:left;width:95px;">Date</th>
+                <th style="padding:12px 12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;text-align:left;width:110px;">Type</th>
+                <th style="padding:12px 12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;text-align:left;">Details</th>
+                <th style="padding:12px 12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;text-align:right;width:110px;">Amount</th>
+                <th style="padding:12px 12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;text-align:right;width:110px;">Payment</th>
+                <th style="padding:12px 12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;text-align:right;width:115px;">Balance</th>
               </tr>
             </thead>
             <tbody class="ledger-rows">${rowsHtml}</tbody>
