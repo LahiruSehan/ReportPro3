@@ -770,13 +770,7 @@
     .summary-toggle-row span { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
 
     /* ─── SIDEBAR MODE TABS ─── */
-    .sidebar-mode-tabs { display:flex; background:rgba(255,255,255,0.05); border-radius:8px; padding:3px; gap:2px; margin-bottom:0.75rem; }
-    .sidebar-mode-tab { flex:1; padding:5px 4px; border-radius:6px; font-size:0.55rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer; border:none; background:transparent; color:rgba(255,255,255,0.3); transition:all 0.15s; text-align:center; font-family:'DM Sans',sans-serif; }
-    .sidebar-mode-tab.active { background:rgba(59,130,246,0.25); color:#93c5fd; }
     /* ─── ITEM LIST ─── */
-    .item-list { flex:1; overflow-y:auto; padding:0.5rem; }
-    .item-list::-webkit-scrollbar { width:3px; }
-    .item-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
     .item-group-header { padding:8px 8px 4px; margin-top:4px; display:flex; align-items:center; justify-content:space-between; }
     .item-group-label { font-size:0.52rem; font-weight:800; text-transform:uppercase; letter-spacing:0.18em; color:rgba(255,255,255,0.22); }
     .item-row { display:flex; align-items:center; gap:8px; padding:8px 8px; border-radius:8px; cursor:pointer; transition:background 0.12s; border:1px solid transparent; margin-bottom:2px; }
@@ -954,32 +948,11 @@
     <!-- SIDEBAR -->
     <aside class="app-sidebar no-print">
       <div class="sidebar-header">
-        <!-- Mode tabs: Customers | Items -->
-        <div class="sidebar-mode-tabs">
-          <button id="sb-tab-customers" class="sidebar-mode-tab active">
-            <i class="ph ph-users"></i> Customers
-          </button>
-          <button id="sb-tab-items" class="sidebar-mode-tab">
-            <i class="ph ph-package"></i> Items
-          </button>
-        </div>
-
-        <!-- Customer search (shown in customer mode) -->
+        <!-- Customer search -->
         <div id="sb-customer-controls">
           <input type="text" id="customer-search" class="sidebar-search" placeholder="Search customers…">
           <div style="display:flex;justify-content:flex-end;margin-top:6px;">
             <button id="btn-clear-all" style="font-size:0.58rem;font-weight:700;color:rgba(255,255,255,0.28);text-transform:uppercase;letter-spacing:0.1em;background:none;border:none;cursor:pointer;">Clear All</button>
-          </div>
-        </div>
-
-        <!-- Item search + group editor (shown in item mode) -->
-        <div id="sb-item-controls" style="display:none;">
-          <input type="text" id="item-search" class="sidebar-search" placeholder="Search items…">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
-            <span style="font-size:0.55rem;font-weight:700;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.1em;" id="item-count-label">0 items</span>
-            <button id="btn-open-group-editor" style="display:flex;align-items:center;gap:4px;font-size:0.58rem;font-weight:800;color:#93c5fd;text-transform:uppercase;letter-spacing:0.08em;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:4px 8px;cursor:pointer;">
-              <i class="ph ph-stack"></i> Groups
-            </button>
           </div>
         </div>
       </div>
@@ -987,8 +960,6 @@
       <!-- Customer list (shown in customer mode) -->
       <div id="customer-list" class="customer-list"></div>
 
-      <!-- Item list (shown in item mode) -->
-      <div id="item-list" class="item-list" style="display:none;"></div>
 
       <div class="sidebar-footer">
         <div id="log-message">ENGINE_STABLE</div>
@@ -1004,18 +975,6 @@
 
         <!-- Sub-toolbar -->
         <div class="ledger-toolbar no-print">
-          <!-- Statement Mode toggle -->
-          <div class="view-toggle" style="background:#f1f5f9;">
-            <button id="btn-mode-ledger" class="vtog-btn active" style="font-size:0.6rem;">
-              <i class="ph ph-list-numbers"></i> Ledger SOA
-            </button>
-            <button id="btn-mode-sales" class="vtog-btn" style="font-size:0.6rem;">
-              <i class="ph ph-chart-bar"></i> Sales Statement
-            </button>
-          </div>
-
-          <div class="divider"></div>
-
           <!-- Date filter -->
           <div class="date-filter-row">
             <label>Period</label>
@@ -1122,6 +1081,17 @@
                 <span class="builder-toggle-label">Opening Balance Row</span>
                 <label class="toggle-switch"><input type="checkbox" id="bl-opening" checked><span class="toggle-slider"></span></label>
               </div>
+              <div style="padding:8px 0 4px;">
+                <div class="modal-label" style="margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                  <i class="ph ph-pencil-simple" style="font-size:0.8rem;"></i> Opening Balance Override
+                </div>
+                <div style="display:flex;gap:6px;width:100%;">
+                  <input type="number" id="ob-override-input" placeholder="Auto from Zoho" style="flex:1;background:var(--input-bg,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:6px;padding:6px 8px;font-size:0.75rem;color:var(--text-primary,#e2e8f0);outline:none;" step="0.01" min="0">
+                  <button id="ob-override-apply" style="background:var(--accent,#3b82f6);color:white;border:none;border-radius:6px;padding:6px 12px;font-size:0.7rem;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;white-space:nowrap;">Apply</button>
+                  <button id="ob-override-clear" title="Clear override, use Zoho value" style="background:rgba(220,38,38,0.15);color:#f87171;border:1px solid rgba(220,38,38,0.2);border-radius:6px;padding:6px 8px;font-size:0.7rem;cursor:pointer;">✕</button>
+                </div>
+                <div style="font-size:0.62rem;color:var(--text-muted,rgba(255,255,255,0.35));margin-top:5px;">Saved per customer. Overrides the value from Zoho if set.</div>
+              </div>
               <div class="builder-toggle-row">
                 <span class="builder-toggle-label">Payments Section</span>
                 <label class="toggle-switch"><input type="checkbox" id="bl-payments" checked><span class="toggle-slider"></span></label>
@@ -1137,41 +1107,6 @@
               <div class="builder-toggle-row">
                 <span class="builder-toggle-label">Notes / Footer</span>
                 <label class="toggle-switch"><input type="checkbox" id="bl-notes" checked><span class="toggle-slider"></span></label>
-              </div>
-
-              <!-- Sales statement columns (only relevant in Sales mode) -->
-              <div class="builder-section-label">Sales Statement Columns</div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Bill Date</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-date" checked><span class="toggle-slider"></span></label>
-              </div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Bill / Ref No.</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-ref" checked><span class="toggle-slider"></span></label>
-              </div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Item Group Name</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-group" checked><span class="toggle-slider"></span></label>
-              </div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Item Name</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-item" checked><span class="toggle-slider"></span></label>
-              </div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Unit (KG / Bags)</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-unit" checked><span class="toggle-slider"></span></label>
-              </div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Unit Price / Rate</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-rate" checked><span class="toggle-slider"></span></label>
-              </div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Amount</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-amount" checked><span class="toggle-slider"></span></label>
-              </div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Running Balance</span>
-                <label class="toggle-switch"><input type="checkbox" id="col-balance" checked><span class="toggle-slider"></span></label>
               </div>
 
               <div class="builder-section-label">Grouping & Sorting</div>
@@ -1193,15 +1128,6 @@
                 </select>
               </div>
 
-              <div class="builder-section-label">Formula Fields (Sales Mode)</div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Compute Bags (Qty ÷ Pack)</span>
-                <label class="toggle-switch"><input type="checkbox" id="formula-bags"><span class="toggle-slider"></span></label>
-              </div>
-              <div id="bags-pack-row" style="display:none;margin-bottom:8px;">
-                <div class="modal-label" style="margin-bottom:6px;">Pack Size (KG per bag)</div>
-                <input type="number" id="bags-pack-size" value="16.5" class="group-select" style="border-radius:8px;" placeholder="e.g. 16.5">
-              </div>
               <div class="builder-toggle-row">
                 <span class="builder-toggle-label">Show Overdue Badges</span>
                 <label class="toggle-switch"><input type="checkbox" id="formula-overdue" checked><span class="toggle-slider"></span></label>
@@ -1231,63 +1157,6 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════
-     ITEM GROUP EDITOR MODAL
-══════════════════════════════════ -->
-<div id="modal-group-editor" class="ig-overlay view-hidden">
-  <div class="ig-modal">
-    <div class="ig-header">
-      <div>
-        <div class="ig-title"><i class="ph ph-stack" style="color:#0ea5e9;"></i> Item Group Editor</div>
-        <div class="ig-sub">Create groups and assign items — saved in your browser automatically</div>
-      </div>
-      <button id="btn-close-group-editor" class="ig-close-btn">✕ Close</button>
-    </div>
-
-    <div class="ig-body">
-      <!-- LEFT: All items to pick from -->
-      <div class="ig-col" style="max-width:300px;">
-        <div class="ig-col-title">All Items <span id="ig-all-count" style="color:rgba(255,255,255,0.18);"></span></div>
-        <input type="text" id="ig-item-search" class="ig-input" placeholder="Search items…">
-        <div id="ig-item-picklist" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:0;max-height:400px;">
-          <div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);font-size:0.75rem;">Load data first by selecting a customer</div>
-        </div>
-      </div>
-
-      <!-- RIGHT: Groups -->
-      <div class="ig-col">
-        <div class="ig-col-title">Your Groups</div>
-
-        <!-- New group row -->
-        <div style="display:flex;gap:8px;">
-          <input type="text" id="ig-new-group-name" class="ig-input" placeholder="New group name…" style="flex:1;">
-          <button id="ig-btn-create-group" style="background:#1d4ed8;color:white;border:none;border-radius:10px;padding:0 14px;cursor:pointer;font-weight:800;font-size:0.75rem;font-family:'DM Sans',sans-serif;white-space:nowrap;">+ Add</button>
-        </div>
-
-        <div style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0;"></div>
-
-        <div id="ig-groups-list" style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;max-height:360px;">
-          <div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);font-size:0.75rem;">No groups yet — create one above</div>
-        </div>
-
-        <!-- Selected group item assignment -->
-        <div id="ig-assign-panel" style="display:none;margin-top:8px;padding:10px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;">
-          <div style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:#93c5fd;margin-bottom:6px;">
-            Editing: <span id="ig-editing-group-name"></span>
-          </div>
-          <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);">
-            Tick items on the left to add them to this group. Changes save instantly.
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="ig-footer">
-      <button id="ig-btn-close" class="ig-btn ig-btn-ghost">Done</button>
-      <button id="ig-btn-clear-all-groups" class="ig-btn ig-btn-danger" style="flex:0.4;">Clear All Groups</button>
-    </div>
-  </div>
-</div>
 
 <!-- ══════════════════════════════════
      SETTINGS MODAL
