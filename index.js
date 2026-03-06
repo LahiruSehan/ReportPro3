@@ -810,8 +810,9 @@ class BizSensePro {
         if (!this.state.isSummaryMode) {
           if (tx.type === 'Invoice') {
             const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
+            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:3px;">Invoice #${tx.ref}</div>${overdueBadge}`;
             if (det && det.line_items) {
-              detailsHtml = `<div style="margin-top:4px;">`;
+              detailsHtml += `<div style="margin-top:4px;">`;
               det.line_items.forEach(li => {
                 const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2});
                 const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
