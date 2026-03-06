@@ -476,33 +476,8 @@ class BizSensePro {
       this.state.currency = c.currency_symbol || c.currency_code || 'LKR';
       localStorage.setItem('biz_currency', this.state.currency);
 
-
-      // Log full contact so we can see ALL fields Zoho returns
-      console.log('[BizSense] Full contact object:', JSON.stringify(c, null, 2));
-
-      // Zoho Books returns opening_balance directly on the contact record.
-      // Log every key that might contain it so we know the exact field name.
-      let ob = 0;
-      const obCandidates = {
-        opening_balance:                    c.opening_balance,
-        outstanding_opening_balance:        c.outstanding_opening_balance,
-        opening_balance_amount:             c.opening_balance_amount,
-        outstanding_receivable_amount:      c.outstanding_receivable_amount,
-        balance:                            c.balance,
-        receivable_amount:                  c.receivable_amount,
-      };
-      console.log('[BizSense] Opening balance candidates:', obCandidates);
-
-      // Use the first non-zero / non-null value found
-      for (const [key, val] of Object.entries(obCandidates)) {
-        const parsed = parseFloat(val);
-        if (!isNaN(parsed) && parsed !== 0) {
-          ob = parsed;
-          console.log(`[BizSense] Using "${key}" =`, ob);
-          break;
-        }
-      }
-
+      // Zoho returns opening_balance_amount on the contact record
+      const ob = parseFloat(c.opening_balance_amount || c.opening_balance || 0) || 0;
       this.state.customerFullDetails[id]._computed_opening_balance = ob;
     } catch (e) { console.warn('Contact detail fetch failed', e); }
 
