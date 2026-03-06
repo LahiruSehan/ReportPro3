@@ -472,18 +472,32 @@ class BizSensePro {
     try {
       const cRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}?organization_id=${this.state.selectedOrgId}`);
       this.state.customerFullDetails[id] = cRes.contact;
-      console.log('[BizSense] Full contact:', cRes.contact);
-      // Opening balance - try multiple field names Zoho might use
       const c = cRes.contact;
-      const ob = parseFloat(
-        (c.opening_balance !== undefined && c.opening_balance !== null && c.opening_balance !== ''
-          ? c.opening_balance
-          : (c.opening_balances && c.opening_balances[0] ? c.opening_balances[0].opening_balance
-            : (c.outstanding_receivable_amount || 0)))
-      ) || 0;
-      this.state.customerFullDetails[id]._computed_opening_balance = ob;
       this.state.currency = c.currency_symbol || c.currency_code || 'LKR';
       localStorage.setItem('biz_currency', this.state.currency);
+
+      // Fetch opening balance from Zoho's dedicated endpoint
+      let ob = 0;
+      try {
+        const obRes = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts/${id}/openingbalances?organization_id=${this.state.selectedOrgId}`);
+        console.log('[BizSense] Opening balance response:', obRes);
+        if (obRes && obRes.opening_balance != null) {
+          ob = parseFloat(obRes.opening_balance) || 0;
+        } else if (obRes && obRes.contact && obRes.contact.opening_balance != null) {
+          ob = parseFloat(obRes.contact.opening_balance) || 0;
+        } else if (obRes && Array.isArray(obRes.opening_balances)) {
+          obRes.opening_balances.forEach(entry => {
+            if (!entry.account_type || entry.account_type.toLowerCase().includes('receivable') || (entry.account_name && entry.account_name.toLowerCase().includes('receivable'))) {
+              ob += parseFloat(entry.debit || entry.opening_balance || 0);
+            }
+          });
+        }
+        console.log('[BizSense] Resolved opening balance:', ob);
+      } catch (e) {
+        console.warn('[BizSense] Opening balance endpoint failed, falling back to contact fields', e);
+        ob = parseFloat(c.opening_balance || c.outstanding_opening_balance || 0) || 0;
+      }
+      this.state.customerFullDetails[id]._computed_opening_balance = ob;
     } catch (e) { console.warn('Contact detail fetch failed', e); }
 
     // Sync modules
