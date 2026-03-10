@@ -31,6 +31,9 @@ class BizSensePro {
       filterDateEnd: null,
       tableBorders: false,
       priceOverrides: {},
+      companyExtras: JSON.parse(localStorage.getItem('biz_company_extras') || JSON.stringify({
+        address: '', phone: '', email: '', website: '', reg: ''
+      })),
       notesContent: localStorage.getItem('biz_notes') || 'Please ensure payment is made by the due date. Thank you for your business.',
       builderConfig: JSON.parse(localStorage.getItem('builder_config') || JSON.stringify({
         showHeader: true,
@@ -946,22 +949,18 @@ class BizSensePro {
         if (!this.state.isSummaryMode) {
           if (tx.type === 'Invoice') {
             const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:3px;">Invoice #${tx.ref}</div>`;
-            if (bc.formulaOverdue && tx.due_date && new Date(tx.due_date) < now && tx.raw && tx.raw.balance > 0) {
-              const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
-              detailsHtml += `<div style="margin-bottom:5px;"><span style="display:inline-block;padding:2px 7px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;letter-spacing:0.04em;">OVERDUE ${days}d</span></div>`;
-            }
+            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:4px;">Invoice #${tx.ref}</div>`;
             if (det && det.line_items) {
               det.line_items.forEach(li => {
                 const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
                 const effectiveRate = this.getEffectiveRate(li);
                 detailsHtml += `
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:4px 0;border-bottom:1px dotted #edf0f5;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid #f0f2f5;">
                     <div style="min-width:0;">
                       ${groupName ? `<span style="font-size:8px;color:${theme.accent};font-weight:700;display:block;margin-bottom:1px;">${groupName}</span>` : ''}
                       <span style="font-weight:700;color:#1e293b;font-size:10px;">${li.name}</span>
                     </div>
-                    <span style="white-space:nowrap;font-size:9px;color:#64748b;font-family:'DM Mono',monospace;font-weight:600;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${effectiveRate.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                    <span style="white-space:nowrap;font-size:10px;color:#1e293b;font-family:'DM Mono',monospace;font-weight:700;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${effectiveRate.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
                   </div>`;
               });
             }
@@ -972,32 +971,26 @@ class BizSensePro {
             }
           } else if (tx.type === 'Credit Note') {
             const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
-            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;margin-bottom:3px;">Credit Note #${tx.ref}</div>`;
+            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;margin-bottom:4px;">Credit Note #${tx.ref}</div>`;
             if (det && det.line_items) {
               det.line_items.forEach(li => {
                 detailsHtml += `
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:4px 0;border-bottom:1px dotted #edf0f5;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid #f0f2f5;">
                     <span style="font-weight:700;color:#1e293b;font-size:10px;">${li.name}</span>
-                    <span style="white-space:nowrap;font-size:9px;color:#64748b;font-family:'DM Mono',monospace;font-weight:600;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${this.getEffectiveRate(li).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                    <span style="white-space:nowrap;font-size:10px;color:#1e293b;font-family:'DM Mono',monospace;font-weight:700;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${this.getEffectiveRate(li).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
                   </div>`;
               });
             }
           }
         } else {
-          if (tx.type === 'Invoice') {
-            detailsHtml = `<span style="font-weight:700;color:${theme.primary};">Invoice #${tx.ref}</span>`;
-            if (bc.formulaOverdue && tx.due_date && new Date(tx.due_date) < now && tx.raw && tx.raw.balance > 0) {
-              const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
-              detailsHtml += ` <span style="padding:2px 6px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;">OVERDUE ${days}d</span>`;
-            }
-          }
+          if (tx.type === 'Invoice') detailsHtml = `<span style="font-weight:700;color:${theme.primary};">Invoice #${tx.ref}</span>`;
           else if (tx.type === 'Payment Received') detailsHtml = `<span style="font-weight:700;color:#059669;">Payment (${tx.ref})</span>`;
           else if (tx.type === 'Credit Note') detailsHtml = `<span style="font-weight:700;color:#dc2626;">Credit Note #${tx.ref}</span>`;
         }
 
-        const borderStyle = this.state.tableBorders ? `border:1px solid #dde3ec;` : ``;
+        const borderStyle = this.state.tableBorders ? `border:1px solid #111;` : ``;
         rowsHtml += `
-          <tr class="ledger-item-row" style="border-bottom:1px solid ${this.state.tableBorders ? '#dde3ec' : '#f1f5f9'};">
+          <tr class="ledger-item-row" style="border-bottom:1px solid ${this.state.tableBorders ? '#111' : '#f1f5f9'};">
             <td style="padding:10px 8px;font-weight:700;color:#64748b;font-size:10px;white-space:nowrap;vertical-align:top;${borderStyle}">${tx.date}</td>
             <td style="padding:10px 8px;font-weight:800;color:${theme.primary};font-size:9px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;vertical-align:top;${borderStyle}">${tx.type}</td>
             <td style="padding:10px 8px;font-size:10px;line-height:1.5;vertical-align:top;${borderStyle}">${detailsHtml}</td>
@@ -1047,13 +1040,16 @@ class BizSensePro {
           ${bc.showHeader ? `
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:3px solid ${theme.primary};">
             <div style="flex:1;">
-              ${this.state.customLogo 
+              ${this.state.customLogo
                 ? `<img src="${this.state.customLogo}" style="height:56px;margin-bottom:1rem;object-fit:contain;display:block;">`
                 : `<div style="height:52px;width:140px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:1rem;font-size:8px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;">Your Logo</div>`
               }
               <div style="font-size:18px;font-weight:900;color:${theme.primary};letter-spacing:-0.02em;">${orgName}</div>
-              ${this.state.currentOrgDetails?.address ? `<div style="font-size:9px;color:#64748b;margin-top:4px;max-width:260px;line-height:1.5;">${this.state.currentOrgDetails.address}</div>` : ''}
-              ${this.state.currentOrgDetails?.phone ? `<div style="font-size:9px;color:#64748b;">T: ${this.state.currentOrgDetails.phone}</div>` : ''}
+              <div id="co-address" contenteditable="true" style="font-size:9px;margin-top:5px;line-height:1.7;outline:none;min-height:14px;color:${this.state.companyExtras.address ? '#374151' : '#cbd5e1'};" data-placeholder="Click to add address">${this.state.companyExtras.address || 'Click to add address'}</div>
+              <div id="co-phone" contenteditable="true" style="font-size:9px;margin-top:2px;outline:none;min-height:14px;color:${this.state.companyExtras.phone ? '#374151' : '#cbd5e1'};" data-placeholder="Phone number">${this.state.companyExtras.phone || 'Phone number'}</div>
+              <div id="co-email" contenteditable="true" style="font-size:9px;margin-top:2px;outline:none;min-height:14px;color:${this.state.companyExtras.email ? '#374151' : '#cbd5e1'};" data-placeholder="Email address">${this.state.companyExtras.email || 'Email address'}</div>
+              <div id="co-website" contenteditable="true" style="font-size:9px;margin-top:2px;outline:none;min-height:14px;color:${this.state.companyExtras.website ? '#374151' : '#cbd5e1'};" data-placeholder="Website">${this.state.companyExtras.website || 'Website'}</div>
+              <div id="co-reg" contenteditable="true" style="font-size:9px;margin-top:2px;outline:none;min-height:14px;color:${this.state.companyExtras.reg ? '#374151' : '#cbd5e1'};" data-placeholder="Reg / VAT number">${this.state.companyExtras.reg || 'Reg / VAT number'}</div>
             </div>
             <div style="text-align:right;flex-shrink:0;width:180px;">
               <div style="font-size:36px;font-weight:900;color:${theme.primary};letter-spacing:-0.04em;line-height:1;">SOA</div>
@@ -1083,15 +1079,15 @@ class BizSensePro {
           </div>
           ` : ''}
 
-          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1.5rem;${this.state.tableBorders ? 'border:1px solid #dde3ec;' : ''}">
+          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1.5rem;${this.state.tableBorders ? 'border:1px solid #111;' : ''}">
             <thead>
               <tr style="background:${theme.primary};color:white;">
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:82px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Date</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Transaction</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Details</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Amount</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Payment</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:95px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Balance</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:82px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.2);' : ''}">Date</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.2);' : ''}">Transaction</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.2);' : ''}">Details</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.2);' : ''}">Amount</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.2);' : ''}">Payment</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:95px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.2);' : ''}">Balance</th>
               </tr>
             </thead>
             <tbody class="ledger-rows">${rowsHtml}</tbody>
@@ -1112,6 +1108,22 @@ class BizSensePro {
         localStorage.setItem('biz_notes', this.state.notesContent);
       };
     }
+
+    // Wire editable company extra fields
+    ['co-address','co-phone','co-email','co-website','co-reg'].forEach(fieldId => {
+      const el = document.getElementById(fieldId);
+      if (el) {
+        el.oninput = () => {
+          const key = fieldId.replace('co-','');
+          this.state.companyExtras[key] = el.innerText;
+          localStorage.setItem('biz_company_extras', JSON.stringify(this.state.companyExtras));
+        };
+        // Clear placeholder style on focus
+        el.onfocus = () => el.style.color = '#374151';
+        el.onblur = () => { if (!el.innerText.trim()) el.style.color = '#cbd5e1'; };
+      }
+    });
+
     this.attachLedgerListeners();
   }
 

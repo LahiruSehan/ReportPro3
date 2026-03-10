@@ -385,6 +385,11 @@
       box-sizing: border-box;
     }
     [contenteditable="true"]:hover { background: #f0f7ff; outline: 1px dashed #3b82f6; cursor: text; border-radius: 2px; }
+    [contenteditable="true"]:focus { background: #f0f7ff; outline: 1px solid #3b82f6; border-radius: 2px; }
+    /* Company field placeholders appear grey until edited */
+    #co-address:empty::before, #co-phone:empty::before, #co-email:empty::before, #co-website:empty::before, #co-reg:empty::before {
+      content: attr(data-placeholder); color: #cbd5e1; pointer-events: none;
+    }
 
     /* Empty state */
     .empty-state {
