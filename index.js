@@ -29,6 +29,7 @@ class BizSensePro {
       isSummaryMode: false,
       filterDateStart: null,
       filterDateEnd: null,
+      tableBorders: false,
       priceOverrides: {},
       notesContent: localStorage.getItem('biz_notes') || 'Please ensure payment is made by the due date. Thank you for your business.',
       builderConfig: JSON.parse(localStorage.getItem('builder_config') || JSON.stringify({
@@ -250,6 +251,12 @@ class BizSensePro {
 
     const resetPrices = document.getElementById('btn-reset-prices');
     if (resetPrices) resetPrices.onclick = () => this.resetAllPrices();
+
+    const borderToggle = document.getElementById('toggle-borders');
+    if (borderToggle) borderToggle.onchange = () => {
+      this.state.tableBorders = borderToggle.checked;
+      this.renderStatementUI();
+    };
 
     if (this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
     if (this.inputs.logoUpload) this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
@@ -911,8 +918,8 @@ class BizSensePro {
             ${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}
           </td>
           <td style="padding:10px 8px;font-size:9px;color:#64748b;font-style:italic;">Balance brought forward</td>
-          <td colspan="4" style="padding:10px 8px;text-align:right;color:#94a3b8;font-size:10px;">—</td>
-          <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+          <td colspan="2" style="padding:10px 8px;text-align:right;color:#94a3b8;font-size:10px;">—</td>
+          <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;white-space:nowrap;">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
         </tr>
       ` : '';
 
@@ -928,70 +935,75 @@ class BizSensePro {
         if (!bc.showPayments && tx.type === 'Payment Received') return;
         if (!bc.showCredits && tx.type === 'Credit Note') return;
 
-        // Overdue badge
-        let overdueBadge = '';
-        if (bc.formulaOverdue && tx.type === 'Invoice' && tx.due_date && new Date(tx.due_date) < now && tx.raw && tx.raw.balance > 0) {
-          const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
-          overdueBadge = `<span style="margin-left:6px;padding:2px 6px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;">OVERDUE ${days}d</span>`;
-        }
-
         let payDisplay = '';
         if (tx.payment !== 0) {
           const color = tx.type === 'Credit Note' ? '#dc2626' : '#059669';
           payDisplay = `<span style="color:${color};font-weight:700;">${tx.payment.toLocaleString(undefined, {minimumFractionDigits:2})}</span>`;
         }
 
-        // Details, Qty, Rate cells
-        let detailsHtml = '', qtyHtml = '', rateHtml = '';
+        // Details cell — qty & rate inline with item name
+        let detailsHtml = '';
         if (!this.state.isSummaryMode) {
           if (tx.type === 'Invoice') {
             const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:4px;">Invoice #${tx.ref}</div>${overdueBadge}`;
+            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:3px;">Invoice #${tx.ref}</div>`;
+            if (bc.formulaOverdue && tx.due_date && new Date(tx.due_date) < now && tx.raw && tx.raw.balance > 0) {
+              const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
+              detailsHtml += `<div style="margin-bottom:5px;"><span style="display:inline-block;padding:2px 7px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;letter-spacing:0.04em;">OVERDUE ${days}d</span></div>`;
+            }
             if (det && det.line_items) {
               det.line_items.forEach(li => {
                 const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
                 const effectiveRate = this.getEffectiveRate(li);
-                const isOverridden = this.state.priceOverrides[li.name] !== undefined;
-                detailsHtml += `<div style="font-size:10px;padding:3px 0;border-bottom:1px dotted #f1f5f9;">
-                  ${groupName ? `<span style="font-size:8px;color:${theme.accent};font-weight:700;display:block;">${groupName}</span>` : ''}
-                  <span style="font-weight:700;color:#1e293b;">${li.name}</span>
-                </div>`;
-                qtyHtml += `<div style="font-size:10px;font-weight:700;color:#1e293b;text-align:center;padding:3px 0;border-bottom:1px dotted #f1f5f9;">${li.quantity}</div>`;
-                rateHtml += `<div style="font-size:10px;font-weight:700;color:${isOverridden ? '#d97706' : '#475569'};text-align:right;padding:3px 0;border-bottom:1px dotted #f1f5f9;font-family:'DM Mono',monospace;${isOverridden ? 'font-weight:800;' : ''}">${effectiveRate.toLocaleString(undefined,{minimumFractionDigits:2})}${isOverridden ? ' <span style="font-size:7px;background:#fef3c7;color:#d97706;border-radius:3px;padding:1px 3px;font-weight:800;">EDITED</span>' : ''}</div>`;
+                detailsHtml += `
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:4px 0;border-bottom:1px dotted #edf0f5;">
+                    <div style="min-width:0;">
+                      ${groupName ? `<span style="font-size:8px;color:${theme.accent};font-weight:700;display:block;margin-bottom:1px;">${groupName}</span>` : ''}
+                      <span style="font-weight:700;color:#1e293b;font-size:10px;">${li.name}</span>
+                    </div>
+                    <span style="white-space:nowrap;font-size:9px;color:#64748b;font-family:'DM Mono',monospace;font-weight:600;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${effectiveRate.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                  </div>`;
               });
             }
           } else if (tx.type === 'Payment Received') {
             detailsHtml = `<div style="color:#059669;font-weight:700;font-size:10px;">Payment Received</div>`;
             if (tx.raw?.invoices?.length) {
-              detailsHtml += `<div style="font-size:9px;color:#64748b;margin-top:2px;">Against: ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
+              detailsHtml += `<div style="font-size:9px;color:#64748b;margin-top:3px;">Against: ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
             }
           } else if (tx.type === 'Credit Note') {
             const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
-            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;margin-bottom:4px;">Credit Note #${tx.ref}</div>`;
+            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;margin-bottom:3px;">Credit Note #${tx.ref}</div>`;
             if (det && det.line_items) {
               det.line_items.forEach(li => {
-                detailsHtml += `<div style="font-size:10px;padding:3px 0;border-bottom:1px dotted #f1f5f9;"><span style="font-weight:700;color:#1e293b;">${li.name}</span></div>`;
-                qtyHtml += `<div style="font-size:10px;font-weight:700;color:#1e293b;text-align:center;padding:3px 0;border-bottom:1px dotted #f1f5f9;">${li.quantity}</div>`;
-                rateHtml += `<div style="font-size:10px;font-weight:700;color:#475569;text-align:right;padding:3px 0;border-bottom:1px dotted #f1f5f9;font-family:'DM Mono',monospace;">${this.getEffectiveRate(li).toLocaleString(undefined,{minimumFractionDigits:2})}</div>`;
+                detailsHtml += `
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:4px 0;border-bottom:1px dotted #edf0f5;">
+                    <span style="font-weight:700;color:#1e293b;font-size:10px;">${li.name}</span>
+                    <span style="white-space:nowrap;font-size:9px;color:#64748b;font-family:'DM Mono',monospace;font-weight:600;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${this.getEffectiveRate(li).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                  </div>`;
               });
             }
           }
         } else {
-          if (tx.type === 'Invoice') detailsHtml = `<span style="font-weight:700;color:${theme.primary};">Invoice #${tx.ref}</span>${overdueBadge}`;
+          if (tx.type === 'Invoice') {
+            detailsHtml = `<span style="font-weight:700;color:${theme.primary};">Invoice #${tx.ref}</span>`;
+            if (bc.formulaOverdue && tx.due_date && new Date(tx.due_date) < now && tx.raw && tx.raw.balance > 0) {
+              const days = Math.ceil(Math.abs(now - new Date(tx.due_date)) / 86400000);
+              detailsHtml += ` <span style="padding:2px 6px;background:#fef2f2;color:#dc2626;font-size:8px;border-radius:4px;font-weight:800;">OVERDUE ${days}d</span>`;
+            }
+          }
           else if (tx.type === 'Payment Received') detailsHtml = `<span style="font-weight:700;color:#059669;">Payment (${tx.ref})</span>`;
           else if (tx.type === 'Credit Note') detailsHtml = `<span style="font-weight:700;color:#dc2626;">Credit Note #${tx.ref}</span>`;
         }
 
+        const borderStyle = this.state.tableBorders ? `border:1px solid #dde3ec;` : ``;
         rowsHtml += `
-          <tr style="border-bottom:1px solid #e8edf5;" class="ledger-item-row">
-            <td style="padding:10px 8px;font-weight:700;color:#64748b;font-size:10px;white-space:nowrap;vertical-align:top;">${tx.date}</td>
-            <td style="padding:10px 8px;font-weight:800;color:${theme.primary};font-size:9px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;vertical-align:top;">${tx.type}</td>
-            <td style="padding:10px 8px;font-size:10px;line-height:1.5;vertical-align:top;">${detailsHtml}</td>
-            <td style="padding:10px 8px;font-size:10px;vertical-align:top;">${qtyHtml}</td>
-            <td style="padding:10px 8px;font-size:10px;vertical-align:top;">${rateHtml}</td>
-            <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:10px;vertical-align:top;${tx.amount<0?'color:#dc2626;':''}" contenteditable="${!this.state.isSummaryMode}">${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined,{minimumFractionDigits:2}) : ''}</td>
-            <td style="padding:10px 8px;text-align:right;font-size:10px;vertical-align:top;" contenteditable="${!this.state.isSummaryMode}">${payDisplay}</td>
-            <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;color:${theme.primary};vertical-align:top;">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+          <tr class="ledger-item-row" style="border-bottom:1px solid ${this.state.tableBorders ? '#dde3ec' : '#f1f5f9'};">
+            <td style="padding:10px 8px;font-weight:700;color:#64748b;font-size:10px;white-space:nowrap;vertical-align:top;${borderStyle}">${tx.date}</td>
+            <td style="padding:10px 8px;font-weight:800;color:${theme.primary};font-size:9px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;vertical-align:top;${borderStyle}">${tx.type}</td>
+            <td style="padding:10px 8px;font-size:10px;line-height:1.5;vertical-align:top;${borderStyle}">${detailsHtml}</td>
+            <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:10px;white-space:nowrap;vertical-align:top;${tx.amount<0?'color:#dc2626;':''}${borderStyle}" contenteditable="${!this.state.isSummaryMode}">${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined,{minimumFractionDigits:2}) : ''}</td>
+            <td style="padding:10px 8px;text-align:right;font-size:10px;white-space:nowrap;vertical-align:top;${borderStyle}" contenteditable="${!this.state.isSummaryMode}">${payDisplay}</td>
+            <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;white-space:nowrap;color:${theme.primary};vertical-align:top;${borderStyle}">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
           </tr>
         `;
       });
@@ -1071,17 +1083,15 @@ class BizSensePro {
           </div>
           ` : ''}
 
-          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1.5rem;">
+          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1.5rem;${this.state.tableBorders ? 'border:1px solid #dde3ec;' : ''}">
             <thead>
               <tr style="background:${theme.primary};color:white;">
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:78px;">Date</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:88px;">Transaction</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;">Details</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:center;width:44px;">Qty</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:82px;">Unit Rate</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:78px;">Amount</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:78px;">Payment</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:88px;">Balance</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:82px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Date</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Transaction</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Details</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Amount</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Payment</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:95px;white-space:nowrap;${this.state.tableBorders ? 'border:1px solid rgba(255,255,255,0.15);' : ''}">Balance</th>
               </tr>
             </thead>
             <tbody class="ledger-rows">${rowsHtml}</tbody>
@@ -1147,15 +1157,15 @@ class BizSensePro {
     let running = 0;
     rows.forEach((row, i) => {
       if (i === 0) {
-        const v = row.cells[7]?.innerText?.replace(/,/g, '');
+        const v = row.cells[5]?.innerText?.replace(/,/g, '');
         running = parseFloat(v) || 0;
         return;
       }
       if (row.classList.contains('ledger-item-row')) {
-        const amt = parseFloat(row.cells[5]?.innerText?.replace(/,/g, '')) || 0;
-        const pay = parseFloat(row.cells[6]?.innerText?.replace(/,/g, '')) || 0;
+        const amt = parseFloat(row.cells[3]?.innerText?.replace(/,/g, '')) || 0;
+        const pay = parseFloat(row.cells[4]?.innerText?.replace(/,/g, '')) || 0;
         running += amt - pay;
-        if (row.cells[7]) row.cells[7].innerText = running.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        if (row.cells[5]) row.cells[5].innerText = running.toLocaleString(undefined, { minimumFractionDigits: 2 });
       }
     });
   }
