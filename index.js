@@ -29,6 +29,7 @@ class BizSensePro {
       isSummaryMode: false,
       filterDateStart: null,
       filterDateEnd: null,
+      priceOverrides: {},
       notesContent: localStorage.getItem('biz_notes') || 'Please ensure payment is made by the due date. Thank you for your business.',
       builderConfig: JSON.parse(localStorage.getItem('builder_config') || JSON.stringify({
         showHeader: true,
@@ -165,6 +166,8 @@ class BizSensePro {
       explorerView: document.getElementById('view-explorer-container'),
       emptyState: document.getElementById('empty-state'),
       builderPanel: document.getElementById('builder-panel'),
+      priceEditorPanel: document.getElementById('price-editor-panel'),
+      priceEditorList: document.getElementById('price-editor-list'),
     };
     this.inputs = {
       orgSelect: document.getElementById('select-organization'),
@@ -244,6 +247,9 @@ class BizSensePro {
     if (this.btns.toggleExplorer) this.btns.toggleExplorer.onclick = () => this.switchView('explorer');
     if (this.btns.toggleBuilder) this.btns.toggleBuilder.onclick = () => this.toggleBuilderPanel();
     if (this.btns.builderApply) this.btns.builderApply.onclick = () => this.applyBuilderAndRender();
+
+    const resetPrices = document.getElementById('btn-reset-prices');
+    if (resetPrices) resetPrices.onclick = () => this.resetAllPrices();
 
     if (this.inputs.search) this.inputs.search.oninput = (e) => this.filterCustomers(e.target.value);
     if (this.inputs.logoUpload) this.inputs.logoUpload.onchange = (e) => this.handleLogoUpload(e);
@@ -559,13 +565,18 @@ class BizSensePro {
     if (this.state.selectedCustomerIds.has(id)) {
       this.state.selectedCustomerIds.delete(id);
       this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
+      this.state.priceOverrides = {};
       this.updateObOverrideInputVisual(null);
+      if (this.views.priceEditorPanel) this.views.priceEditorPanel.style.display = 'none';
     } else {
       this.state.selectedCustomerIds.clear();
       this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
+      this.state.priceOverrides = {};
       this.state.selectedCustomerIds.add(id);
       await this.syncCustomerData(id);
       this.updateObOverrideInputVisual(id);
+      if (this.views.priceEditorPanel) this.views.priceEditorPanel.style.display = 'flex';
+      this.renderPriceEditor();
     }
     this.renderCustomerList();
     this.updateUIVisuals();
@@ -574,6 +585,8 @@ class BizSensePro {
   clearAllCustomers() {
     this.state.selectedCustomerIds.clear();
     this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
+    this.state.priceOverrides = {};
+    if (this.views.priceEditorPanel) this.views.priceEditorPanel.style.display = 'none';
     this.renderCustomerList();
     this.updateUIVisuals();
   }
@@ -741,6 +754,129 @@ class BizSensePro {
   }
 
   // ─────────────────────────────────────────
+  // PRICE EDITOR
+  // ─────────────────────────────────────────
+  renderPriceEditor() {
+    const list = this.views.priceEditorList;
+    if (!list) return;
+
+    // Collect all unique line items across all invoices for selected customers
+    const itemMap = new Map(); // key: item name → { name, origRate, groupName, invoiceIds[] }
+    this.state.selectedCustomerIds.forEach(id => {
+      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+        const det = this.state.invoiceDetailsCache[inv.invoice_id];
+        if (!det || !det.line_items) return;
+        det.line_items.forEach(li => {
+          const key = li.name;
+          if (!itemMap.has(key)) {
+            const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
+            itemMap.set(key, { name: li.name, origRate: parseFloat(li.rate || 0), groupName });
+          }
+        });
+      });
+    });
+
+    if (itemMap.size === 0) {
+      list.innerHTML = '<div class="price-editor-empty">No invoice line items found.<br>Invoice details may still be loading.</div>';
+      return;
+    }
+
+    // Group items by groupName
+    const groups = new Map();
+    itemMap.forEach(item => {
+      const g = item.groupName || 'Items';
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(item);
+    });
+
+    let html = '';
+    groups.forEach((items, groupName) => {
+      html += `<div class="price-group-label">${groupName}</div>`;
+      items.forEach(item => {
+        const overrideVal = this.state.priceOverrides[item.name];
+        const isOverridden = overrideVal !== undefined;
+        const displayRate = isOverridden ? overrideVal : item.origRate;
+        html += `
+          <div class="price-item-row${isOverridden ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}">
+            <div class="price-item-name">${item.name}</div>
+            <div class="price-input-wrap">
+              <span class="price-currency-tag">${this.state.currency}</span>
+              <input
+                type="number"
+                class="price-input${isOverridden ? ' changed' : ''}"
+                data-item="${encodeURIComponent(item.name)}"
+                data-orig="${item.origRate}"
+                value="${displayRate.toFixed(2)}"
+                step="0.01"
+                min="0"
+              >
+            </div>
+            ${isOverridden ? `<div class="price-orig-val">orig: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
+          </div>`;
+      });
+    });
+
+    list.innerHTML = html;
+
+    // Bind live input events
+    list.querySelectorAll('.price-input').forEach(input => {
+      input.addEventListener('input', () => {
+        const itemName = decodeURIComponent(input.dataset.item);
+        const origRate = parseFloat(input.dataset.orig);
+        const newRate = parseFloat(input.value);
+        const row = input.closest('.price-item-row');
+
+        if (!isNaN(newRate) && newRate !== origRate) {
+          this.state.priceOverrides[itemName] = newRate;
+          row?.classList.add('overridden');
+          input.classList.add('changed');
+          // Update orig display
+          let origDiv = row?.querySelector('.price-orig-val');
+          if (!origDiv && row) {
+            origDiv = document.createElement('div');
+            origDiv.className = 'price-orig-val';
+            row.appendChild(origDiv);
+          }
+          if (origDiv) origDiv.textContent = `orig: ${origRate.toLocaleString(undefined,{minimumFractionDigits:2})}`;
+        } else {
+          delete this.state.priceOverrides[itemName];
+          row?.classList.remove('overridden');
+          input.classList.remove('changed');
+          const origDiv = row?.querySelector('.price-orig-val');
+          if (origDiv) origDiv.remove();
+        }
+
+        this.renderStatementUI();
+      });
+    });
+  }
+
+  resetAllPrices() {
+    this.state.priceOverrides = {};
+    this.renderPriceEditor();
+    this.renderStatementUI();
+  }
+
+  // Apply price overrides to get effective rate for a line item
+  getEffectiveRate(li) {
+    const override = this.state.priceOverrides[li.name];
+    return override !== undefined ? override : parseFloat(li.rate || 0);
+  }
+
+  // Recalculate invoice total using any price overrides
+  getEffectiveInvoiceTotal(inv) {
+    const det = this.state.invoiceDetailsCache[inv.invoice_id];
+    if (!det || !det.line_items || Object.keys(this.state.priceOverrides).length === 0) {
+      return parseFloat(inv.total) || 0;
+    }
+    const hasOverride = det.line_items.some(li => this.state.priceOverrides[li.name] !== undefined);
+    if (!hasOverride) return parseFloat(inv.total) || 0;
+    return det.line_items.reduce((sum, li) => {
+      return sum + this.getEffectiveRate(li) * parseFloat(li.quantity || 1);
+    }, 0);
+  }
+
+  // ─────────────────────────────────────────
   // LEDGER SOA STATEMENT
   // ─────────────────────────────────────────
   renderLedgerStatement() {
@@ -775,7 +911,7 @@ class BizSensePro {
             ${this.state.filterDateStart ? `BALANCE AS OF ${this.state.filterDateStart.toLocaleDateString()}` : 'OPENING BALANCE'}
           </td>
           <td style="padding:10px 8px;font-size:9px;color:#64748b;font-style:italic;">Balance brought forward</td>
-          <td colspan="2" style="padding:10px 8px;text-align:right;color:#94a3b8;font-size:10px;">—</td>
+          <td colspan="4" style="padding:10px 8px;text-align:right;color:#94a3b8;font-size:10px;">—</td>
           <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;">${balanceBroughtForward.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
         </tr>
       ` : '';
@@ -805,38 +941,38 @@ class BizSensePro {
           payDisplay = `<span style="color:${color};font-weight:700;">${tx.payment.toLocaleString(undefined, {minimumFractionDigits:2})}</span>`;
         }
 
-        // Details
-        let detailsHtml = '';
+        // Details, Qty, Rate cells
+        let detailsHtml = '', qtyHtml = '', rateHtml = '';
         if (!this.state.isSummaryMode) {
           if (tx.type === 'Invoice') {
             const det = this.state.invoiceDetailsCache[tx.raw.invoice_id];
-            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:3px;">Invoice #${tx.ref}</div>${overdueBadge}`;
+            detailsHtml = `<div style="font-weight:800;color:${theme.primary};font-size:10px;margin-bottom:4px;">Invoice #${tx.ref}</div>${overdueBadge}`;
             if (det && det.line_items) {
-              detailsHtml += `<div style="margin-top:4px;">`;
               det.line_items.forEach(li => {
-                const rate = parseFloat(li.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2});
                 const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
-                detailsHtml += `
-                  <div style="font-size:9px;border-left:2px solid ${theme.accent}30;padding-left:8px;margin-bottom:3px;">
-                    ${groupName ? `<span style="font-size:8px;color:${theme.accent};font-weight:700;">${groupName} · </span>` : ''}
-                    <span style="font-weight:700;color:#1e293b;">${li.name}</span>
-                    <span style="color:#64748b;font-family:'DM Mono',monospace;font-size:8px;margin-left:4px;">(${li.quantity} × ${rate})</span>
-                  </div>`;
+                const effectiveRate = this.getEffectiveRate(li);
+                const isOverridden = this.state.priceOverrides[li.name] !== undefined;
+                detailsHtml += `<div style="font-size:10px;padding:3px 0;border-bottom:1px dotted #f1f5f9;">
+                  ${groupName ? `<span style="font-size:8px;color:${theme.accent};font-weight:700;display:block;">${groupName}</span>` : ''}
+                  <span style="font-weight:700;color:#1e293b;">${li.name}</span>
+                </div>`;
+                qtyHtml += `<div style="font-size:10px;font-weight:700;color:#1e293b;text-align:center;padding:3px 0;border-bottom:1px dotted #f1f5f9;">${li.quantity}</div>`;
+                rateHtml += `<div style="font-size:10px;font-weight:700;color:${isOverridden ? '#d97706' : '#475569'};text-align:right;padding:3px 0;border-bottom:1px dotted #f1f5f9;font-family:'DM Mono',monospace;${isOverridden ? 'font-weight:800;' : ''}">${effectiveRate.toLocaleString(undefined,{minimumFractionDigits:2})}${isOverridden ? ' <span style="font-size:7px;background:#fef3c7;color:#d97706;border-radius:3px;padding:1px 3px;font-weight:800;">EDITED</span>' : ''}</div>`;
               });
-              detailsHtml += `</div>`;
             }
           } else if (tx.type === 'Payment Received') {
             detailsHtml = `<div style="color:#059669;font-weight:700;font-size:10px;">Payment Received</div>`;
             if (tx.raw?.invoices?.length) {
-              detailsHtml += `<div style="font-size:8px;color:#64748b;margin-top:2px;">Against: ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
+              detailsHtml += `<div style="font-size:9px;color:#64748b;margin-top:2px;">Against: ${tx.raw.invoices.map(i => i.invoice_number).join(', ')}</div>`;
             }
           } else if (tx.type === 'Credit Note') {
             const det = this.state.invoiceDetailsCache[tx.raw.creditnote_id];
-            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;">Credit Note #${tx.ref}</div>`;
+            detailsHtml = `<div style="color:#dc2626;font-weight:800;font-size:10px;margin-bottom:4px;">Credit Note #${tx.ref}</div>`;
             if (det && det.line_items) {
               det.line_items.forEach(li => {
-                const rate = parseFloat(li.rate||0).toLocaleString(undefined,{minimumFractionDigits:2});
-                detailsHtml += `<div style="font-size:9px;border-left:2px solid #fca5a5;padding-left:8px;margin-bottom:2px;"><span style="font-weight:700;">${li.name}</span> <span style="font-size:8px;color:#64748b;">(${li.quantity} × ${rate})</span></div>`;
+                detailsHtml += `<div style="font-size:10px;padding:3px 0;border-bottom:1px dotted #f1f5f9;"><span style="font-weight:700;color:#1e293b;">${li.name}</span></div>`;
+                qtyHtml += `<div style="font-size:10px;font-weight:700;color:#1e293b;text-align:center;padding:3px 0;border-bottom:1px dotted #f1f5f9;">${li.quantity}</div>`;
+                rateHtml += `<div style="font-size:10px;font-weight:700;color:#475569;text-align:right;padding:3px 0;border-bottom:1px dotted #f1f5f9;font-family:'DM Mono',monospace;">${this.getEffectiveRate(li).toLocaleString(undefined,{minimumFractionDigits:2})}</div>`;
               });
             }
           }
@@ -847,13 +983,15 @@ class BizSensePro {
         }
 
         rowsHtml += `
-          <tr style="border-bottom:1px solid #f1f5f9;" class="ledger-item-row">
-            <td style="padding:10px 8px;font-weight:700;color:#64748b;font-size:10px;white-space:nowrap;">${tx.date}</td>
-            <td style="padding:10px 8px;font-weight:800;color:${theme.primary};font-size:9px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">${tx.type}</td>
-            <td style="padding:10px 8px;font-size:10px;line-height:1.4;">${detailsHtml}</td>
-            <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:10px;${tx.amount<0?'color:#dc2626;':''}" contenteditable="${!this.state.isSummaryMode}">${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined,{minimumFractionDigits:2}) : ''}</td>
-            <td style="padding:10px 8px;text-align:right;font-size:10px;" contenteditable="${!this.state.isSummaryMode}">${payDisplay}</td>
-            <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;color:${theme.primary};">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+          <tr style="border-bottom:1px solid #e8edf5;" class="ledger-item-row">
+            <td style="padding:10px 8px;font-weight:700;color:#64748b;font-size:10px;white-space:nowrap;vertical-align:top;">${tx.date}</td>
+            <td style="padding:10px 8px;font-weight:800;color:${theme.primary};font-size:9px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;vertical-align:top;">${tx.type}</td>
+            <td style="padding:10px 8px;font-size:10px;line-height:1.5;vertical-align:top;">${detailsHtml}</td>
+            <td style="padding:10px 8px;font-size:10px;vertical-align:top;">${qtyHtml}</td>
+            <td style="padding:10px 8px;font-size:10px;vertical-align:top;">${rateHtml}</td>
+            <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:10px;vertical-align:top;${tx.amount<0?'color:#dc2626;':''}" contenteditable="${!this.state.isSummaryMode}">${tx.amount !== 0 ? Math.abs(tx.amount).toLocaleString(undefined,{minimumFractionDigits:2}) : ''}</td>
+            <td style="padding:10px 8px;text-align:right;font-size:10px;vertical-align:top;" contenteditable="${!this.state.isSummaryMode}">${payDisplay}</td>
+            <td style="padding:10px 8px;text-align:right;font-weight:800;font-size:10px;color:${theme.primary};vertical-align:top;">${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
           </tr>
         `;
       });
@@ -936,12 +1074,14 @@ class BizSensePro {
           <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:1.5rem;">
             <thead>
               <tr style="background:${theme.primary};color:white;">
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:90px;">Date</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:95px;">Transaction</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:78px;">Date</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;width:88px;">Transaction</th>
                 <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;">Details</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;">Amount</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:90px;">Payment</th>
-                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:95px;">Balance</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:center;width:44px;">Qty</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:82px;">Unit Rate</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:78px;">Amount</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:78px;">Payment</th>
+                <th style="padding:10px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;text-align:right;width:88px;">Balance</th>
               </tr>
             </thead>
             <tbody class="ledger-rows">${rowsHtml}</tbody>
@@ -971,7 +1111,7 @@ class BizSensePro {
   collectTransactions(id) {
     const txs = [];
     (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
-      txs.push({ date: inv.date, type: 'Invoice', ref: inv.invoice_number, due_date: inv.due_date, amount: parseFloat(inv.total) || 0, payment: 0, raw: inv, sortDate: new Date(inv.date) });
+      txs.push({ date: inv.date, type: 'Invoice', ref: inv.invoice_number, due_date: inv.due_date, amount: this.getEffectiveInvoiceTotal(inv), payment: 0, raw: inv, sortDate: new Date(inv.date) });
     });
     (this.state.dataStore.payments[id]?.records || []).forEach(pay => {
       txs.push({ date: pay.date, type: 'Payment Received', ref: pay.payment_number, amount: 0, payment: parseFloat(pay.amount) || 0, raw: pay, sortDate: new Date(pay.date) });
@@ -1007,15 +1147,15 @@ class BizSensePro {
     let running = 0;
     rows.forEach((row, i) => {
       if (i === 0) {
-        const v = row.cells[5]?.innerText?.replace(/,/g, '');
+        const v = row.cells[7]?.innerText?.replace(/,/g, '');
         running = parseFloat(v) || 0;
         return;
       }
       if (row.classList.contains('ledger-item-row')) {
-        const amt = parseFloat(row.cells[3]?.innerText?.replace(/,/g, '')) || 0;
-        const pay = parseFloat(row.cells[4]?.innerText?.replace(/,/g, '')) || 0;
+        const amt = parseFloat(row.cells[5]?.innerText?.replace(/,/g, '')) || 0;
+        const pay = parseFloat(row.cells[6]?.innerText?.replace(/,/g, '')) || 0;
         running += amt - pay;
-        if (row.cells[5]) row.cells[5].innerText = running.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        if (row.cells[7]) row.cells[7].innerText = running.toLocaleString(undefined, { minimumFractionDigits: 2 });
       }
     });
   }
