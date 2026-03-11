@@ -1226,7 +1226,7 @@ class BizSensePro {
 
       // Render ungrouped items
       if (ungrouped.length > 0) {
-        if (smartGroups.size > 0) rowsHtml += `<div class="price-group-label" style="margin-top:8px;">Other Items</div>`;
+        if (mainGroups.size > 0) rowsHtml += `<div class="price-group-label" style="margin-top:8px;">Other Items</div>`;
         ungrouped.forEach(item => {
           const saved = rules.find(r => r.itemName === item.name &&
             (r.fromDate||null) === (session.fromDate||null) &&
