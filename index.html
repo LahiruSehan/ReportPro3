@@ -698,7 +698,9 @@
       align-items: center;
       justify-content: center;
       background: radial-gradient(ellipse at 50% 40%,
-        #0f172a 0%, #060d1a 60%, #020509 100%);
+        rgba(15,23,42,0.82) 0%, rgba(6,13,26,0.88) 60%, rgba(2,5,9,0.92) 100%);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       overflow: hidden;
     }
     #loading-overlay.visible { display: flex; }
@@ -994,7 +996,10 @@
       }
       .a4-page:last-child { page-break-after: auto; break-after: auto; }
       .no-print { display: none !important; }
-      tr { break-inside: avoid; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      /* Prevent orphan whitespace in tables */
+      .ledger-rows tr { break-inside: avoid; }
+      tbody { break-inside: auto; }
       [data-biz-stamp] span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
 
@@ -1292,6 +1297,7 @@
     </div>
     <div class="lo-status" id="loading-overlay-text">Initialising…</div>
     <div class="lo-fun" id="loading-fun-msg">Getting things ready…</div>
+    <div id="loading-slow-msg" style="display:none;margin-top:12px;font-size:0.7rem;color:rgba(251,191,36,0.85);font-weight:700;letter-spacing:0.04em;text-align:center;max-width:280px;line-height:1.6;animation:fadeInUp 0.5s ease;"></div>
     <div class="lo-progress-track">
       <div class="lo-progress-fill" id="lo-progress-fill"></div>
     </div>

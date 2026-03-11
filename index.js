@@ -1067,54 +1067,115 @@ class BizSensePro {
     const items = Array.from(session.items.values());
     const rules = this.state.datePriceRules || [];
 
-    // Group items
-    const groups = new Map();
+    // --- Smart grouping: group items where first word AND price are the same ---
+    const smartGroups = new Map();
+    const ungrouped = [];
+    const keyCount = new Map();
     items.forEach(item => {
-      const g = item.groupName || 'Items';
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g).push(item);
+      const firstWord = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
+      const saved = rules.find(r => r.itemName === item.name &&
+        (r.fromDate||null) === (session.fromDate||null) &&
+        (r.toDate  ||null) === (session.toDate  ||null));
+      const effectivePrice = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
+      const key = firstWord + '|' + parseFloat(effectivePrice).toFixed(2);
+      keyCount.set(key, (keyCount.get(key) || 0) + 1);
+    });
+    items.forEach(item => {
+      const firstWord = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
+      const saved = rules.find(r => r.itemName === item.name &&
+        (r.fromDate||null) === (session.fromDate||null) &&
+        (r.toDate  ||null) === (session.toDate  ||null));
+      const effectivePrice = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
+      const key = firstWord + '|' + parseFloat(effectivePrice).toFixed(2);
+      if (keyCount.get(key) > 1) {
+        if (!smartGroups.has(key)) {
+          const displayLabel = item.name.split(/[\s_\-\/]/)[0];
+          smartGroups.set(key, { label: displayLabel, price: effectivePrice, items: [] });
+        }
+        smartGroups.get(key).items.push(item);
+      } else {
+        ungrouped.push(item);
+      }
     });
 
     let rowsHtml = '';
     if (items.length === 0) {
       rowsHtml = '<div style="font-size:0.62rem;color:rgba(255,255,255,0.2);text-align:center;padding:10px 0;">No items found in this date range</div>';
     } else {
-      groups.forEach((gItems, gName) => {
-        rowsHtml += `<div class="price-group-label">${gName}</div>`;
-        gItems.forEach(item => {
+      // Render smart-grouped items (collapsible)
+      smartGroups.forEach((group, key) => {
+        const groupId = 'sg_' + key.replace(/[^a-z0-9]/gi, '_');
+        const isAnySet = group.items.some(item => {
           const saved = rules.find(r => r.itemName === item.name &&
             (r.fromDate||null) === (session.fromDate||null) &&
             (r.toDate  ||null) === (session.toDate  ||null));
-          const displayVal = item.newRate !== null ? item.newRate
-            : saved ? saved.price : item.origRate;
+          return item.newRate !== null || saved;
+        });
+        rowsHtml += `
+          <div class="price-smart-group" style="margin-bottom:7px;border:1px solid ${isAnySet ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.1)'};border-radius:9px;overflow:hidden;">
+            <div class="sg-header" data-sg="${groupId}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;cursor:pointer;background:${isAnySet ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)'};user-select:none;">
+              <div>
+                <div style="font-size:0.72rem;font-weight:800;color:${isAnySet ? '#93c5fd' : 'rgba(255,255,255,0.7)'};">${group.label}</div>
+                <div style="font-size:0.57rem;color:rgba(255,255,255,0.3);margin-top:2px;">${group.items.length} variants &middot; ${this.state.currency} ${parseFloat(group.price).toLocaleString(undefined,{minimumFractionDigits:2})} each</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:0.65rem;font-weight:700;font-family:'DM Mono',monospace;color:${isAnySet ? '#34d399' : 'rgba(255,255,255,0.4)'};">${this.state.currency} ${parseFloat(group.price).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                <span class="sg-chevron" style="font-size:0.65rem;color:rgba(255,255,255,0.3);transition:transform 0.2s;">&#9660;</span>
+              </div>
+            </div>
+            <div id="${groupId}" style="display:none;padding:6px 8px;border-top:1px solid rgba(255,255,255,0.07);">`;
+        group.items.forEach(item => {
+          const saved = rules.find(r => r.itemName === item.name &&
+            (r.fromDate||null) === (session.fromDate||null) &&
+            (r.toDate  ||null) === (session.toDate  ||null));
+          const displayVal = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
+          const isSet = item.newRate !== null || saved;
+          rowsHtml += `
+            <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}" style="border-radius:6px;padding:6px 8px;margin-bottom:4px;background:${isSet ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.02)'};border:1px solid ${isSet ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)'};">
+              <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
+                <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset" style="background:rgba(220,38,38,0.1);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 5px;font-size:0.6rem;cursor:pointer;flex-shrink:0;line-height:1.2;">&#x21BA;</button>
+                <div class="price-item-name" style="flex:1;color:${isSet ? '#e2e8f0' : 'rgba(255,255,255,0.55)'};font-size:0.67rem;font-weight:${isSet ? '700' : '500'};">${item.name}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <span style="font-size:0.58rem;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;flex-shrink:0;">${this.state.currency}</span>
+                <input type="number" class="pe-item-input${isSet ? ' changed' : ''}" data-item="${encodeURIComponent(item.name)}" data-orig="${item.origRate}" value="${parseFloat(displayVal).toFixed(2)}" step="0.01" min="0" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid ${isSet ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'};color:${isSet ? '#93c5fd' : 'white'};border-radius:5px;padding:4px 6px;font-size:0.68rem;font-family:'DM Mono',monospace;outline:none;width:100%;color-scheme:dark;">
+              </div>
+              ${isSet ? `<div style="font-size:0.52rem;color:rgba(255,255,255,0.25);margin-top:2px;font-family:'DM Mono',monospace;">zoho: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
+            </div>`;
+        });
+        rowsHtml += `</div></div>`;
+      });
+
+      // Render ungrouped items
+      if (ungrouped.length > 0) {
+        if (smartGroups.size > 0) rowsHtml += `<div class="price-group-label" style="margin-top:8px;">Other Items</div>`;
+        ungrouped.forEach(item => {
+          const saved = rules.find(r => r.itemName === item.name &&
+            (r.fromDate||null) === (session.fromDate||null) &&
+            (r.toDate  ||null) === (session.toDate  ||null));
+          const displayVal = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
           const isSet = item.newRate !== null || saved;
           rowsHtml += `
             <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}" style="border-radius:7px;padding:7px 9px;margin-bottom:5px;background:${isSet ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.03)'};border:1px solid ${isSet ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)'};">
               <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
-                <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset this item" style="background:rgba(220,38,38,0.1);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;flex-shrink:0;line-height:1.2;">↺</button>
+                <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset this item" style="background:rgba(220,38,38,0.1);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;flex-shrink:0;line-height:1.2;">&#x21BA;</button>
                 <div class="price-item-name" style="flex:1;color:${isSet ? '#e2e8f0' : 'rgba(255,255,255,0.55)'};font-size:0.7rem;font-weight:${isSet ? '700' : '500'};">${item.name}</div>
               </div>
               <div style="display:flex;align-items:center;gap:5px;">
                 <span style="font-size:0.58rem;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;flex-shrink:0;">${this.state.currency}</span>
-                <input type="number" class="pe-item-input${isSet ? ' changed' : ''}"
-                  data-item="${encodeURIComponent(item.name)}"
-                  data-orig="${item.origRate}"
-                  value="${parseFloat(displayVal).toFixed(2)}"
-                  step="0.01" min="0"
-                  style="flex:1;background:rgba(255,255,255,0.07);border:1px solid ${isSet ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'};color:${isSet ? '#93c5fd' : 'white'};border-radius:5px;padding:5px 7px;font-size:0.72rem;font-family:'DM Mono',monospace;outline:none;width:100%;color-scheme:dark;">
+                <input type="number" class="pe-item-input${isSet ? ' changed' : ''}" data-item="${encodeURIComponent(item.name)}" data-orig="${item.origRate}" value="${parseFloat(displayVal).toFixed(2)}" step="0.01" min="0" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid ${isSet ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'};color:${isSet ? '#93c5fd' : 'white'};border-radius:5px;padding:5px 7px;font-size:0.72rem;font-family:'DM Mono',monospace;outline:none;width:100%;color-scheme:dark;">
               </div>
               ${isSet ? `<div style="font-size:0.55rem;color:rgba(255,255,255,0.25);margin-top:3px;font-family:'DM Mono',monospace;">zoho rate: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
             </div>`;
         });
-      });
+      }
     }
-
     return `
       <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.22);border-radius:8px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
         <div>
           <div style="font-size:0.5rem;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.25);margin-bottom:2px;">Editing Range</div>
           <div style="font-size:0.68rem;font-weight:800;color:#93c5fd;">${from} → ${to}</div>
-          <div style="font-size:0.58rem;color:rgba(255,255,255,0.3);margin-top:1px;">${items.length} item(s) found</div>
+          <div style="font-size:0.58rem;color:rgba(255,255,255,0.3);margin-top:1px;">${items.length} item(s) · ${smartGroups.size > 0 ? smartGroups.size + ' group(s)' : 'no groups'}</div>
         </div>
         <button id="pe-back-btn" style="background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:4px 10px;font-size:0.6rem;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;">← Back</button>
       </div>
@@ -1132,6 +1193,18 @@ class BizSensePro {
   }
 
   _bindPriceItemEditor(list, session) {
+    // Smart group expand/collapse
+    list.querySelectorAll('.sg-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const sgId = header.dataset.sg;
+        const body = document.getElementById(sgId);
+        const chevron = header.querySelector('.sg-chevron');
+        if (!body) return;
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : 'block';
+        if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+      });
+    });
     // Item search filter
     list.querySelector('#pe-item-search')?.addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase().trim();
@@ -1502,7 +1575,7 @@ class BizSensePro {
 
           ${summaryHtml}
           ${notesHtml}
-          ${this.state.stampMode === 'final' ? this._renderTermsHtml() : ''}
+          <div data-biz-tc-placeholder="1"></div>
         </div>
       `;
     });
@@ -1746,11 +1819,13 @@ class BizSensePro {
     const ovt  = document.getElementById('loading-overlay-text');
     const fun  = document.getElementById('loading-fun-msg');
     const fill = document.getElementById('lo-progress-fill');
+    const slowMsg = document.getElementById('loading-slow-msg');
 
     if (lp)   lp.style.width = '100%';          // ambient stripe full-width
     if (lc)   lc.setAttribute('data-active','1');
     if (fill) fill.style.width = `${pct}%`;
     if (ovt)  ovt.textContent = txt.toUpperCase();
+    if (slowMsg) slowMsg.style.display = 'none'; // hide slow msg on each new call
 
     if (fun) {
       const msgs = [
@@ -1769,6 +1844,25 @@ class BizSensePro {
       ];
       fun.textContent = msgs[Math.floor(Math.random() * msgs.length)];
     }
+
+    // Show slow-load message after 4 seconds
+    if (this._slowLoadTimer) clearTimeout(this._slowLoadTimer);
+    this._slowLoadTimer = setTimeout(() => {
+      const customerName = (() => {
+        const id = Array.from(this.state.selectedCustomerIds)[0];
+        if (id) {
+          const c = this.state.customerFullDetails[id] || this.state.customers.find(c => c.contact_id === id);
+          return c?.contact_name || c?.contact_name || null;
+        }
+        return null;
+      })();
+      if (slowMsg) {
+        slowMsg.textContent = customerName
+          ? `${customerName} has a lot of data so please give 10 - 20 seconds to load`
+          : 'This customer has a lot of data so please give 10 - 20 seconds to load';
+        slowMsg.style.display = 'block';
+      }
+    }, 4000);
 
     // Generate starfield on first show
     const stars = document.getElementById('lo-stars-container');
@@ -1798,6 +1892,9 @@ class BizSensePro {
     const fill = document.getElementById('lo-progress-fill');
     if (fill) fill.style.width = '100%';
     // Short pause so user sees 100% before dismissing
+    if (this._slowLoadTimer) { clearTimeout(this._slowLoadTimer); this._slowLoadTimer = null; }
+    const slowMsg = document.getElementById('loading-slow-msg');
+    if (slowMsg) slowMsg.style.display = 'none';
     setTimeout(() => {
       const lc  = document.getElementById('loading-container');
       const ov  = document.getElementById('loading-overlay');
@@ -1839,7 +1936,7 @@ class BizSensePro {
     const sc = this.state.stampConfig;
     const isD = this.state.stampMode === 'draft';
     const col = isD ? (sc.draftColor || '#dc2626') : (sc.finalColor || '#059669');
-    const txt = isD ? 'DRAFT' : 'FINAL';
+    const txt = isD ? 'DRAFT BILL' : 'FINAL BILL';
     const bg  = isD ? 'rgba(220,38,38,0.09)' : 'rgba(5,150,105,0.09)';
     // Use inline-block (not flex) so html2canvas renders text correctly in PDF
     return `<span data-biz-stamp="1" style="
@@ -1869,7 +1966,7 @@ class BizSensePro {
     const sc = this.state.stampConfig;
     const isD = this.state.stampMode === 'draft';
     const col = isD ? (sc.draftColor || '#dc2626') : (sc.finalColor || '#059669');
-    const txt = isD ? 'DRAFT' : 'FINAL';
+    const txt = isD ? 'DRAFT BILL' : 'FINAL BILL';
     const bg  = isD ? 'rgba(220,38,38,0.09)' : 'rgba(5,150,105,0.09)';
     return `<span data-biz-stamp="1" style="
       display:inline-block;vertical-align:middle;
@@ -1898,19 +1995,17 @@ class BizSensePro {
   // MULTI-PAGE A4 SPLITTING
   // ─────────────────────────────────────────
   _splitIntoA4Pages() {
-    // Fire via double-RAF for first attempt, then again via setTimeout
-    // to guarantee layout is fully settled (especially on first load)
+    // Immediate attempt + fallbacks for layout settling
+    this._doSplit();
     requestAnimationFrame(() => requestAnimationFrame(() => {
       this._doSplit();
-      // Second pass after full paint cycle — catches cases where first pass
-      // sees 0 offsetHeights because the page wasn't yet in the paint tree
-      setTimeout(() => this._doSplit(), 120);
+      setTimeout(() => this._doSplit(), 150);
     }));
   }
 
   _doSplit() {
-    // A4 usable content at 96dpi: (297mm - 24mm padding) * 3.7795px/mm ≈ 1031px
-    const A4_H = 1031;
+    // A4 usable content at 96dpi: (297mm - 20mm padding) * 3.7795px/mm ≈ 1054px
+    const A4_H = 1054;
     const pages = Array.from(this.targets.renderArea.querySelectorAll('.a4-page'));
     let didSplit = false;
 
@@ -1987,6 +2082,19 @@ class BizSensePro {
       didSplit = true;
     });
 
+    // For pages that didn't need splitting, inject T&C in place of placeholder
+    if (!didSplit) {
+      this.targets.renderArea.querySelectorAll('[data-biz-tc-placeholder]').forEach(ph => {
+        if (this.state.stampMode === 'final') {
+          const tcDiv = document.createElement('div');
+          tcDiv.innerHTML = this._renderTermsHtml();
+          ph.replaceWith(tcDiv.firstElementChild);
+        } else {
+          ph.remove();
+        }
+      });
+    }
+
     if (didSplit) setTimeout(() => this.autoFitZoom(), 80);
     else this.autoFitZoom();
   }
@@ -2005,8 +2113,8 @@ class BizSensePro {
     let html = '';
     let el = tableEl.nextElementSibling;
     while (el) {
-      // Skip T&C blocks (regenerated per-page) and any legacy stamp divs
-      const skip = el.hasAttribute('data-biz-tc') || el.hasAttribute('data-biz-stamp');
+      // Skip T&C blocks (regenerated per-page), placeholders, and any legacy stamp divs
+      const skip = el.hasAttribute('data-biz-tc') || el.hasAttribute('data-biz-stamp') || el.hasAttribute('data-biz-tc-placeholder');
       if (!skip) html += el.outerHTML;
       el = el.nextElementSibling;
     }
