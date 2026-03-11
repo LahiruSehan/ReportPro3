@@ -660,31 +660,46 @@
       position: fixed;
       top: 0; left: 0;
       width: 100%;
-      height: 3px;
+      height: 36px;
       z-index: 9999;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
     }
     #loading-progress {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #1d4ed8, #3b82f6, #0ea5e9);
-      background-size: 200% 100%;
-      animation: gradientFlow 1.5s linear infinite;
-      transition: width 0.3s ease-out;
+      background: linear-gradient(90deg,
+        #1e3a8a 0%,
+        #1d4ed8 20%,
+        #3b82f6 40%,
+        #0ea5e9 55%,
+        #06b6d4 70%,
+        #3b82f6 85%,
+        #1d4ed8 100%);
+      background-size: 300% 100%;
+      animation: gradientFlow 2s linear infinite;
+      transition: width 0.35s cubic-bezier(0.4,0,0.2,1);
+      position: relative;
     }
-    #loading-text {
-      position: fixed;
-      top: 8px;
-      right: 1rem;
-      font-size: 0.55rem;
+    #loading-bar-text {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.6rem;
       font-weight: 800;
-      letter-spacing: 0.15em;
+      letter-spacing: 0.2em;
       text-transform: uppercase;
-      color: var(--primary-light);
-      z-index: 9999;
+      color: rgba(255,255,255,0.9);
       font-family: 'DM Mono', monospace;
-      display: none;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 2;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.5);
     }
-    @keyframes gradientFlow { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
+    @keyframes gradientFlow { 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
 
     /* ─── SKELETON ─── */
     .skeleton {
@@ -739,13 +754,33 @@
 
     /* ─── PRINT ─── */
     @media print {
-      body * { visibility: hidden; }
-      body { background: white !important; }
-      #statement-render-target, #statement-render-target * { visibility: visible; }
-      #statement-render-target { position: absolute; left: 0; top: 0; width: 100%; }
-      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 210mm !important; min-height: 297mm !important; page-break-after: always; break-after: page; visibility: visible !important; background: white !important; color: black !important; padding: 12mm 14mm !important; overflow: visible !important; position: relative !important; }
+      body > *:not(#statement-render-target) { display: none !important; }
+      body { margin: 0; padding: 0; background: white !important; }
+      #statement-render-target {
+        display: block !important;
+        position: static !important;
+        width: 100%;
+        overflow: visible;
+      }
+      .a4-page {
+        position: relative !important;
+        margin: 0 !important;
+        padding: 12mm 14mm !important;
+        box-shadow: none !important;
+        transform: none !important;
+        width: 210mm !important;
+        min-height: 297mm !important;
+        overflow: visible !important;
+        background: white !important;
+        color: black !important;
+        page-break-after: always;
+        break-after: page;
+        display: block !important;
+      }
+      .a4-page:last-child { page-break-after: auto; break-after: auto; }
       .no-print { display: none !important; }
       tr { break-inside: avoid; }
+      [data-biz-stamp] span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
 
     /* ─── DIVIDER ─── */
@@ -826,7 +861,7 @@
 
     /* ─── PRICE EDITOR PANEL ─── */
     .price-editor-panel {
-      width: 240px;
+      width: 320px;
       background: #0f172a;
       border-right: 1px solid rgba(255,255,255,0.06);
       display: flex;
@@ -953,6 +988,59 @@
       padding: 2rem 1rem;
       line-height: 1.6;
     }
+
+    /* ─── NEW PRICE EDITOR COMPONENTS ─── */
+    .pe-section-label {
+      font-size: 0.52rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: rgba(255,255,255,0.2);
+      margin: 0.75rem 0 0.4rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .pe-section-label:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+    .pe-date-input {
+      width: 100%;
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(255,255,255,0.1) !important;
+      color: white !important;
+      border-radius: 6px;
+      padding: 5px 7px;
+      font-size: 0.7rem;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      color-scheme: dark;
+    }
+    .pe-date-input:focus { border-color: rgba(59,130,246,0.5) !important; }
+    .dpr-rule-chip {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 7px;
+      padding: 6px 8px;
+      margin-bottom: 4px;
+    }
+    .pe-reset-btn:hover { background: rgba(220,38,38,0.22) !important; color: white !important; }
+
+    /* ─── PRINT FIXES ─── */
+    @media print {
+      #loading-container { display: none !important; }
+      .a4-page {
+        page-break-after: always;
+        break-after: page;
+        position: relative !important;
+        transform: none !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        width: 210mm !important;
+        padding: 12mm 14mm !important;
+        overflow: visible !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -960,8 +1048,8 @@
 <!-- LOADING BAR -->
 <div id="loading-container" class="view-hidden">
   <div id="loading-progress"></div>
+  <div id="loading-bar-text">Loading…</div>
 </div>
-<div id="loading-text"></div>
 
 <!-- ══════════════════════════════════════════
      LANDING VIEW
@@ -1314,10 +1402,7 @@
               </div>
 
               <div class="builder-section-label">Date-Based Price Rules</div>
-              <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">Override item prices for specific date ranges. Useful when prices change by month or period.</div>
-              <div id="date-price-rules-list">
-                <div style="font-size:0.65rem;color:var(--text-muted);text-align:center;padding:10px 0;">Select a customer to manage price rules</div>
-              </div>
+              <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">Use the Price Editor panel (left of statement) to set date-based prices per item. Click a customer to open it.</div>
 
               <div class="builder-section-label">Stamp Settings</div>
               <div class="builder-toggle-row">

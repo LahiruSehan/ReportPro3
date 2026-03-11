@@ -59,6 +59,7 @@ class BizSensePro {
       searchField: localStorage.getItem('biz_search_field') || 'name', // 'name' | 'id' | 'phone'
       datePriceRules: JSON.parse(localStorage.getItem('biz_date_price_rules') || '[]'),
       // Each rule: { id, itemName, fromDate, toDate, price }
+      activePriceSession: null, // { fromDate, toDate, items: Map }
       builderConfig: JSON.parse(localStorage.getItem('builder_config') || JSON.stringify({
         showHeader: true,
         showCustomer: true,
@@ -269,7 +270,7 @@ class BizSensePro {
     if (this.btns.openSettings) this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
     if (this.btns.toggleBuilder) this.btns.toggleBuilder.addEventListener('click', () => {
       setTimeout(() => {
-        this.renderDatePriceRulesUI();
+        this.renderPriceEditor();
         this._populateBuilderStampTCFields();
       }, 50);
     }, true);
@@ -648,6 +649,7 @@ class BizSensePro {
       this.state.selectedCustomerIds.delete(id);
       this.state.dataStore = { invoices: {}, creditnotes: {}, payments: {}, estimates: {}, salesorders: {} };
       this.state.priceOverrides = {};
+      this.state.activePriceSession = null;
       this.updateObOverrideInputVisual(null);
       if (this.views.priceEditorPanel) this.views.priceEditorPanel.style.display = 'none';
     } else {
@@ -659,7 +661,7 @@ class BizSensePro {
       this.updateObOverrideInputVisual(id);
       if (this.views.priceEditorPanel) this.views.priceEditorPanel.style.display = 'flex';
       this.renderPriceEditor();
-      this.renderDatePriceRulesUI();
+      this.renderPriceEditor();
     }
     this.renderCustomerList();
     this.updateUIVisuals();
@@ -908,103 +910,308 @@ class BizSensePro {
   // ─────────────────────────────────────────
   // PRICE EDITOR
   // ─────────────────────────────────────────
+  // ── Price editor state for the current session ──────────────
+  // this.state.activePriceSession = { fromDate, toDate, items: Map<name,{origRate,newRate}> } | null
+
   renderPriceEditor() {
     const list = this.views.priceEditorList;
     if (!list) return;
 
-    // Collect all unique line items across all invoices for selected customers
-    const itemMap = new Map(); // key: item name → { name, origRate, groupName, invoiceIds[] }
-    this.state.selectedCustomerIds.forEach(id => {
-      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+    const session = this.state.activePriceSession;
+
+    if (!session) {
+      // Show date-range picker
+      list.innerHTML = this._buildPriceDatePickerHtml();
+      this._bindPriceDatePicker(list);
+      return;
+    }
+
+    // Session active — show item editor for the chosen range
+    list.innerHTML = this._buildPriceItemEditorHtml(session);
+    this._bindPriceItemEditor(list, session);
+  }
+
+  _buildPriceDatePickerHtml() {
+    const rules = this.state.datePriceRules || [];
+    const rulesHtml = rules.length === 0
+      ? '<div style="font-size:0.6rem;color:rgba(255,255,255,0.2);text-align:center;padding:8px 0;">No saved rules yet</div>'
+      : rules.map(r => `
+          <div class="dpr-rule-chip">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.62rem;font-weight:700;color:#fbbf24;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.itemName}</div>
+              <div style="font-size:0.55rem;color:rgba(255,255,255,0.3);margin-top:1px;">${r.fromDate||'open'} → ${r.toDate||'open'} · <span style="color:#34d399;font-family:'DM Mono',monospace;">${this.state.currency} ${parseFloat(r.price).toFixed(2)}</span></div>
+            </div>
+            <button data-del-rule="${r.id}" style="background:rgba(220,38,38,0.12);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 6px;font-size:0.6rem;cursor:pointer;flex-shrink:0;">✕</button>
+          </div>`).join('');
+
+    return `
+      <div class="pe-section-label">Select Date Range to Edit</div>
+      <div style="font-size:0.6rem;color:rgba(255,255,255,0.25);margin-bottom:8px;line-height:1.5;">Pick a date range, then set prices for items invoiced in that period. Leave dates blank to edit all items.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;">
+        <div>
+          <div style="font-size:0.55rem;color:rgba(255,255,255,0.25);margin-bottom:3px;">From Date</div>
+          <input type="date" id="pe-range-from" class="pe-date-input">
+        </div>
+        <div>
+          <div style="font-size:0.55rem;color:rgba(255,255,255,0.25);margin-bottom:3px;">To Date</div>
+          <input type="date" id="pe-range-to" class="pe-date-input">
+        </div>
+      </div>
+      <button id="pe-range-edit-btn" style="width:100%;padding:7px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:white;border:none;border-radius:7px;font-size:0.68rem;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:0.05em;">
+        <i class="ph ph-pencil"></i> Load Items for Range
+      </button>
+      <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
+        <div class="pe-section-label" style="margin-bottom:5px;">Saved Price Rules (${rules.length})</div>
+        ${rulesHtml}
+      </div>`;
+  }
+
+  _bindPriceDatePicker(list) {
+    list.querySelector('#pe-range-edit-btn')?.addEventListener('click', () => {
+      const from = list.querySelector('#pe-range-from')?.value || null;
+      const to   = list.querySelector('#pe-range-to')?.value   || null;
+      this._openPriceSession(from, to);
+    });
+    list.querySelectorAll('[data-del-rule]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.delRule;
+        this.state.datePriceRules = this.state.datePriceRules.filter(r => r.id !== id);
+        localStorage.setItem('biz_date_price_rules', JSON.stringify(this.state.datePriceRules));
+        this.renderPriceEditor();
+        this.renderStatementUI();
+      });
+    });
+  }
+
+  _openPriceSession(fromDate, toDate) {
+    // Collect all unique items active in this date range
+    const itemMap = new Map();
+    this.state.selectedCustomerIds.forEach(cid => {
+      (this.state.dataStore.invoices[cid]?.records || []).forEach(inv => {
+        // Date filter
+        if (fromDate || toDate) {
+          const d = new Date(inv.date);
+          if (fromDate && d < new Date(fromDate)) return;
+          if (toDate   && d > new Date(toDate))   return;
+        }
         const det = this.state.invoiceDetailsCache[inv.invoice_id];
-        if (!det || !det.line_items) return;
-        det.line_items.forEach(li => {
-          const key = li.name;
-          if (!itemMap.has(key)) {
+        (det?.line_items || []).forEach(li => {
+          if (!itemMap.has(li.name)) {
             const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
-            itemMap.set(key, { name: li.name, origRate: parseFloat(li.rate || 0), groupName });
+            itemMap.set(li.name, { name: li.name, origRate: parseFloat(li.rate || 0), groupName, newRate: null });
           }
         });
       });
     });
 
     if (itemMap.size === 0) {
-      list.innerHTML = '<div class="price-editor-empty">No invoice line items found.<br>Invoice details may still be loading.</div>';
+      // No items in range — still open session so user can add manually
+    }
+
+    // Check conflicts with existing rules
+    const conflicts = [];
+    if (fromDate || toDate) {
+      (this.state.datePriceRules || []).forEach(rule => {
+        const rFrom = rule.fromDate ? new Date(rule.fromDate) : null;
+        const rTo   = rule.toDate   ? new Date(rule.toDate)   : null;
+        const sFrom = fromDate      ? new Date(fromDate)       : null;
+        const sTo   = toDate        ? new Date(toDate)         : null;
+        // Overlap detection
+        const startsBefore = !sFrom || !rTo   || sFrom <= rTo;
+        const endsAfter    = !sTo   || !rFrom || sTo   >= rFrom;
+        if (startsBefore && endsAfter) conflicts.push(rule);
+      });
+    }
+
+    if (conflicts.length > 0) {
+      // Build conflict warning UI
+      this._showConflictWarning(conflicts, fromDate, toDate, itemMap);
       return;
     }
 
-    // Group items by groupName
+    this.state.activePriceSession = { fromDate, toDate, items: itemMap };
+    this.renderPriceEditor();
+  }
+
+  _showConflictWarning(conflicts, fromDate, toDate, itemMap) {
+    const list = this.views.priceEditorList;
+    if (!list) return;
+    const conflictRows = conflicts.map(r => `
+      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:6px 9px;margin-bottom:4px;">
+        <div style="font-size:0.62rem;font-weight:700;color:#fbbf24;">${r.itemName}</div>
+        <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);margin-top:1px;">${r.fromDate||'open'} → ${r.toDate||'open'} · ${this.state.currency} ${parseFloat(r.price).toFixed(2)}</div>
+      </div>`).join('');
+
+    list.innerHTML = `
+      <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+        <div style="font-size:0.68rem;font-weight:800;color:#fbbf24;margin-bottom:6px;">⚠ Date Range Conflict</div>
+        <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-bottom:8px;line-height:1.5;">The selected range overlaps with ${conflicts.length} existing rule(s). Proceeding will create new rules alongside the existing ones.</div>
+        <div style="margin-bottom:8px;">${conflictRows}</div>
+        <div style="display:flex;gap:6px;">
+          <button id="pe-conflict-proceed" style="flex:1;padding:6px;background:#d97706;color:white;border:none;border-radius:6px;font-size:0.65rem;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;">Continue Anyway</button>
+          <button id="pe-conflict-cancel"  style="flex:1;padding:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:0.65rem;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;">Go Back</button>
+        </div>
+      </div>`;
+    list.querySelector('#pe-conflict-proceed')?.addEventListener('click', () => {
+      this.state.activePriceSession = { fromDate, toDate, items: itemMap };
+      this.renderPriceEditor();
+    });
+    list.querySelector('#pe-conflict-cancel')?.addEventListener('click', () => {
+      this.renderPriceEditor();
+    });
+  }
+
+  _buildPriceItemEditorHtml(session) {
+    const from = session.fromDate || 'All';
+    const to   = session.toDate   || 'All';
+    const items = Array.from(session.items.values());
+    const rules = this.state.datePriceRules || [];
+
+    // Group items
     const groups = new Map();
-    itemMap.forEach(item => {
+    items.forEach(item => {
       const g = item.groupName || 'Items';
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g).push(item);
     });
 
-    let html = '';
-    groups.forEach((items, groupName) => {
-      html += `<div class="price-group-label">${groupName}</div>`;
-      items.forEach(item => {
-        const overrideVal = this.state.priceOverrides[item.name];
-        const isOverridden = overrideVal !== undefined;
-        const displayRate = isOverridden ? overrideVal : item.origRate;
-        html += `
-          <div class="price-item-row${isOverridden ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}">
-            <div class="price-item-name">${item.name}</div>
-            <div class="price-input-wrap">
-              <span class="price-currency-tag">${this.state.currency}</span>
-              <input
-                type="number"
-                class="price-input${isOverridden ? ' changed' : ''}"
-                data-item="${encodeURIComponent(item.name)}"
-                data-orig="${item.origRate}"
-                value="${displayRate.toFixed(2)}"
-                step="0.01"
-                min="0"
-              >
-            </div>
-            ${isOverridden ? `<div class="price-orig-val">orig: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
-          </div>`;
+    let rowsHtml = '';
+    if (items.length === 0) {
+      rowsHtml = '<div style="font-size:0.62rem;color:rgba(255,255,255,0.2);text-align:center;padding:10px 0;">No items found in this date range</div>';
+    } else {
+      groups.forEach((gItems, gName) => {
+        rowsHtml += `<div class="price-group-label">${gName}</div>`;
+        gItems.forEach(item => {
+          const saved = rules.find(r => r.itemName === item.name &&
+            (r.fromDate||null) === (session.fromDate||null) &&
+            (r.toDate  ||null) === (session.toDate  ||null));
+          const displayVal = item.newRate !== null ? item.newRate
+            : saved ? saved.price : item.origRate;
+          const isSet = item.newRate !== null || saved;
+          rowsHtml += `
+            <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}">
+              <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
+                <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset this item" style="background:rgba(220,38,38,0.12);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 5px;font-size:0.65rem;cursor:pointer;flex-shrink:0;line-height:1;">↺</button>
+                <div class="price-item-name" style="flex:1;">${item.name}</div>
+              </div>
+              <div class="price-input-wrap">
+                <span class="price-currency-tag">${this.state.currency}</span>
+                <input type="number" class="pe-item-input${isSet ? ' changed' : ''}"
+                  data-item="${encodeURIComponent(item.name)}"
+                  data-orig="${item.origRate}"
+                  value="${parseFloat(displayVal).toFixed(2)}"
+                  step="0.01" min="0">
+              </div>
+              ${isSet ? `<div class="price-orig-val">zoho: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
+            </div>`;
+        });
+      });
+    }
+
+    return `
+      <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.18);border-radius:7px;padding:7px 10px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-size:0.55rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:rgba(255,255,255,0.3);">Editing Range</div>
+          <div style="font-size:0.65rem;font-weight:700;color:#93c5fd;margin-top:1px;">${from} → ${to}</div>
+        </div>
+        <button id="pe-back-btn" style="background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 8px;font-size:0.6rem;cursor:pointer;font-family:'DM Sans',sans-serif;">← Back</button>
+      </div>
+      <div id="pe-item-rows">${rowsHtml}</div>
+      <div style="display:flex;gap:5px;margin-top:10px;">
+        <button id="pe-save-rules-btn" style="flex:1;padding:7px;background:linear-gradient(135deg,#065f46,#059669);color:white;border:none;border-radius:7px;font-size:0.68rem;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;">
+          ✓ Save Rules
+        </button>
+        <button id="pe-reset-all-btn" style="padding:7px 10px;background:rgba(220,38,38,0.12);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:7px;font-size:0.68rem;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;" title="Reset all items in this range">↺</button>
+      </div>`;
+  }
+
+  _bindPriceItemEditor(list, session) {
+    // Live preview on input
+    list.querySelectorAll('.pe-item-input').forEach(input => {
+      input.addEventListener('input', () => {
+        const name = decodeURIComponent(input.dataset.item);
+        const newRate = parseFloat(input.value);
+        const item = session.items.get(name);
+        if (item) item.newRate = isNaN(newRate) ? null : newRate;
+        // Live preview in statement
+        if (!isNaN(newRate)) {
+          this.state.priceOverrides[name] = newRate;
+        } else {
+          delete this.state.priceOverrides[name];
+        }
+        this.renderStatementUI();
       });
     });
 
-    list.innerHTML = html;
-
-    // Bind live input events
-    list.querySelectorAll('.price-input').forEach(input => {
-      input.addEventListener('input', () => {
-        const itemName = decodeURIComponent(input.dataset.item);
-        const origRate = parseFloat(input.dataset.orig);
-        const newRate = parseFloat(input.value);
-        const row = input.closest('.price-item-row');
-
-        if (!isNaN(newRate) && newRate !== origRate) {
-          this.state.priceOverrides[itemName] = newRate;
-          row?.classList.add('overridden');
-          input.classList.add('changed');
-          // Update orig display
-          let origDiv = row?.querySelector('.price-orig-val');
-          if (!origDiv && row) {
-            origDiv = document.createElement('div');
-            origDiv.className = 'price-orig-val';
-            row.appendChild(origDiv);
-          }
-          if (origDiv) origDiv.textContent = `orig: ${origRate.toLocaleString(undefined,{minimumFractionDigits:2})}`;
-        } else {
-          delete this.state.priceOverrides[itemName];
-          row?.classList.remove('overridden');
-          input.classList.remove('changed');
-          const origDiv = row?.querySelector('.price-orig-val');
-          if (origDiv) origDiv.remove();
-        }
-
+    // Per-item reset
+    list.querySelectorAll('.pe-reset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = decodeURIComponent(btn.dataset.item);
+        const item = session.items.get(name);
+        if (item) { item.newRate = null; }
+        delete this.state.priceOverrides[name];
+        const row = btn.closest('.price-item-row');
+        const inp = row?.querySelector('.pe-item-input');
+        if (inp) { inp.value = parseFloat(inp.dataset.orig).toFixed(2); inp.classList.remove('changed'); }
+        row?.classList.remove('overridden');
+        row?.querySelector('.price-orig-val')?.remove();
         this.renderStatementUI();
       });
+    });
+
+    // Back button
+    list.querySelector('#pe-back-btn')?.addEventListener('click', () => {
+      this.state.activePriceSession = null;
+      // Clear priceOverrides set during this session preview
+      this.state.priceOverrides = {};
+      this.renderPriceEditor();
+      this.renderStatementUI();
+    });
+
+    // Reset all in range
+    list.querySelector('#pe-reset-all-btn')?.addEventListener('click', () => {
+      session.items.forEach(item => { item.newRate = null; });
+      this.state.priceOverrides = {};
+      this.renderPriceEditor();
+      this.renderStatementUI();
+    });
+
+    // Save rules
+    list.querySelector('#pe-save-rules-btn')?.addEventListener('click', () => {
+      let savedCount = 0;
+      session.items.forEach((item, name) => {
+        if (item.newRate !== null && item.newRate !== item.origRate) {
+          // Remove any existing rule for same item + same range
+          this.state.datePriceRules = this.state.datePriceRules.filter(r =>
+            !(r.itemName === name &&
+              (r.fromDate||null) === (session.fromDate||null) &&
+              (r.toDate  ||null) === (session.toDate  ||null))
+          );
+          this.state.datePriceRules.push({
+            id: Date.now().toString() + '_' + Math.random().toString(36).slice(2,6),
+            itemName: name,
+            fromDate: session.fromDate || null,
+            toDate:   session.toDate   || null,
+            price:    item.newRate,
+          });
+          savedCount++;
+        }
+      });
+      localStorage.setItem('biz_date_price_rules', JSON.stringify(this.state.datePriceRules));
+      // End session, go back to picker
+      this.state.activePriceSession = null;
+      this.state.priceOverrides = {};
+      this.renderPriceEditor();
+      this.renderStatementUI();
+      this.log(`${savedCount} price rule(s) saved`);
     });
   }
 
   resetAllPrices() {
     this.state.priceOverrides = {};
+    this.state.activePriceSession = null;
+    this.state.datePriceRules = [];
+    localStorage.removeItem('biz_date_price_rules');
     this.renderPriceEditor();
     this.renderStatementUI();
   }
@@ -1230,6 +1437,7 @@ class BizSensePro {
                 <div style="font-size:20px;font-weight:900;letter-spacing:-0.02em;">${this.state.currency} ${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</div>
               </div>
               <div style="margin-top:8px;font-size:8px;font-weight:700;color:#94a3b8;">Dated: ${new Date().toLocaleDateString()}</div>
+              ${this.state.stampMode !== 'none' ? this._renderStampHtml() : ''}
             </div>
           </div>
           ` : ''}
@@ -1239,6 +1447,7 @@ class BizSensePro {
             <div style="flex:1;">
               <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Account</div>
               <div style="font-size:16px;font-weight:900;color:${theme.primary};">${clientName}</div>
+              ${customer.contact_id ? `<div style="font-size:8px;font-weight:700;color:#94a3b8;margin-top:3px;font-family:'DM Mono',monospace;letter-spacing:0.06em;">ID: ${customer.contact_id}</div>` : ''}
               ${customer.email ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.email}</div>` : ''}
               ${customer.mobile || customer.phone ? `<div style="font-size:9px;color:#64748b;">${customer.mobile || customer.phone}</div>` : ''}
               ${(customer.billing_address && customer.billing_address.address) ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.billing_address.address}${customer.billing_address.city ? ', '+customer.billing_address.city : ''}</div>` : ''}
@@ -1267,7 +1476,6 @@ class BizSensePro {
           ${summaryHtml}
           ${notesHtml}
           ${this.state.stampMode === 'final' ? this._renderTermsHtml() : ''}
-          ${this.state.stampMode !== 'none' ? this._renderStampHtml() : ''}
         </div>
       `;
     });
@@ -1505,27 +1713,25 @@ class BizSensePro {
   // LOADING
   // ─────────────────────────────────────────
   showLoading(pct, txt) {
-    const lc = this.views.loadingContainer || document.getElementById('loading-container');
-    const lp = this.views.loadingProgress || document.getElementById('loading-progress');
-    const lt = this.views.loadingText || document.getElementById('loading-text');
+    const lc = document.getElementById('loading-container');
+    const lp = document.getElementById('loading-progress');
+    const lt = document.getElementById('loading-bar-text');
     if (lc) lc.classList.remove('view-hidden');
-    if (lp) lp.style.width = `${pct}%`;
-    if (lt) { lt.textContent = txt.toUpperCase(); lt.style.display = 'block'; }
+    if (lp) { lp.style.width = `${pct}%`; }
+    if (lt) lt.textContent = txt.toUpperCase();
     if (this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
     if (this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
   }
 
   hideLoading() {
-    const lp = this.views.loadingProgress || document.getElementById('loading-progress');
+    const lp = document.getElementById('loading-progress');
     if (lp) lp.style.width = '100%';
     setTimeout(() => {
-      const lc = this.views.loadingContainer || document.getElementById('loading-container');
-      const lt = this.views.loadingText || document.getElementById('loading-text');
+      const lc = document.getElementById('loading-container');
       if (lc) lc.classList.add('view-hidden');
-      if (lt) lt.style.display = 'none';
       if (this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
       if (this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
-    }, 600);
+    }, 700);
   }
 
   // ─────────────────────────────────────────
@@ -1542,45 +1748,40 @@ class BizSensePro {
   // ─────────────────────────────────────────
   // STAMP RENDERING
   // ─────────────────────────────────────────
+  // Inline stamp HTML — sits inside the SOA header right column, no absolute positioning
   _renderStampHtml() {
+    if (this.state.stampMode === 'none') return '';
     const sc = this.state.stampConfig;
     const isD = this.state.stampMode === 'draft';
     const col = isD ? sc.draftColor : sc.finalColor;
     const txt = isD ? 'DRAFT' : 'FINAL';
-    let posStyle = '';
-    if (sc.stampPosition === 'center') {
-      posStyle = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(' + sc.stampRotation + ');';
-    } else if (sc.stampPosition === 'top-right') {
-      posStyle = 'position:absolute;top:30mm;right:14mm;transform:rotate(' + sc.stampRotation + ');';
-    } else {
-      posStyle = 'position:absolute;bottom:40mm;right:14mm;transform:rotate(' + sc.stampRotation + ');';
-    }
-    return `
-      <div style="${posStyle}pointer-events:none;z-index:20;text-align:center;width:auto;">
-        <div style="
-          display:inline-block;
-          font-size:${sc.stampFontSize};
-          font-weight:900;
-          color:${col};
-          border:${sc.stampBorderWidth} solid ${col};
-          padding:6px 18px;
-          border-radius:6px;
-          opacity:${sc.stampOpacity};
-          letter-spacing:0.18em;
-          font-family:'DM Sans',sans-serif;
-          text-transform:uppercase;
-          user-select:none;
-          line-height:1;
-          white-space:nowrap;
-        ">${txt}</div>
-      </div>`;
+    return `<div data-biz-stamp="1" style="margin-top:10px;text-align:right;pointer-events:none;">
+      <span style="
+        display:inline-block;
+        font-size:${sc.stampFontSize};
+        font-weight:900;
+        color:${col};
+        border:${sc.stampBorderWidth} solid ${col};
+        padding:5px 16px;
+        border-radius:5px;
+        opacity:${sc.stampOpacity};
+        letter-spacing:0.18em;
+        font-family:'DM Sans',sans-serif;
+        text-transform:uppercase;
+        user-select:none;
+        line-height:1;
+        white-space:nowrap;
+        transform:rotate(${sc.stampRotation});
+        display:inline-block;
+      ">${txt}</span>
+    </div>`;
   }
 
   _renderTermsHtml() {
     const tc = this.state.termsConfig;
     const lines = (this.state.termsContent || '').split('\n').filter(l => l.trim());
     return `
-      <div style="margin-top:1.5rem;padding:12px 16px;background:${tc.bgColor};border-radius:8px;border:1px solid ${tc.borderColor};page-break-inside:avoid;">
+      <div data-biz-tc="1" style="margin-top:1.5rem;padding:12px 16px;background:${tc.bgColor};border-radius:8px;border:1px solid ${tc.borderColor};page-break-inside:avoid;">
         ${tc.showTitle ? `<div style="font-size:${tc.titleFontSize};font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${tc.color};margin-bottom:8px;">${tc.titleText}</div>` : ''}
         <ol style="margin:0;padding-left:18px;font-size:${tc.fontSize};color:${tc.color};line-height:1.7;">
           ${lines.map(l => `<li>${l.replace(/^\d+\.\s*/, '')}</li>`).join('')}
@@ -1592,86 +1793,89 @@ class BizSensePro {
   // MULTI-PAGE A4 SPLITTING
   // ─────────────────────────────────────────
   _splitIntoA4Pages() {
-    // A4 content height in px at 96dpi: 297mm - 24mm padding = 273mm ≈ 1033px
-    const A4_H = 1033;
-    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
-    pages.forEach(page => {
-      // Remove overflow:hidden so we can measure
-      page.style.overflow = 'visible';
-      page.style.minHeight = `${297 * 3.7795}px`;
-      const naturalH = page.scrollHeight;
-      if (naturalH <= A4_H * 1.1) return; // fits in 1 page
+    // Wait two animation frames so DOM layout fully settles before measuring
+    requestAnimationFrame(() => requestAnimationFrame(() => this._doSplit()));
+  }
 
-      // Get all direct table rows and other block children to slice
+  _doSplit() {
+    // A4 usable content at 96dpi: (297mm - 24mm padding) * 3.7795px/mm ≈ 1031px
+    const A4_H = 1031;
+    const pages = Array.from(this.targets.renderArea.querySelectorAll('.a4-page'));
+    let didSplit = false;
+
+    pages.forEach(page => {
+      page.style.overflow = 'visible';
+      const naturalH = page.scrollHeight;
+      if (naturalH <= A4_H * 1.04) return; // fits comfortably
+
       const tbody = page.querySelector('.ledger-rows');
       if (!tbody) return;
-
       const rows = Array.from(tbody.querySelectorAll('tr'));
-      if (rows.length === 0) return;
+      if (!rows.length) return;
 
-      // Measure row heights
-      let pageH = 0;
-      // Estimate header+customer block height
       const tableEl = tbody.closest('table');
-      const preTableHeight = tableEl ? tableEl.offsetTop : 200;
-      pageH = preTableHeight + 60; // thead height
+      const theadEl = tableEl?.querySelector('thead');
+      const preTableH = tableEl ? tableEl.offsetTop : 200;
+      const theadH = theadEl ? theadEl.offsetHeight : 44;
 
+      let pageH = preTableH + theadH;
       const pageChunks = [[]];
+
       rows.forEach(row => {
-        const rh = row.offsetHeight || 36;
+        const rh = Math.max(row.offsetHeight || 0, 24);
         if (pageH + rh > A4_H && pageChunks[pageChunks.length - 1].length > 0) {
           pageChunks.push([]);
-          pageH = 60; // thead for continuation pages
+          pageH = theadH;
         }
         pageChunks[pageChunks.length - 1].push(row);
         pageH += rh;
       });
 
-      if (pageChunks.length <= 1) return; // no split needed
+      if (pageChunks.length <= 1) return;
 
-      // Clone the thead HTML
-      const theadHtml = tableEl?.querySelector('thead')?.outerHTML || '';
+      const theadHtml = theadEl?.outerHTML || '';
       const tableStyle = tableEl?.getAttribute('style') || '';
-
-      // Get content before and after table
       const beforeTable = this._getContentBefore(page, tableEl);
-      const afterTable = this._getContentAfter(page, tableEl);
+      const afterTable  = this._getContentAfter(page, tableEl);
+      const termsHtml   = this.state.stampMode === 'final' ? this._renderTermsHtml() : '';
+      const totalPages  = pageChunks.length;
 
-      // Stamp HTML
-      const stampHtml = this.state.stampMode !== 'none' ? this._renderStampHtml() : '';
-      const termsHtml = this.state.stampMode === 'final' ? this._renderTermsHtml() : '';
+      // Build tiny continuation-page stamp (inline, no absolute)
+      const contStamp = this.state.stampMode !== 'none' ? (() => {
+        const sc = this.state.stampConfig;
+        const isD = this.state.stampMode === 'draft';
+        const col = isD ? sc.draftColor : sc.finalColor;
+        const txt = isD ? 'DRAFT' : 'FINAL';
+        return `<span data-biz-stamp="1" style="display:inline-block;font-size:10px;font-weight:900;color:${col};border:2px solid ${col};padding:2px 8px;border-radius:4px;opacity:${sc.stampOpacity};letter-spacing:0.15em;font-family:'DM Sans',sans-serif;transform:rotate(${sc.stampRotation});margin-left:auto;">${txt}</span>`;
+      })() : '';
 
-      // Build replacement pages
       let pagesHtml = '';
       pageChunks.forEach((chunk, pi) => {
         const isLast = pi === pageChunks.length - 1;
         const rowsHtml = chunk.map(r => r.outerHTML).join('');
-        const pageNum = pi + 1;
-        const totalPages = pageChunks.length;
+        const pageNum  = pi + 1;
+        const contHeader = pi > 0 ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">
+            <div style="font-size:9px;font-weight:700;color:#94a3b8;">CONTINUED — PAGE ${pageNum} OF ${totalPages}</div>
+            ${contStamp}
+          </div>` : '';
         pagesHtml += `
-          <div class="a4-page" style="position:relative;overflow:visible;min-height:${297 * 3.7795}px;">
-            ${pi === 0 ? beforeTable : `
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">
-                <div style="font-size:9px;font-weight:700;color:#94a3b8;">CONTINUED — PAGE ${pageNum} OF ${totalPages}</div>
-              </div>`}
-            <table style="${tableStyle}">
-              ${theadHtml}
-              <tbody class="ledger-rows">${rowsHtml}</tbody>
-            </table>
+          <div class="a4-page" style="overflow:visible;">
+            ${pi === 0 ? beforeTable : contHeader}
+            <table style="${tableStyle}">${theadHtml}<tbody class="ledger-rows">${rowsHtml}</tbody></table>
             ${isLast ? afterTable : ''}
-            ${isLast ? termsHtml : ''}
-            ${stampHtml}
+            ${isLast ? termsHtml  : ''}
           </div>`;
       });
 
-      // Replace the original page
       const wrapper = document.createElement('div');
       wrapper.innerHTML = pagesHtml;
       page.replaceWith(...wrapper.children);
+      didSplit = true;
     });
 
-    // Re-apply zoom
-    setTimeout(() => this.autoFitZoom(), 50);
+    if (didSplit) setTimeout(() => this.autoFitZoom(), 80);
+    else this.autoFitZoom();
   }
 
   _getContentBefore(page, tableEl) {
@@ -1688,114 +1892,12 @@ class BizSensePro {
     let html = '';
     let el = tableEl.nextElementSibling;
     while (el) {
-      // Skip stamp divs — we add them explicitly
-      const txt = el.textContent?.trim();
-      const isDraft = txt === 'DRAFT' || txt === 'FINAL';
-      if (!isDraft) html += el.outerHTML;
+      // Skip T&C blocks (regenerated per-page) and any legacy stamp divs
+      const skip = el.hasAttribute('data-biz-tc') || el.hasAttribute('data-biz-stamp');
+      if (!skip) html += el.outerHTML;
       el = el.nextElementSibling;
     }
     return html;
-  }
-
-  // ─────────────────────────────────────────
-  // DATE PRICE RULES MANAGER
-  // ─────────────────────────────────────────
-  saveDatePriceRules() {
-    localStorage.setItem('biz_date_price_rules', JSON.stringify(this.state.datePriceRules));
-    this.renderStatementUI();
-  }
-
-  addDatePriceRule(itemName, fromDate, toDate, price) {
-    const rule = {
-      id: Date.now().toString(),
-      itemName,
-      fromDate: fromDate || null,
-      toDate: toDate || null,
-      price: parseFloat(price)
-    };
-    this.state.datePriceRules.push(rule);
-    this.saveDatePriceRules();
-  }
-
-  removeDatePriceRule(id) {
-    this.state.datePriceRules = this.state.datePriceRules.filter(r => r.id !== id);
-    this.saveDatePriceRules();
-  }
-
-  renderDatePriceRulesUI() {
-    const container = document.getElementById('date-price-rules-list');
-    if (!container) return;
-
-    // Collect items from loaded invoices
-    const itemNames = new Set();
-    this.state.selectedCustomerIds.forEach(id => {
-      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
-        const det = this.state.invoiceDetailsCache[inv.invoice_id];
-        (det?.line_items || []).forEach(li => itemNames.add(li.name));
-      });
-    });
-    // Also add from existing rules
-    (this.state.datePriceRules || []).forEach(r => itemNames.add(r.itemName));
-
-    const itemOpts = Array.from(itemNames).map(n => `<option value="${n}">${n}</option>`).join('');
-    const existing = (this.state.datePriceRules || []);
-
-    container.innerHTML = `
-      <div style="margin-bottom:10px;">
-        <div class="modal-label" style="margin-bottom:6px;color:rgba(255,255,255,0.35);">Add Date Price Rule</div>
-        <select id="dpr-item" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:6px 8px;font-size:0.72rem;margin-bottom:6px;font-family:'DM Sans',sans-serif;">
-          <option value="">-- Select Item --</option>${itemOpts}
-        </select>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px;">
-          <div>
-            <div style="font-size:0.58rem;color:rgba(255,255,255,0.25);margin-bottom:3px;">From Date</div>
-            <input type="date" id="dpr-from" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:5px 7px;font-size:0.7rem;font-family:'DM Sans',sans-serif;">
-          </div>
-          <div>
-            <div style="font-size:0.58rem;color:rgba(255,255,255,0.25);margin-bottom:3px;">To Date</div>
-            <input type="date" id="dpr-to" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:5px 7px;font-size:0.7rem;font-family:'DM Sans',sans-serif;">
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;align-items:center;">
-          <span style="font-size:0.58rem;color:rgba(255,255,255,0.25);font-family:'DM Mono',monospace;">${this.state.currency}</span>
-          <input type="number" id="dpr-price" placeholder="Price" step="0.01" min="0" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:5px 7px;font-size:0.72rem;font-family:'DM Mono',monospace;outline:none;">
-          <button id="dpr-add-btn" style="background:#1d4ed8;color:white;border:none;border-radius:6px;padding:6px 10px;font-size:0.65rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;">+ Add</button>
-        </div>
-      </div>
-      <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;">
-        <div style="font-size:0.55rem;font-weight:800;text-transform:uppercase;letter-spacing:0.18em;color:rgba(255,255,255,0.18);margin-bottom:6px;">Active Rules (${existing.length})</div>
-        ${existing.length === 0 ? '<div style="font-size:0.65rem;color:rgba(255,255,255,0.2);text-align:center;padding:10px 0;">No rules yet</div>' : ''}
-        ${existing.map(r => `
-          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:7px 9px;margin-bottom:5px;display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:0.68rem;font-weight:700;color:#fbbf24;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.itemName}</div>
-              <div style="font-size:0.58rem;color:rgba(255,255,255,0.3);margin-top:2px;">
-                ${r.fromDate || '∞'} → ${r.toDate || '∞'} &nbsp;|&nbsp;
-                <span style="color:#34d399;font-family:'DM Mono',monospace;">${this.state.currency} ${parseFloat(r.price).toFixed(2)}</span>
-              </div>
-            </div>
-            <button data-rule-id="${r.id}" class="dpr-del-btn" style="background:rgba(220,38,38,0.12);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:5px;padding:3px 7px;font-size:0.6rem;cursor:pointer;flex-shrink:0;">✕</button>
-          </div>`).join('')}
-      </div>`;
-
-    // Bind add button
-    const addBtn = container.querySelector('#dpr-add-btn');
-    if (addBtn) {
-      addBtn.onclick = () => {
-        const item = container.querySelector('#dpr-item')?.value;
-        const from = container.querySelector('#dpr-from')?.value;
-        const to = container.querySelector('#dpr-to')?.value;
-        const price = container.querySelector('#dpr-price')?.value;
-        if (!item) { alert('Select an item first'); return; }
-        if (!price || isNaN(parseFloat(price))) { alert('Enter a valid price'); return; }
-        this.addDatePriceRule(item, from, to, price);
-        this.renderDatePriceRulesUI();
-      };
-    }
-    // Bind delete buttons
-    container.querySelectorAll('.dpr-del-btn').forEach(btn => {
-      btn.onclick = () => { this.removeDatePriceRule(btn.dataset.ruleId); this.renderDatePriceRulesUI(); };
-    });
   }
 
   // ─────────────────────────────────────────
