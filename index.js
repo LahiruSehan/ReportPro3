@@ -35,6 +35,30 @@ class BizSensePro {
         address: '', phone: '', email: '', website: '', reg: ''
       })),
       notesContent: localStorage.getItem('biz_notes') || 'Please ensure payment is made by the due date. Thank you for your business.',
+      stampMode: localStorage.getItem('biz_stamp') || 'none', // 'none' | 'draft' | 'final'
+      stampConfig: JSON.parse(localStorage.getItem('biz_stamp_config') || JSON.stringify({
+        draftColor: '#dc2626',
+        finalColor: '#059669',
+        stampSize: '88px',
+        stampOpacity: '0.18',
+        stampRotation: '-32deg',
+        stampBorderWidth: '5px',
+        stampFontSize: '52px',
+        stampPosition: 'center', // 'center' | 'top-right' | 'bottom-right'
+      })),
+      termsContent: localStorage.getItem('biz_terms') || '1. Payment is due within 30 days of invoice date.\n2. Late payments may incur a surcharge of 2% per month.\n3. All disputes must be raised in writing within 7 days of statement receipt.\n4. This statement supersedes all previous correspondence regarding outstanding balances.\n5. For queries, contact our accounts department immediately.',
+      termsConfig: JSON.parse(localStorage.getItem('biz_terms_config') || JSON.stringify({
+        fontSize: '8px',
+        titleFontSize: '9px',
+        color: '#64748b',
+        borderColor: '#e2e8f0',
+        bgColor: '#f8fafc',
+        showTitle: true,
+        titleText: 'Terms & Conditions',
+      })),
+      searchField: localStorage.getItem('biz_search_field') || 'name', // 'name' | 'id' | 'phone'
+      datePriceRules: JSON.parse(localStorage.getItem('biz_date_price_rules') || '[]'),
+      // Each rule: { id, itemName, fromDate, toDate, price }
       builderConfig: JSON.parse(localStorage.getItem('builder_config') || JSON.stringify({
         showHeader: true,
         showCustomer: true,
@@ -42,7 +66,8 @@ class BizSensePro {
         showPayments: true,
         showCredits: true,
         showSummary: true,
-        showNotes: true,        formulaOverdue: true,
+        showNotes: true,
+        formulaOverdue: true,
       })),
       colors: [
         { name: 'blue',    primary: '#1d4ed8', accent: '#3b82f6', light: '#eff6ff' },
@@ -242,6 +267,12 @@ class BizSensePro {
     if (this.btns.copyEmail) this.btns.copyEmail.onclick = () => this.copyEmailToClipboard();
     if (this.btns.clearAll) this.btns.clearAll.onclick = () => this.clearAllCustomers();
     if (this.btns.openSettings) this.btns.openSettings.onclick = () => this.views.settingsModal.classList.remove('view-hidden');
+    if (this.btns.toggleBuilder) this.btns.toggleBuilder.addEventListener('click', () => {
+      setTimeout(() => {
+        this.renderDatePriceRulesUI();
+        this._populateBuilderStampTCFields();
+      }, 50);
+    }, true);
     if (this.btns.closeSettings) this.btns.closeSettings.onclick = () => this.views.settingsModal.classList.add('view-hidden');
     if (this.btns.applySettings) this.btns.applySettings.onclick = () => this.applySettings();
     if (this.btns.zoomIn) this.btns.zoomIn.onclick = () => this.setZoom(this.state.zoom + 0.1);
@@ -267,6 +298,33 @@ class BizSensePro {
     if (this.inputs.dateRangePreset) this.inputs.dateRangePreset.onchange = (e) => this.handleDatePreset(e.target.value);
     if (this.inputs.dateStart) this.inputs.dateStart.onchange = () => this.updateDateFilter();
     if (this.inputs.dateEnd) this.inputs.dateEnd.onchange = () => this.updateDateFilter();
+    // Stamp mode radio buttons
+    document.querySelectorAll('input[name="stamp-mode"]').forEach(r => {
+      r.onchange = () => {
+        this.state.stampMode = r.value;
+        localStorage.setItem('biz_stamp', r.value);
+        this.renderStatementUI();
+      };
+    });
+
+    // Search field selector
+    const searchFieldBtns = document.querySelectorAll('.search-field-btn');
+    searchFieldBtns.forEach(btn => {
+      btn.onclick = () => {
+        this.state.searchField = btn.dataset.field;
+        localStorage.setItem('biz_search_field', btn.dataset.field);
+        searchFieldBtns.forEach(b => {
+          const isActive = b === btn;
+          b.style.background = isActive ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)';
+          b.style.color = isActive ? '#93c5fd' : 'rgba(255,255,255,0.3)';
+        });
+        if (this.inputs.search) this.inputs.search.value = '';
+        this.filterCustomers('');
+        const ph = { name: 'Search by name…', id: 'Search by customer ID…', phone: 'Search by phone…' };
+        if (this.inputs.search) this.inputs.search.placeholder = ph[this.state.searchField] || 'Search…';
+      };
+    });
+
     if (this.inputs.toggleSummary) this.inputs.toggleSummary.onchange = () => {
       this.state.isSummaryMode = this.inputs.toggleSummary.checked;
       this.renderStatementUI();
@@ -469,12 +527,25 @@ class BizSensePro {
   async fetchCustomers() {
     this.showLoading(40, 'Loading customers…');
     try {
-      const res = await this.rawRequest(`https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}`);
-      if (res && res.contacts) {
-        this.state.customers = res.contacts;
-        this.renderCustomerList();
-        this.log(`${res.contacts.length} customers loaded`);
+      let allContacts = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const res = await this.rawRequest(
+          `https://www.zohoapis.${this.config.region}/books/v3/contacts?contact_type=customer&status=active&organization_id=${this.state.selectedOrgId}&page=${page}&per_page=200`
+        );
+        if (res && res.contacts && res.contacts.length > 0) {
+          allContacts = allContacts.concat(res.contacts);
+          hasMore = res.page_context?.has_more_page === true;
+          page++;
+          this.showLoading(40, `Loading customers… (${allContacts.length})`);
+        } else {
+          hasMore = false;
+        }
       }
+      this.state.customers = allContacts;
+      this.renderCustomerList();
+      this.log(`${allContacts.length} customers loaded`);
     } catch (e) { this.log(`Error: ${e.message}`); }
     finally { this.hideLoading(); }
   }
@@ -566,6 +637,7 @@ class BizSensePro {
           ${badgeHtml}
         </div>
       `;
+      div.dataset.custId = c.contact_id;
       div.onclick = () => this.handleCustomerClick(c.contact_id);
       this.views.customerList.appendChild(div);
     });
@@ -587,6 +659,7 @@ class BizSensePro {
       this.updateObOverrideInputVisual(id);
       if (this.views.priceEditorPanel) this.views.priceEditorPanel.style.display = 'flex';
       this.renderPriceEditor();
+      this.renderDatePriceRulesUI();
     }
     this.renderCustomerList();
     this.updateUIVisuals();
@@ -602,8 +675,18 @@ class BizSensePro {
   }
 
   filterCustomers(term) {
+    const field = this.state.searchField || 'name';
+    const t = term.toLowerCase();
+    const visible = this.state.customers.filter(c => {
+      if (!t) return true;
+      if (field === 'name') return (c.contact_name || '').toLowerCase().includes(t);
+      if (field === 'id') return (c.contact_id || '').toLowerCase().includes(t) || (c.cf_customer_id || '').toLowerCase().includes(t);
+      if (field === 'phone') return (c.mobile || c.phone || c.phone_mobile_formatted || '').toLowerCase().includes(t);
+      return (c.contact_name || '').toLowerCase().includes(t);
+    }).map(c => c.contact_id);
     this.views.customerList?.querySelectorAll('.cust-item').forEach(item => {
-      item.style.display = item.querySelector('.cust-name')?.textContent?.toLowerCase().includes(term.toLowerCase()) ? '' : 'none';
+      const id = item.dataset.custId;
+      item.style.display = visible.includes(id) ? '' : 'none';
     });
   }
 
@@ -636,9 +719,40 @@ class BizSensePro {
   // ─────────────────────────────────────────
   // BUILDER CONFIG
   // ─────────────────────────────────────────
+  _populateBuilderStampTCFields() {
+    const sc = this.state.stampConfig;
+    const tc = this.state.termsConfig;
+    const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    const setC = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
+    setV('stamp-draft-color', sc.draftColor);
+    setV('stamp-final-color', sc.finalColor);
+    setV('stamp-font-size', sc.stampFontSize);
+    setV('stamp-position', sc.stampPosition);
+    setV('stamp-rotation', sc.stampRotation);
+    setV('stamp-opacity', sc.stampOpacity);
+    setV('stamp-border-width', sc.stampBorderWidth);
+    setC('tc-show-title', tc.showTitle);
+    setV('tc-title-text', tc.titleText);
+    setV('tc-color', tc.color);
+    setV('tc-bg-color', tc.bgColor);
+    setV('tc-border-color', tc.borderColor);
+    setV('tc-font-size', tc.fontSize);
+    const tcEl = document.getElementById('tc-content');
+    if (tcEl) tcEl.value = this.state.termsContent || '';
+  }
+
   applyBuilderConfigToUI() {
     const bc = this.state.builderConfig;
     const set = (id, val) => { const el = this.inputs[id]; if (el) el.checked = val; };
+    // Restore stamp radio
+    const stampRadio = document.querySelector(`input[name="stamp-mode"][value="${this.state.stampMode}"]`);
+    if (stampRadio) stampRadio.checked = true;
+    // Restore search field button styles
+    document.querySelectorAll('.search-field-btn').forEach(b => {
+      const isActive = b.dataset.field === this.state.searchField;
+      b.style.background = isActive ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)';
+      b.style.color = isActive ? '#93c5fd' : 'rgba(255,255,255,0.3)';
+    });
     const setVal = (id, val) => { const el = this.inputs[id]; if (el) el.value = val; };
 
     set('blHeader', bc.showHeader);
@@ -669,6 +783,34 @@ class BizSensePro {
   applyBuilderAndRender() {
     this.state.builderConfig = this.readBuilderConfigFromUI();
     localStorage.setItem('builder_config', JSON.stringify(this.state.builderConfig));
+
+    // Read stamp config
+    const sc = this.state.stampConfig;
+    const gV = id => document.getElementById(id)?.value;
+    sc.draftColor = gV('stamp-draft-color') || sc.draftColor;
+    sc.finalColor = gV('stamp-final-color') || sc.finalColor;
+    sc.stampFontSize = gV('stamp-font-size') || sc.stampFontSize;
+    sc.stampPosition = gV('stamp-position') || sc.stampPosition;
+    sc.stampRotation = gV('stamp-rotation') || sc.stampRotation;
+    sc.stampOpacity = gV('stamp-opacity') || sc.stampOpacity;
+    sc.stampBorderWidth = gV('stamp-border-width') || sc.stampBorderWidth;
+    localStorage.setItem('biz_stamp_config', JSON.stringify(sc));
+
+    // Read T&C config
+    const tc = this.state.termsConfig;
+    tc.showTitle = document.getElementById('tc-show-title')?.checked ?? tc.showTitle;
+    tc.titleText = gV('tc-title-text') || tc.titleText;
+    tc.color = gV('tc-color') || tc.color;
+    tc.bgColor = gV('tc-bg-color') || tc.bgColor;
+    tc.borderColor = gV('tc-border-color') || tc.borderColor;
+    tc.fontSize = gV('tc-font-size') || tc.fontSize;
+    const tcContent = document.getElementById('tc-content')?.value;
+    if (tcContent !== undefined) {
+      this.state.termsContent = tcContent;
+      localStorage.setItem('biz_terms', tcContent);
+    }
+    localStorage.setItem('biz_terms_config', JSON.stringify(tc));
+
     this.renderStatementUI();
   }
 
@@ -868,21 +1010,50 @@ class BizSensePro {
   }
 
   // Apply price overrides to get effective rate for a line item
-  getEffectiveRate(li) {
+  // Checks date-based price rules first, then flat override, then Zoho rate
+  getEffectiveRate(li, txDate) {
+    // Check date-based price rules (most specific wins — shortest date range)
+    const rules = (this.state.datePriceRules || []).filter(r => r.itemName === li.name);
+    if (rules.length > 0 && txDate) {
+      const d = new Date(txDate);
+      const matching = rules.filter(r => {
+        const from = r.fromDate ? new Date(r.fromDate) : null;
+        const to = r.toDate ? new Date(r.toDate) : null;
+        const afterFrom = !from || d >= from;
+        const beforeTo = !to || d <= to;
+        return afterFrom && beforeTo;
+      });
+      if (matching.length > 0) {
+        // Pick the most specific rule (smallest date range)
+        matching.sort((a, b) => {
+          const aRange = a.fromDate && a.toDate ? (new Date(a.toDate) - new Date(a.fromDate)) : Infinity;
+          const bRange = b.fromDate && b.toDate ? (new Date(b.toDate) - new Date(b.fromDate)) : Infinity;
+          return aRange - bRange;
+        });
+        return parseFloat(matching[0].price);
+      }
+    }
+    // Flat override
     const override = this.state.priceOverrides[li.name];
     return override !== undefined ? override : parseFloat(li.rate || 0);
   }
 
-  // Recalculate invoice total using any price overrides
+  // Recalculate invoice total using any price overrides or date rules
   getEffectiveInvoiceTotal(inv) {
     const det = this.state.invoiceDetailsCache[inv.invoice_id];
-    if (!det || !det.line_items || Object.keys(this.state.priceOverrides).length === 0) {
+    const hasDateRules = (this.state.datePriceRules || []).length > 0;
+    const hasFlatOverrides = Object.keys(this.state.priceOverrides).length > 0;
+    if (!det || !det.line_items || (!hasFlatOverrides && !hasDateRules)) {
       return parseFloat(inv.total) || 0;
     }
-    const hasOverride = det.line_items.some(li => this.state.priceOverrides[li.name] !== undefined);
+    const txDate = inv.date;
+    const hasOverride = det.line_items.some(li => {
+      const rate = this.getEffectiveRate(li, txDate);
+      return rate !== parseFloat(li.rate || 0);
+    });
     if (!hasOverride) return parseFloat(inv.total) || 0;
     return det.line_items.reduce((sum, li) => {
-      return sum + this.getEffectiveRate(li) * parseFloat(li.quantity || 1);
+      return sum + this.getEffectiveRate(li, txDate) * parseFloat(li.quantity || 1);
     }, 0);
   }
 
@@ -953,7 +1124,7 @@ class BizSensePro {
             if (det && det.line_items) {
               det.line_items.forEach(li => {
                 const groupName = li.item_custom_fields?.find(f => f.label?.toLowerCase().includes('group'))?.value || '';
-                const effectiveRate = this.getEffectiveRate(li);
+                const effectiveRate = this.getEffectiveRate(li, tx.date);
                 detailsHtml += `
                   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid #f0f2f5;">
                     <div style="min-width:0;">
@@ -977,7 +1148,7 @@ class BizSensePro {
                 detailsHtml += `
                   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid #f0f2f5;">
                     <span style="font-weight:700;color:#1e293b;font-size:10px;">${li.name}</span>
-                    <span style="white-space:nowrap;font-size:10px;color:#1e293b;font-family:'DM Mono',monospace;font-weight:700;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${this.getEffectiveRate(li).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                    <span style="white-space:nowrap;font-size:10px;color:#1e293b;font-family:'DM Mono',monospace;font-weight:700;flex-shrink:0;">${parseFloat(li.quantity)} &times; ${this.getEffectiveRate(li, tx.date).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
                   </div>`;
               });
             }
@@ -1095,11 +1266,14 @@ class BizSensePro {
 
           ${summaryHtml}
           ${notesHtml}
+          ${this.state.stampMode === 'final' ? this._renderTermsHtml() : ''}
+          ${this.state.stampMode !== 'none' ? this._renderStampHtml() : ''}
         </div>
       `;
     });
 
     this.targets.renderArea.innerHTML = html;
+    this._splitIntoA4Pages();
 
     const notesDiv = document.getElementById('editable-notes');
     if (notesDiv) {
@@ -1366,6 +1540,265 @@ class BizSensePro {
   }
 
   // ─────────────────────────────────────────
+  // STAMP RENDERING
+  // ─────────────────────────────────────────
+  _renderStampHtml() {
+    const sc = this.state.stampConfig;
+    const isD = this.state.stampMode === 'draft';
+    const col = isD ? sc.draftColor : sc.finalColor;
+    const txt = isD ? 'DRAFT' : 'FINAL';
+    let posStyle = '';
+    if (sc.stampPosition === 'center') {
+      posStyle = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(' + sc.stampRotation + ');';
+    } else if (sc.stampPosition === 'top-right') {
+      posStyle = 'position:absolute;top:30mm;right:14mm;transform:rotate(' + sc.stampRotation + ');';
+    } else {
+      posStyle = 'position:absolute;bottom:40mm;right:14mm;transform:rotate(' + sc.stampRotation + ');';
+    }
+    return `
+      <div style="${posStyle}pointer-events:none;z-index:20;text-align:center;width:auto;">
+        <div style="
+          display:inline-block;
+          font-size:${sc.stampFontSize};
+          font-weight:900;
+          color:${col};
+          border:${sc.stampBorderWidth} solid ${col};
+          padding:6px 18px;
+          border-radius:6px;
+          opacity:${sc.stampOpacity};
+          letter-spacing:0.18em;
+          font-family:'DM Sans',sans-serif;
+          text-transform:uppercase;
+          user-select:none;
+          line-height:1;
+          white-space:nowrap;
+        ">${txt}</div>
+      </div>`;
+  }
+
+  _renderTermsHtml() {
+    const tc = this.state.termsConfig;
+    const lines = (this.state.termsContent || '').split('\n').filter(l => l.trim());
+    return `
+      <div style="margin-top:1.5rem;padding:12px 16px;background:${tc.bgColor};border-radius:8px;border:1px solid ${tc.borderColor};page-break-inside:avoid;">
+        ${tc.showTitle ? `<div style="font-size:${tc.titleFontSize};font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${tc.color};margin-bottom:8px;">${tc.titleText}</div>` : ''}
+        <ol style="margin:0;padding-left:18px;font-size:${tc.fontSize};color:${tc.color};line-height:1.7;">
+          ${lines.map(l => `<li>${l.replace(/^\d+\.\s*/, '')}</li>`).join('')}
+        </ol>
+      </div>`;
+  }
+
+  // ─────────────────────────────────────────
+  // MULTI-PAGE A4 SPLITTING
+  // ─────────────────────────────────────────
+  _splitIntoA4Pages() {
+    // A4 content height in px at 96dpi: 297mm - 24mm padding = 273mm ≈ 1033px
+    const A4_H = 1033;
+    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
+    pages.forEach(page => {
+      // Remove overflow:hidden so we can measure
+      page.style.overflow = 'visible';
+      page.style.minHeight = `${297 * 3.7795}px`;
+      const naturalH = page.scrollHeight;
+      if (naturalH <= A4_H * 1.1) return; // fits in 1 page
+
+      // Get all direct table rows and other block children to slice
+      const tbody = page.querySelector('.ledger-rows');
+      if (!tbody) return;
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      if (rows.length === 0) return;
+
+      // Measure row heights
+      let pageH = 0;
+      // Estimate header+customer block height
+      const tableEl = tbody.closest('table');
+      const preTableHeight = tableEl ? tableEl.offsetTop : 200;
+      pageH = preTableHeight + 60; // thead height
+
+      const pageChunks = [[]];
+      rows.forEach(row => {
+        const rh = row.offsetHeight || 36;
+        if (pageH + rh > A4_H && pageChunks[pageChunks.length - 1].length > 0) {
+          pageChunks.push([]);
+          pageH = 60; // thead for continuation pages
+        }
+        pageChunks[pageChunks.length - 1].push(row);
+        pageH += rh;
+      });
+
+      if (pageChunks.length <= 1) return; // no split needed
+
+      // Clone the thead HTML
+      const theadHtml = tableEl?.querySelector('thead')?.outerHTML || '';
+      const tableStyle = tableEl?.getAttribute('style') || '';
+
+      // Get content before and after table
+      const beforeTable = this._getContentBefore(page, tableEl);
+      const afterTable = this._getContentAfter(page, tableEl);
+
+      // Stamp HTML
+      const stampHtml = this.state.stampMode !== 'none' ? this._renderStampHtml() : '';
+      const termsHtml = this.state.stampMode === 'final' ? this._renderTermsHtml() : '';
+
+      // Build replacement pages
+      let pagesHtml = '';
+      pageChunks.forEach((chunk, pi) => {
+        const isLast = pi === pageChunks.length - 1;
+        const rowsHtml = chunk.map(r => r.outerHTML).join('');
+        const pageNum = pi + 1;
+        const totalPages = pageChunks.length;
+        pagesHtml += `
+          <div class="a4-page" style="position:relative;overflow:visible;min-height:${297 * 3.7795}px;">
+            ${pi === 0 ? beforeTable : `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">
+                <div style="font-size:9px;font-weight:700;color:#94a3b8;">CONTINUED — PAGE ${pageNum} OF ${totalPages}</div>
+              </div>`}
+            <table style="${tableStyle}">
+              ${theadHtml}
+              <tbody class="ledger-rows">${rowsHtml}</tbody>
+            </table>
+            ${isLast ? afterTable : ''}
+            ${isLast ? termsHtml : ''}
+            ${stampHtml}
+          </div>`;
+      });
+
+      // Replace the original page
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = pagesHtml;
+      page.replaceWith(...wrapper.children);
+    });
+
+    // Re-apply zoom
+    setTimeout(() => this.autoFitZoom(), 50);
+  }
+
+  _getContentBefore(page, tableEl) {
+    let html = '';
+    let el = page.firstElementChild;
+    while (el && el !== tableEl) {
+      if (!el.classList.contains('a4-stamp') && el !== tableEl) html += el.outerHTML;
+      el = el.nextElementSibling;
+    }
+    return html;
+  }
+
+  _getContentAfter(page, tableEl) {
+    let html = '';
+    let el = tableEl.nextElementSibling;
+    while (el) {
+      // Skip stamp divs — we add them explicitly
+      const txt = el.textContent?.trim();
+      const isDraft = txt === 'DRAFT' || txt === 'FINAL';
+      if (!isDraft) html += el.outerHTML;
+      el = el.nextElementSibling;
+    }
+    return html;
+  }
+
+  // ─────────────────────────────────────────
+  // DATE PRICE RULES MANAGER
+  // ─────────────────────────────────────────
+  saveDatePriceRules() {
+    localStorage.setItem('biz_date_price_rules', JSON.stringify(this.state.datePriceRules));
+    this.renderStatementUI();
+  }
+
+  addDatePriceRule(itemName, fromDate, toDate, price) {
+    const rule = {
+      id: Date.now().toString(),
+      itemName,
+      fromDate: fromDate || null,
+      toDate: toDate || null,
+      price: parseFloat(price)
+    };
+    this.state.datePriceRules.push(rule);
+    this.saveDatePriceRules();
+  }
+
+  removeDatePriceRule(id) {
+    this.state.datePriceRules = this.state.datePriceRules.filter(r => r.id !== id);
+    this.saveDatePriceRules();
+  }
+
+  renderDatePriceRulesUI() {
+    const container = document.getElementById('date-price-rules-list');
+    if (!container) return;
+
+    // Collect items from loaded invoices
+    const itemNames = new Set();
+    this.state.selectedCustomerIds.forEach(id => {
+      (this.state.dataStore.invoices[id]?.records || []).forEach(inv => {
+        const det = this.state.invoiceDetailsCache[inv.invoice_id];
+        (det?.line_items || []).forEach(li => itemNames.add(li.name));
+      });
+    });
+    // Also add from existing rules
+    (this.state.datePriceRules || []).forEach(r => itemNames.add(r.itemName));
+
+    const itemOpts = Array.from(itemNames).map(n => `<option value="${n}">${n}</option>`).join('');
+    const existing = (this.state.datePriceRules || []);
+
+    container.innerHTML = `
+      <div style="margin-bottom:10px;">
+        <div class="modal-label" style="margin-bottom:6px;color:rgba(255,255,255,0.35);">Add Date Price Rule</div>
+        <select id="dpr-item" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:6px 8px;font-size:0.72rem;margin-bottom:6px;font-family:'DM Sans',sans-serif;">
+          <option value="">-- Select Item --</option>${itemOpts}
+        </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px;">
+          <div>
+            <div style="font-size:0.58rem;color:rgba(255,255,255,0.25);margin-bottom:3px;">From Date</div>
+            <input type="date" id="dpr-from" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:5px 7px;font-size:0.7rem;font-family:'DM Sans',sans-serif;">
+          </div>
+          <div>
+            <div style="font-size:0.58rem;color:rgba(255,255,255,0.25);margin-bottom:3px;">To Date</div>
+            <input type="date" id="dpr-to" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:5px 7px;font-size:0.7rem;font-family:'DM Sans',sans-serif;">
+          </div>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;">
+          <span style="font-size:0.58rem;color:rgba(255,255,255,0.25);font-family:'DM Mono',monospace;">${this.state.currency}</span>
+          <input type="number" id="dpr-price" placeholder="Price" step="0.01" min="0" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:6px;padding:5px 7px;font-size:0.72rem;font-family:'DM Mono',monospace;outline:none;">
+          <button id="dpr-add-btn" style="background:#1d4ed8;color:white;border:none;border-radius:6px;padding:6px 10px;font-size:0.65rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;">+ Add</button>
+        </div>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;">
+        <div style="font-size:0.55rem;font-weight:800;text-transform:uppercase;letter-spacing:0.18em;color:rgba(255,255,255,0.18);margin-bottom:6px;">Active Rules (${existing.length})</div>
+        ${existing.length === 0 ? '<div style="font-size:0.65rem;color:rgba(255,255,255,0.2);text-align:center;padding:10px 0;">No rules yet</div>' : ''}
+        ${existing.map(r => `
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:7px 9px;margin-bottom:5px;display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.68rem;font-weight:700;color:#fbbf24;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.itemName}</div>
+              <div style="font-size:0.58rem;color:rgba(255,255,255,0.3);margin-top:2px;">
+                ${r.fromDate || '∞'} → ${r.toDate || '∞'} &nbsp;|&nbsp;
+                <span style="color:#34d399;font-family:'DM Mono',monospace;">${this.state.currency} ${parseFloat(r.price).toFixed(2)}</span>
+              </div>
+            </div>
+            <button data-rule-id="${r.id}" class="dpr-del-btn" style="background:rgba(220,38,38,0.12);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:5px;padding:3px 7px;font-size:0.6rem;cursor:pointer;flex-shrink:0;">✕</button>
+          </div>`).join('')}
+      </div>`;
+
+    // Bind add button
+    const addBtn = container.querySelector('#dpr-add-btn');
+    if (addBtn) {
+      addBtn.onclick = () => {
+        const item = container.querySelector('#dpr-item')?.value;
+        const from = container.querySelector('#dpr-from')?.value;
+        const to = container.querySelector('#dpr-to')?.value;
+        const price = container.querySelector('#dpr-price')?.value;
+        if (!item) { alert('Select an item first'); return; }
+        if (!price || isNaN(parseFloat(price))) { alert('Enter a valid price'); return; }
+        this.addDatePriceRule(item, from, to, price);
+        this.renderDatePriceRulesUI();
+      };
+    }
+    // Bind delete buttons
+    container.querySelectorAll('.dpr-del-btn').forEach(btn => {
+      btn.onclick = () => { this.removeDatePriceRule(btn.dataset.ruleId); this.renderDatePriceRulesUI(); };
+    });
+  }
+
+  // ─────────────────────────────────────────
   // EXCEL EXPORT
   // ─────────────────────────────────────────
   downloadExcel() {
@@ -1404,56 +1837,75 @@ class BizSensePro {
   }
 
   // ─────────────────────────────────────────
-  // PDF EXPORT
+  // PDF EXPORT (multi-page)
   // ─────────────────────────────────────────
   async downloadPDF() {
-    const page = this.targets.renderArea.querySelector('.a4-page');
-    if (!page) { alert('Generate a statement first.'); return; }
+    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
+    if (!pages.length) { alert('Generate a statement first.'); return; }
     this.showLoading(80, 'Rendering PDF…');
 
-    const clone = page.cloneNode(true);
-    const ghost = document.createElement('div');
-    ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;z-index:-1;background:white;';
-    clone.style.cssText = 'transform:none;margin:0;box-shadow:none;width:794px;';
-    ghost.appendChild(clone);
-    document.body.appendChild(ghost);
-
     try {
-      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, logging: false, windowWidth: 794, width: 794 });
-      const imgData = canvas.toDataURL('image/jpeg', 0.97);
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pw = pdf.internal.pageSize.getWidth();
-      const ph = (canvas.height * pw) / canvas.width;
-      pdf.addImage(imgData, 'JPEG', 0, 0, pw, ph);
+      const ph = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < pages.length; i++) {
+        const clone = pages[i].cloneNode(true);
+        const ghost = document.createElement('div');
+        ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;z-index:-1;background:white;';
+        clone.style.cssText = 'transform:none;margin:0;box-shadow:none;width:794px;overflow:visible;';
+        ghost.appendChild(clone);
+        document.body.appendChild(ghost);
+        const canvas = await html2canvas(clone, { scale: 2, useCORS: true, logging: false, windowWidth: 794, width: 794 });
+        document.body.removeChild(ghost);
+        if (i > 0) pdf.addPage();
+        const imgData = canvas.toDataURL('image/jpeg', 0.97);
+        const imgH = (canvas.height * pw) / canvas.width;
+        // If content taller than A4, scale to fit
+        const scaleH = imgH > ph ? ph : imgH;
+        pdf.addImage(imgData, 'JPEG', 0, 0, pw, scaleH);
+      }
       pdf.save(`SOA_${new Date().toISOString().slice(0,10)}.pdf`);
     } catch (err) { alert('PDF generation failed: ' + err.message); }
-    finally { document.body.removeChild(ghost); this.hideLoading(); }
+    finally { this.hideLoading(); }
   }
 
   // ─────────────────────────────────────────
-  // IMAGE EXPORT
+  // IMAGE EXPORT (all pages stitched vertically)
   // ─────────────────────────────────────────
   async downloadImage() {
-    const page = this.targets.renderArea.querySelector('.a4-page');
-    if (!page) { alert('Generate a statement first.'); return; }
+    const pages = this.targets.renderArea.querySelectorAll('.a4-page');
+    if (!pages.length) { alert('Generate a statement first.'); return; }
     this.showLoading(80, 'Capturing image…');
 
-    const clone = page.cloneNode(true);
-    const ghost = document.createElement('div');
-    ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;z-index:-1;background:white;';
-    clone.style.cssText = 'transform:none;margin:0;box-shadow:none;width:794px;';
-    ghost.appendChild(clone);
-    document.body.appendChild(ghost);
-
     try {
-      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, logging: false, windowWidth: 794, width: 794 });
+      const canvases = [];
+      for (let i = 0; i < pages.length; i++) {
+        const clone = pages[i].cloneNode(true);
+        const ghost = document.createElement('div');
+        ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;z-index:-1;background:white;';
+        clone.style.cssText = 'transform:none;margin:0;box-shadow:none;width:794px;overflow:visible;';
+        ghost.appendChild(clone);
+        document.body.appendChild(ghost);
+        const canvas = await html2canvas(clone, { scale: 2, useCORS: true, logging: false, windowWidth: 794, width: 794 });
+        document.body.removeChild(ghost);
+        canvases.push(canvas);
+      }
+      // Stitch vertically
+      const totalH = canvases.reduce((s, c) => s + c.height, 0);
+      const combined = document.createElement('canvas');
+      combined.width = canvases[0].width;
+      combined.height = totalH;
+      const ctx = combined.getContext('2d');
+      let y = 0;
+      canvases.forEach(c => { ctx.drawImage(c, 0, y); y += c.height; });
       const a = document.createElement('a');
       a.download = `SOA_${new Date().toISOString().slice(0,10)}.png`;
-      a.href = canvas.toDataURL('image/png');
+      a.href = combined.toDataURL('image/png');
       a.click();
     } catch (err) { alert('Image capture failed: ' + err.message); }
-    finally { document.body.removeChild(ghost); this.hideLoading(); }
+    finally { this.hideLoading(); }
   }
 
 }

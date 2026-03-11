@@ -381,7 +381,7 @@
       position: relative;
       transform-origin: top center;
       transition: transform 0.2s ease;
-      overflow: hidden;
+      overflow: visible;
       box-sizing: border-box;
     }
     [contenteditable="true"]:hover { background: #f0f7ff; outline: 1px dashed #3b82f6; cursor: text; border-radius: 2px; }
@@ -743,7 +743,7 @@
       body { background: white !important; }
       #statement-render-target, #statement-render-target * { visibility: visible; }
       #statement-render-target { position: absolute; left: 0; top: 0; width: 100%; }
-      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 100% !important; max-width: 210mm !important; min-height: auto !important; page-break-after: always; visibility: visible !important; background: white !important; color: black !important; padding: 10mm !important; }
+      .a4-page { margin: 0 !important; box-shadow: none !important; transform: none !important; width: 210mm !important; min-height: 297mm !important; page-break-after: always; break-after: page; visibility: visible !important; background: white !important; color: black !important; padding: 12mm 14mm !important; overflow: visible !important; position: relative !important; }
       .no-print { display: none !important; }
       tr { break-inside: avoid; }
     }
@@ -1085,7 +1085,13 @@
       <div class="sidebar-header">
         <!-- Customer search -->
         <div id="sb-customer-controls">
-          <input type="text" id="customer-search" class="sidebar-search" placeholder="Search customers…">
+          <!-- Search field selector -->
+          <div style="display:flex;gap:4px;margin-bottom:8px;">
+            <button class="search-field-btn active" data-field="name" style="flex:1;padding:4px 0;font-size:0.55rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;background:rgba(59,130,246,0.2);color:#93c5fd;transition:all 0.15s;">Name</button>
+            <button class="search-field-btn" data-field="id" style="flex:1;padding:4px 0;font-size:0.55rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.3);transition:all 0.15s;">ID</button>
+            <button class="search-field-btn" data-field="phone" style="flex:1;padding:4px 0;font-size:0.55rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.3);transition:all 0.15s;">Phone</button>
+          </div>
+          <input type="text" id="customer-search" class="sidebar-search" placeholder="Search by name…">
           <div style="display:flex;justify-content:flex-end;margin-top:6px;">
             <button id="btn-clear-all" style="font-size:0.58rem;font-weight:700;color:rgba(255,255,255,0.28);text-transform:uppercase;letter-spacing:0.1em;background:none;border:none;cursor:pointer;">Clear All</button>
           </div>
@@ -1159,6 +1165,22 @@
             <label class="toggle-switch">
               <input type="checkbox" id="toggle-borders">
               <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Stamp selector -->
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);">Stamp</span>
+            <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.65rem;font-weight:700;color:var(--text-muted);">
+              <input type="radio" name="stamp-mode" value="none" checked style="accent-color:var(--primary);"> None
+            </label>
+            <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.65rem;font-weight:700;color:#dc2626;">
+              <input type="radio" name="stamp-mode" value="draft" style="accent-color:#dc2626;"> Draft
+            </label>
+            <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.65rem;font-weight:700;color:#059669;">
+              <input type="radio" name="stamp-mode" value="final" style="accent-color:#059669;"> Final
             </label>
           </div>
 
@@ -1289,6 +1311,107 @@
               <div class="builder-toggle-row">
                 <span class="builder-toggle-label">Show Overdue Badges</span>
                 <label class="toggle-switch"><input type="checkbox" id="formula-overdue" checked><span class="toggle-slider"></span></label>
+              </div>
+
+              <div class="builder-section-label">Date-Based Price Rules</div>
+              <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">Override item prices for specific date ranges. Useful when prices change by month or period.</div>
+              <div id="date-price-rules-list">
+                <div style="font-size:0.65rem;color:var(--text-muted);text-align:center;padding:10px 0;">Select a customer to manage price rules</div>
+              </div>
+
+              <div class="builder-section-label">Stamp Settings</div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Draft Color</span>
+                <input type="color" id="stamp-draft-color" value="#dc2626" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+              </div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Final Color</span>
+                <input type="color" id="stamp-final-color" value="#059669" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Font Size</div>
+                <select id="stamp-font-size" class="group-select">
+                  <option value="36px">Small (36px)</option>
+                  <option value="52px" selected>Medium (52px)</option>
+                  <option value="72px">Large (72px)</option>
+                  <option value="96px">Extra Large (96px)</option>
+                </select>
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Position</div>
+                <select id="stamp-position" class="group-select">
+                  <option value="center" selected>Center</option>
+                  <option value="top-right">Top Right</option>
+                  <option value="bottom-right">Bottom Right</option>
+                </select>
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Rotation</div>
+                <select id="stamp-rotation" class="group-select">
+                  <option value="-45deg">-45°</option>
+                  <option value="-32deg" selected>-32°</option>
+                  <option value="-20deg">-20°</option>
+                  <option value="0deg">0° (horizontal)</option>
+                  <option value="20deg">+20°</option>
+                </select>
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Opacity</div>
+                <select id="stamp-opacity" class="group-select">
+                  <option value="0.10">10% (very faint)</option>
+                  <option value="0.18" selected>18% (default)</option>
+                  <option value="0.28">28% (visible)</option>
+                  <option value="0.45">45% (bold)</option>
+                </select>
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Border Width</div>
+                <select id="stamp-border-width" class="group-select">
+                  <option value="3px">Thin (3px)</option>
+                  <option value="5px" selected>Medium (5px)</option>
+                  <option value="7px">Thick (7px)</option>
+                  <option value="10px">Extra Thick (10px)</option>
+                </select>
+              </div>
+
+              <div class="builder-section-label">Terms &amp; Conditions</div>
+              <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:8px;">Shown only when stamp is set to FINAL.</div>
+              <div class="builder-toggle-row">
+                <span class="builder-toggle-label">Show T&amp;C Title</span>
+                <label class="toggle-switch"><input type="checkbox" id="tc-show-title" checked><span class="toggle-slider"></span></label>
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Title Text</div>
+                <input type="text" id="tc-title-text" value="Terms &amp; Conditions" class="modal-input" style="font-size:0.75rem;padding:7px 10px;">
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Text Color</div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <input type="color" id="tc-color" value="#64748b" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+                  <span style="font-size:0.65rem;color:var(--text-muted);">Text &amp; Title</span>
+                </div>
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Background Color</div>
+                <input type="color" id="tc-bg-color" value="#f8fafc" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Border Color</div>
+                <input type="color" id="tc-border-color" value="#e2e8f0" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Font Size</div>
+                <select id="tc-font-size" class="group-select">
+                  <option value="7px">Tiny (7px)</option>
+                  <option value="8px" selected>Small (8px)</option>
+                  <option value="9px">Medium (9px)</option>
+                  <option value="10px">Normal (10px)</option>
+                </select>
+              </div>
+              <div style="margin-bottom:8px;">
+                <div class="modal-label" style="margin-bottom:4px;">Terms Content</div>
+                <textarea id="tc-content" style="width:100%;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:8px;font-size:0.7rem;font-family:'DM Sans',sans-serif;resize:vertical;outline:none;line-height:1.5;" rows="6" placeholder="Enter one term per line…"></textarea>
+                <div style="font-size:0.6rem;color:var(--text-muted);margin-top:3px;">One term per line. Numbers are added automatically.</div>
               </div>
 
               <button id="btn-builder-apply" class="builder-apply-btn">
