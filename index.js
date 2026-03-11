@@ -1067,71 +1067,148 @@ class BizSensePro {
     const items = Array.from(session.items.values());
     const rules = this.state.datePriceRules || [];
 
-    // --- Smart grouping: group items where first word AND price are the same ---
-    const smartGroups = new Map();
+    // --- Two-level grouping ---
+    // Level 1: main group by first word of item name
+    // Level 2: subgroups within main group, by same effective price
+    const mainGroups = new Map(); // firstWord -> { label, items[] }
     const ungrouped = [];
-    const keyCount = new Map();
+
+    // Count items per first word to decide if main group is worth creating
+    const firstWordCount = new Map();
     items.forEach(item => {
-      const firstWord = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
-      const saved = rules.find(r => r.itemName === item.name &&
-        (r.fromDate||null) === (session.fromDate||null) &&
-        (r.toDate  ||null) === (session.toDate  ||null));
-      const effectivePrice = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
-      const key = firstWord + '|' + parseFloat(effectivePrice).toFixed(2);
-      keyCount.set(key, (keyCount.get(key) || 0) + 1);
+      const fw = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
+      firstWordCount.set(fw, (firstWordCount.get(fw) || 0) + 1);
     });
+
     items.forEach(item => {
-      const firstWord = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
-      const saved = rules.find(r => r.itemName === item.name &&
-        (r.fromDate||null) === (session.fromDate||null) &&
-        (r.toDate  ||null) === (session.toDate  ||null));
-      const effectivePrice = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
-      const key = firstWord + '|' + parseFloat(effectivePrice).toFixed(2);
-      if (keyCount.get(key) > 1) {
-        if (!smartGroups.has(key)) {
-          const displayLabel = item.name.split(/[\s_\-\/]/)[0];
-          smartGroups.set(key, { label: displayLabel, price: effectivePrice, items: [] });
+      const fw = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
+      if (firstWordCount.get(fw) > 1) {
+        if (!mainGroups.has(fw)) {
+          mainGroups.set(fw, { label: item.name.split(/[\s_\-\/]/)[0], items: [] });
         }
-        smartGroups.get(key).items.push(item);
+        mainGroups.get(fw).items.push(item);
       } else {
         ungrouped.push(item);
       }
     });
 
+    // Helper to get effective price for an item
+    const getEP = (item) => {
+      const saved = rules.find(r => r.itemName === item.name &&
+        (r.fromDate||null) === (session.fromDate||null) &&
+        (r.toDate  ||null) === (session.toDate  ||null));
+      return item.newRate !== null ? item.newRate : (saved ? parseFloat(saved.price) : item.origRate);
+    };
+
     let rowsHtml = '';
     if (items.length === 0) {
       rowsHtml = '<div style="font-size:0.62rem;color:rgba(255,255,255,0.2);text-align:center;padding:10px 0;">No items found in this date range</div>';
     } else {
-      // Render smart-grouped items (collapsible)
-      smartGroups.forEach((group, key) => {
-        const groupId = 'sg_' + key.replace(/[^a-z0-9]/gi, '_');
-        const isAnySet = group.items.some(item => {
+      // Render main groups with two-level collapsible structure
+      mainGroups.forEach((mainGroup, fw) => {
+        const mainGroupId = 'mg_' + fw.replace(/[^a-z0-9]/gi, '_');
+        const isAnySet = mainGroup.items.some(item => {
           const saved = rules.find(r => r.itemName === item.name &&
             (r.fromDate||null) === (session.fromDate||null) &&
             (r.toDate  ||null) === (session.toDate  ||null));
           return item.newRate !== null || saved;
         });
+
+        // Build subgroups by same effective price within this main group
+        const priceSubgroups = new Map(); // priceKey -> { price, items[] }
+        const soloItems = [];
+        const subPriceCount = new Map();
+        mainGroup.items.forEach(item => {
+          const ep = getEP(item);
+          const pk = parseFloat(ep).toFixed(2);
+          subPriceCount.set(pk, (subPriceCount.get(pk) || 0) + 1);
+        });
+        mainGroup.items.forEach(item => {
+          const ep = getEP(item);
+          const pk = parseFloat(ep).toFixed(2);
+          if (subPriceCount.get(pk) > 1) {
+            if (!priceSubgroups.has(pk)) priceSubgroups.set(pk, { price: ep, items: [] });
+            priceSubgroups.get(pk).items.push(item);
+          } else {
+            soloItems.push(item);
+          }
+        });
+
+        // Compute a display price for the main group header (most common price, or first)
+        const allPrices = mainGroup.items.map(i => parseFloat(getEP(i)).toFixed(2));
+        const priceFreq = allPrices.reduce((m,p)=>{m.set(p,(m.get(p)||0)+1);return m;}, new Map());
+        const dominantPrice = [...priceFreq.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0] || '0.00';
+        const allSamePrice = priceFreq.size === 1;
+
         rowsHtml += `
-          <div class="price-smart-group" style="margin-bottom:7px;border:1px solid ${isAnySet ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.1)'};border-radius:9px;overflow:hidden;">
-            <div class="sg-header" data-sg="${groupId}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;cursor:pointer;background:${isAnySet ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)'};user-select:none;">
-              <div>
-                <div style="font-size:0.72rem;font-weight:800;color:${isAnySet ? '#93c5fd' : 'rgba(255,255,255,0.7)'};">${group.label}</div>
-                <div style="font-size:0.57rem;color:rgba(255,255,255,0.3);margin-top:2px;">${group.items.length} variants &middot; ${this.state.currency} ${parseFloat(group.price).toLocaleString(undefined,{minimumFractionDigits:2})} each</div>
+          <div class="price-smart-group" style="margin-bottom:8px;border:1px solid ${isAnySet ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.1)'};border-radius:10px;overflow:hidden;">
+            <div class="sg-header" data-sg="${mainGroupId}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;cursor:pointer;background:${isAnySet ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.05)'};user-select:none;gap:8px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:0.74rem;font-weight:800;color:${isAnySet ? '#93c5fd' : 'rgba(255,255,255,0.8)'};">${mainGroup.label}</div>
+                <div style="font-size:0.56rem;color:rgba(255,255,255,0.3);margin-top:2px;">${mainGroup.items.length} variants${allSamePrice ? ' · all same price' : ' · mixed prices'}</div>
               </div>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:0.65rem;font-weight:700;font-family:'DM Mono',monospace;color:${isAnySet ? '#34d399' : 'rgba(255,255,255,0.4)'};">${this.state.currency} ${parseFloat(group.price).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
-                <span class="sg-chevron" style="font-size:0.65rem;color:rgba(255,255,255,0.3);transition:transform 0.2s;">&#9660;</span>
-              </div>
+              ${allSamePrice ? `
+              <div style="display:flex;align-items:center;gap:4px;" onclick="event.stopPropagation()">
+                <span style="font-size:0.57rem;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">${this.state.currency}</span>
+                <input type="number" class="pe-group-input" data-group="${mainGroupId}" data-items="${mainGroup.items.map(i=>encodeURIComponent(i.name)).join(',')}" value="${dominantPrice}" step="0.01" min="0" title="Edit all ${mainGroup.items.length} items at once" style="width:72px;background:rgba(255,255,255,0.1);border:1px solid ${isAnySet ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.18)'};color:${isAnySet ? '#93c5fd' : 'white'};border-radius:5px;padding:4px 6px;font-size:0.7rem;font-family:'DM Mono',monospace;outline:none;color-scheme:dark;text-align:right;">
+              </div>` : `<span style="font-size:0.62rem;font-weight:700;font-family:'DM Mono',monospace;color:rgba(255,255,255,0.35);">mixed</span>`}
+              <span class="sg-chevron" style="font-size:0.6rem;color:rgba(255,255,255,0.3);transition:transform 0.2s;flex-shrink:0;">&#9660;</span>
             </div>
-            <div id="${groupId}" style="display:none;padding:6px 8px;border-top:1px solid rgba(255,255,255,0.07);">`;
-        group.items.forEach(item => {
+            <div id="${mainGroupId}" style="display:none;padding:6px 8px 8px;border-top:1px solid rgba(255,255,255,0.07);">`;
+
+        // Render price subgroups inside the main group
+        priceSubgroups.forEach((subGroup, pk) => {
+          const subGroupId = mainGroupId + '_p' + pk.replace('.','_');
+          const subIsAnySet = subGroup.items.some(item => {
+            const saved = rules.find(r => r.itemName === item.name &&
+              (r.fromDate||null) === (session.fromDate||null) &&
+              (r.toDate  ||null) === (session.toDate  ||null));
+            return item.newRate !== null || saved;
+          });
+          rowsHtml += `
+            <div style="margin-bottom:5px;border:1px solid ${subIsAnySet ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.07)'};border-radius:7px;overflow:hidden;">
+              <div class="sg-header" data-sg="${subGroupId}" style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;cursor:pointer;background:${subIsAnySet ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.03)'};user-select:none;gap:6px;">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:0.63rem;font-weight:700;color:${subIsAnySet ? '#a5b4fc' : 'rgba(255,255,255,0.55)'};">${subGroup.items.length} items @ ${this.state.currency} ${parseFloat(pk).toLocaleString(undefined,{minimumFractionDigits:2})}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;" onclick="event.stopPropagation()">
+                  <span style="font-size:0.55rem;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">${this.state.currency}</span>
+                  <input type="number" class="pe-group-input" data-group="${subGroupId}" data-items="${subGroup.items.map(i=>encodeURIComponent(i.name)).join(',')}" value="${parseFloat(pk).toFixed(2)}" step="0.01" min="0" title="Edit all ${subGroup.items.length} items in this subgroup" style="width:68px;background:rgba(255,255,255,0.08);border:1px solid ${subIsAnySet ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.15)'};color:${subIsAnySet ? '#a5b4fc' : 'white'};border-radius:5px;padding:3px 5px;font-size:0.67rem;font-family:'DM Mono',monospace;outline:none;color-scheme:dark;text-align:right;">
+                </div>
+                <span class="sg-chevron" style="font-size:0.55rem;color:rgba(255,255,255,0.25);transition:transform 0.2s;flex-shrink:0;">&#9660;</span>
+              </div>
+              <div id="${subGroupId}" style="display:none;padding:4px 6px 5px;border-top:1px solid rgba(255,255,255,0.05);">`;
+          subGroup.items.forEach(item => {
+            const saved = rules.find(r => r.itemName === item.name &&
+              (r.fromDate||null) === (session.fromDate||null) &&
+              (r.toDate  ||null) === (session.toDate  ||null));
+            const displayVal = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
+            const isSet = item.newRate !== null || saved;
+            rowsHtml += `
+              <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}" style="border-radius:5px;padding:5px 7px;margin-bottom:3px;background:${isSet ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.02)'};border:1px solid ${isSet ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.05)'};">
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+                  <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset" style="background:rgba(220,38,38,0.1);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:1px 4px;font-size:0.57rem;cursor:pointer;flex-shrink:0;line-height:1.2;">&#x21BA;</button>
+                  <div class="price-item-name" style="flex:1;color:${isSet ? '#e2e8f0' : 'rgba(255,255,255,0.5)'};font-size:0.63rem;font-weight:${isSet ? '700' : '400'};">${item.name}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <span style="font-size:0.56rem;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;flex-shrink:0;">${this.state.currency}</span>
+                  <input type="number" class="pe-item-input${isSet ? ' changed' : ''}" data-item="${encodeURIComponent(item.name)}" data-orig="${item.origRate}" value="${parseFloat(displayVal).toFixed(2)}" step="0.01" min="0" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid ${isSet ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'};color:${isSet ? '#93c5fd' : 'white'};border-radius:5px;padding:3px 5px;font-size:0.66rem;font-family:'DM Mono',monospace;outline:none;width:100%;color-scheme:dark;">
+                </div>
+                ${isSet ? `<div style="font-size:0.5rem;color:rgba(255,255,255,0.2);margin-top:2px;font-family:'DM Mono',monospace;">zoho: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
+              </div>`;
+          });
+          rowsHtml += `</div></div>`;
+        });
+
+        // Solo items (unique price in this main group) — render directly
+        soloItems.forEach(item => {
           const saved = rules.find(r => r.itemName === item.name &&
             (r.fromDate||null) === (session.fromDate||null) &&
             (r.toDate  ||null) === (session.toDate  ||null));
           const displayVal = item.newRate !== null ? item.newRate : (saved ? saved.price : item.origRate);
           const isSet = item.newRate !== null || saved;
           rowsHtml += `
-            <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}" style="border-radius:6px;padding:6px 8px;margin-bottom:4px;background:${isSet ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.02)'};border:1px solid ${isSet ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)'};">
+            <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}" style="border-radius:6px;padding:5px 8px;margin-bottom:4px;background:${isSet ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.02)'};border:1px solid ${isSet ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)'};">
               <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
                 <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset" style="background:rgba(220,38,38,0.1);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 5px;font-size:0.6rem;cursor:pointer;flex-shrink:0;line-height:1.2;">&#x21BA;</button>
                 <div class="price-item-name" style="flex:1;color:${isSet ? '#e2e8f0' : 'rgba(255,255,255,0.55)'};font-size:0.67rem;font-weight:${isSet ? '700' : '500'};">${item.name}</div>
@@ -1143,7 +1220,8 @@ class BizSensePro {
               ${isSet ? `<div style="font-size:0.52rem;color:rgba(255,255,255,0.25);margin-top:2px;font-family:'DM Mono',monospace;">zoho: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
             </div>`;
         });
-        rowsHtml += `</div></div>`;
+
+        rowsHtml += `</div></div>`; // close mainGroupId body + main group wrapper
       });
 
       // Render ungrouped items
@@ -1175,7 +1253,7 @@ class BizSensePro {
         <div>
           <div style="font-size:0.5rem;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.25);margin-bottom:2px;">Editing Range</div>
           <div style="font-size:0.68rem;font-weight:800;color:#93c5fd;">${from} → ${to}</div>
-          <div style="font-size:0.58rem;color:rgba(255,255,255,0.3);margin-top:1px;">${items.length} item(s) · ${smartGroups.size > 0 ? smartGroups.size + ' group(s)' : 'no groups'}</div>
+          <div style="font-size:0.58rem;color:rgba(255,255,255,0.3);margin-top:1px;">${items.length} item(s) · ${mainGroups.size > 0 ? mainGroups.size + ' group(s)' : 'no groups'}</div>
         </div>
         <button id="pe-back-btn" style="background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:4px 10px;font-size:0.6rem;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;">← Back</button>
       </div>
@@ -1193,6 +1271,27 @@ class BizSensePro {
   }
 
   _bindPriceItemEditor(list, session) {
+    // Group-level price input — updates all items in the group at once
+    list.querySelectorAll('.pe-group-input').forEach(input => {
+      input.addEventListener('input', () => {
+        const newRate = parseFloat(input.value);
+        if (isNaN(newRate)) return;
+        const itemNames = input.dataset.items.split(',').map(n => decodeURIComponent(n));
+        itemNames.forEach(name => {
+          const item = session.items.get(name);
+          if (item) item.newRate = newRate;
+          this.state.priceOverrides[name] = newRate;
+          // Also update the individual pe-item-input for this item
+          const itemInput = list.querySelector(`.pe-item-input[data-item="${encodeURIComponent(name)}"]`);
+          if (itemInput) {
+            itemInput.value = newRate.toFixed(2);
+            itemInput.classList.add('changed');
+          }
+        });
+        this.renderStatementUI();
+      });
+    });
+
     // Smart group expand/collapse
     list.querySelectorAll('.sg-header').forEach(header => {
       header.addEventListener('click', () => {
@@ -1478,7 +1577,7 @@ class BizSensePro {
       });
 
       const summaryHtml = bc.showSummary ? `
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;padding-top:2rem;border-top:2px solid ${theme.primary}20;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:1.5rem;padding-top:1.5rem;border-top:2px solid ${theme.primary}20;">
           <div>
             <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:${theme.accent};margin-bottom:1rem;">Account Summary</div>
             <table style="font-size:10px;font-weight:600;color:#475569;border-collapse:collapse;">
@@ -1995,11 +2094,10 @@ class BizSensePro {
   // MULTI-PAGE A4 SPLITTING
   // ─────────────────────────────────────────
   _splitIntoA4Pages() {
-    // Immediate attempt + fallbacks for layout settling
-    this._doSplit();
+    // Run once after layout settles; use a flag to prevent duplicate T&C injection
+    this._splitDone = false;
     requestAnimationFrame(() => requestAnimationFrame(() => {
       this._doSplit();
-      setTimeout(() => this._doSplit(), 150);
     }));
   }
 
