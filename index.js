@@ -46,7 +46,7 @@ class BizSensePro {
         stampFontSize: '52px',
         stampPosition: 'center', // 'center' | 'top-right' | 'bottom-right'
       })),
-      termsContent: localStorage.getItem('biz_terms') || '1. Payment is due within 30 days of invoice date.\n2. Late payments may incur a surcharge of 2% per month.\n3. All disputes must be raised in writing within 7 days of statement receipt.\n4. This statement supersedes all previous correspondence regarding outstanding balances.\n5. For queries, contact our accounts department immediately.',
+      termsContent: localStorage.getItem('biz_terms') || '1. Prices shown are system prices for accounting reference only.\n2. Any special or discounted rates are applicable only upon settlement within the mutually agreed credit period. Discounts will be applied at the time of settlement, and payments received beyond the agreed timeline will be settled at the standard system price applicable for the relevant period.',
       termsConfig: JSON.parse(localStorage.getItem('biz_terms_config') || JSON.stringify({
         fontSize: '8px',
         titleFontSize: '9px',
@@ -261,7 +261,6 @@ class BizSensePro {
     if (this.btns.logout) this.btns.logout.onclick = () => this.logout();
     if (this.btns.print) this.btns.print.onclick = () => window.print();
     if (this.btns.downloadPdf) this.btns.downloadPdf.onclick = () => this.downloadPDF();
-    if (this.btns.downloadImage) this.btns.downloadImage.onclick = () => this.downloadImage();
     if (this.btns.downloadExcel) this.btns.downloadExcel.onclick = () => this.downloadExcel();
     if (this.btns.emailComposer) this.btns.emailComposer.onclick = () => this.openEmailComposer();
     if (this.btns.closeEmail) this.btns.closeEmail.onclick = () => this.views.emailModal.classList.add('view-hidden');
@@ -872,7 +871,7 @@ class BizSensePro {
   renderStatementUI() {
     const { renderArea, emptyState } = this.targets;
     const setBtnsDisabled = (v) => {
-      [this.btns.downloadPdf, this.btns.downloadImage, this.btns.downloadExcel, this.btns.print]
+      [this.btns.downloadPdf, this.btns.downloadExcel, this.btns.print]
         .forEach(b => { if (b) b.disabled = v; });
     };
 
@@ -1067,26 +1066,50 @@ class BizSensePro {
     const items = Array.from(session.items.values());
     const rules = this.state.datePriceRules || [];
 
-    // --- Two-level grouping ---
-    // Level 1: main group by first word of item name
-    // Level 2: subgroups within main group, by same effective price
-    const mainGroups = new Map(); // firstWord -> { label, items[] }
+    // --- Two-level grouping with named product families ---
+    // Known two-word product families take priority over single-word matching.
+    // e.g. "Grow Care 2M" → family "Grow Care", NOT just "Grow"
+    // Single-word families: Sapphire, Mega, Tomboy, Sun, Leeder (and any other first-word match with 2+ items)
+    const TWO_WORD_FAMILIES = ['grow care', 'grow excel'];
+
+    const getFamily = (name) => {
+      const lower = name.toLowerCase();
+      // Check two-word families first
+      for (const fam of TWO_WORD_FAMILIES) {
+        if (lower.startsWith(fam)) return fam;
+      }
+      // Fall back to first word
+      return lower.split(/[\s_\-\/]/)[0];
+    };
+
+    const getFamilyLabel = (name) => {
+      const lower = name.toLowerCase();
+      for (const fam of TWO_WORD_FAMILIES) {
+        if (lower.startsWith(fam)) {
+          // Title-case the two-word family from the actual item name
+          return name.slice(0, fam.length);
+        }
+      }
+      return name.split(/[\s_\-\/]/)[0];
+    };
+
+    const mainGroups = new Map(); // familyKey -> { label, items[] }
     const ungrouped = [];
 
-    // Count items per first word to decide if main group is worth creating
-    const firstWordCount = new Map();
+    // Count items per family
+    const familyCount = new Map();
     items.forEach(item => {
-      const fw = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
-      firstWordCount.set(fw, (firstWordCount.get(fw) || 0) + 1);
+      const fk = getFamily(item.name);
+      familyCount.set(fk, (familyCount.get(fk) || 0) + 1);
     });
 
     items.forEach(item => {
-      const fw = item.name.split(/[\s_\-\/]/)[0].toLowerCase();
-      if (firstWordCount.get(fw) > 1) {
-        if (!mainGroups.has(fw)) {
-          mainGroups.set(fw, { label: item.name.split(/[\s_\-\/]/)[0], items: [] });
+      const fk = getFamily(item.name);
+      if (familyCount.get(fk) > 1) {
+        if (!mainGroups.has(fk)) {
+          mainGroups.set(fk, { label: getFamilyLabel(item.name), items: [] });
         }
-        mainGroups.get(fw).items.push(item);
+        mainGroups.get(fk).items.push(item);
       } else {
         ungrouped.push(item);
       }
@@ -2220,41 +2243,268 @@ class BizSensePro {
   }
 
   // ─────────────────────────────────────────
-  // EXCEL EXPORT
+  // EXCEL EXPORT — styled multi-sheet workbook
   // ─────────────────────────────────────────
   downloadExcel() {
     if (this.state.selectedCustomerIds.size === 0) { alert('No customer selected.'); return; }
     this.showLoading(80, 'Building spreadsheet…');
 
-    const wb = XLSX.utils.book_new();
-    const orgName = this.getOrgName();
+    try {
+      const wb = XLSX.utils.book_new();
+      const orgName = this.getOrgName();
+      const cur = this.state.currency;
 
-    this.state.selectedCustomerIds.forEach(id => {
-      const customer = this.state.customerFullDetails[id] || {};
-      const clientName = customer.contact_name || 'N/A';
-      const openingBalance = this.getEffectiveOpeningBalance(id);
+      this.state.selectedCustomerIds.forEach(id => {
+        const customer = this.state.customerFullDetails[id] || {};
+        const clientName = customer.contact_name || 'N/A';
+        const openingBalance = this.getEffectiveOpeningBalance(id);
 
-      // Ledger export
-      const data = [{ Date: '---', Transaction: 'OPENING BALANCE', Reference: '---', Details: 'Balance Brought Forward', Amount: 0, Payment: 0, Balance: openingBalance, Customer: clientName }];
-      let running = openingBalance;
-      const txs = this.collectTransactions(id);
-      txs.sort((a, b) => a.sortDate - b.sortDate);
-      txs.forEach(tx => {
-        running += tx.amount - tx.payment;
-        let details = '';
-        if (tx.type !== 'Payment Received') {
-          const cacheKey = tx.type === 'Invoice' ? tx.raw.invoice_id : tx.raw.creditnote_id;
-          const det = this.state.invoiceDetailsCache[cacheKey];
-          if (det && det.line_items) details = det.line_items.map(li => `${li.name} (${li.quantity} × ${li.rate})`).join('; ');
-        } else { details = `Ref: ${tx.ref}`; }
-        data.push({ Date: tx.date, Transaction: tx.type, Reference: tx.ref, Details: details, Amount: tx.amount || '', Payment: tx.payment || '', Balance: running, Customer: clientName });
+        // ── Build rows ──────────────────────────────────────
+        const txs = this.collectTransactions(id);
+        txs.sort((a, b) => a.sortDate - b.sortDate);
+
+        let running = openingBalance;
+        let totalInvoiced = 0, totalReceived = 0, totalCredits = 0;
+
+        // Header rows (will be styled)
+        const rows = [];
+
+        // Title block
+        rows.push([orgName]);
+        rows.push(['Statement of Accounts']);
+        rows.push([`Customer: ${clientName}`]);
+        rows.push([`Generated: ${new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}`]);
+        rows.push([`Period: ${this.state.filterDateStart ? this.state.filterDateStart.toLocaleDateString() + ' – ' + (this.state.filterDateEnd?.toLocaleDateString() || 'Present') : 'All Transactions'}`]);
+        rows.push([]); // spacer
+
+        // Column headers
+        rows.push(['Date', 'Transaction', 'Reference', 'Details', `Amount (${cur})`, `Payment (${cur})`, `Balance (${cur})`]);
+
+        // Opening balance row
+        rows.push([
+          '—',
+          'OPENING BALANCE',
+          '—',
+          'Balance Brought Forward',
+          '',
+          '',
+          openingBalance
+        ]);
+        const dataStartRow = rows.length; // 1-based index of first data row
+
+        txs.forEach(tx => {
+          running += tx.amount - tx.payment;
+          if (tx.amount > 0) totalInvoiced += tx.amount;
+          if (tx.payment > 0) {
+            if (tx.type === 'Credit Note') totalCredits += tx.payment;
+            else totalReceived += tx.payment;
+          }
+          let details = '';
+          if (tx.type !== 'Payment Received') {
+            const cacheKey = tx.type === 'Invoice' ? tx.raw.invoice_id : tx.raw.creditnote_id;
+            const det = this.state.invoiceDetailsCache[cacheKey];
+            if (det?.line_items) {
+              details = det.line_items.map(li => {
+                const rate = this.getEffectiveRate(li, tx.date);
+                return `${li.name} (${li.quantity} × ${rate.toFixed(2)})`;
+              }).join('\n');
+            }
+          } else {
+            details = `Ref: ${tx.ref}`;
+          }
+          rows.push([
+            tx.date,
+            tx.type.toUpperCase(),
+            tx.ref,
+            details,
+            tx.amount || '',
+            tx.payment || '',
+            running
+          ]);
+        });
+
+        rows.push([]); // spacer
+
+        // Summary block
+        rows.push(['ACCOUNT SUMMARY']);
+        rows.push(['Opening Balance', '', '', '', '', '', openingBalance]);
+        rows.push(['Total Invoiced',  '', '', '', '', '', totalInvoiced]);
+        rows.push(['Amount Received', '', '', '', '', '', totalReceived]);
+        rows.push(['Credit Notes',    '', '', '', '', '', totalCredits]);
+        rows.push(['BALANCE DUE',     '', '', '', '', '', running]);
+        rows.push([]);
+        rows.push(['Terms & Conditions']);
+        (this.state.termsContent || '').split('\n').filter(l => l.trim()).forEach(line => {
+          rows.push([line.replace(/^\d+\.\s*/, '')]);
+        });
+
+        // ── Create worksheet ──────────────────────────────
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+
+        // Column widths
+        ws['!cols'] = [
+          { wch: 13 }, // Date
+          { wch: 20 }, // Transaction
+          { wch: 18 }, // Reference
+          { wch: 55 }, // Details
+          { wch: 16 }, // Amount
+          { wch: 16 }, // Payment
+          { wch: 16 }, // Balance
+        ];
+
+        // Row heights — title block taller
+        ws['!rows'] = rows.map((r, i) => {
+          if (i === 0) return { hpt: 28 };
+          if (i === 1) return { hpt: 18 };
+          if (i === 6) return { hpt: 22 }; // column header row
+          return { hpt: 16 };
+        });
+
+        // ── Apply styles ──────────────────────────────────
+        const styleCell = (addr, style) => {
+          if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+          ws[addr].s = style;
+        };
+
+        const BLUE    = '1D4ED8';
+        const LBLUE   = 'EFF6FF';
+        const DBLUE   = '1E3A5F';
+        const GREEN   = '059669';
+        const LGREEN  = 'ECFDF5';
+        const RED     = 'DC2626';
+        const AMBER   = 'B45309';
+        const GREY    = 'F1F5F9';
+        const DGREY   = '475569';
+        const WHITE   = 'FFFFFF';
+        const BLACK   = '0F172A';
+
+        const boldFont  = (sz, col) => ({ bold: true, sz: sz || 11, color: { rgb: col || BLACK } });
+        const normFont  = (sz, col) => ({ bold: false, sz: sz || 10, color: { rgb: col || BLACK } });
+        const monoFont  = (sz, col) => ({ bold: false, sz: sz || 9, name: 'Courier New', color: { rgb: col || BLACK } });
+        const center    = { horizontal: 'center', vertical: 'center' };
+        const left      = { horizontal: 'left',   vertical: 'center' };
+        const right     = { horizontal: 'right',  vertical: 'center' };
+        const wrapLeft  = { horizontal: 'left',   vertical: 'top', wrapText: true };
+        const thinBorder = {
+          top:    { style: 'thin', color: { rgb: 'CBD5E1' } },
+          bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          left:   { style: 'thin', color: { rgb: 'CBD5E1' } },
+          right:  { style: 'thin', color: { rgb: 'CBD5E1' } },
+        };
+
+        const enc = XLSX.utils.encode_cell;
+
+        // Row 0: org name title
+        styleCell(enc({r:0,c:0}), { font: boldFont(16, DBLUE), fill: { fgColor: { rgb: WHITE } }, alignment: left });
+        // Row 1: "Statement of Accounts"
+        styleCell(enc({r:1,c:0}), { font: boldFont(10, DGREY), fill: { fgColor: { rgb: WHITE } }, alignment: left });
+        // Rows 2–4: customer/date/period
+        for (let r = 2; r <= 4; r++) {
+          styleCell(enc({r,c:0}), { font: normFont(9, DGREY), fill: { fgColor: { rgb: WHITE } }, alignment: left });
+        }
+
+        // Row 6: column headers
+        const headers = ['A','B','C','D','E','F','G'];
+        headers.forEach((col, ci) => {
+          const addr = col + '7';
+          if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+          ws[addr].s = {
+            font: boldFont(9, WHITE),
+            fill: { fgColor: { rgb: BLUE } },
+            alignment: ci >= 4 ? right : left,
+            border: thinBorder,
+          };
+        });
+
+        // Row 7: opening balance
+        ['A','B','C','D','E','F','G'].forEach((col, ci) => {
+          const addr = col + '8';
+          if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+          ws[addr].s = {
+            font: boldFont(9, BLUE),
+            fill: { fgColor: { rgb: LBLUE } },
+            alignment: ci >= 4 ? { ...right } : left,
+            border: thinBorder,
+          };
+        });
+
+        // Data rows: alternate shading
+        const firstDataExcelRow = 9; // 1-based = row index 8 (0-based)
+        const lastDataExcelRow  = firstDataExcelRow + txs.length - 1;
+        txs.forEach((tx, i) => {
+          const excelRow = firstDataExcelRow + i;
+          const isEven = i % 2 === 0;
+          const isPayment = tx.type === 'Payment Received';
+          const isCredit  = tx.type === 'Credit Note';
+          const rowFill = isPayment ? LGREEN : (isCredit ? 'FFF1F2' : (isEven ? WHITE : GREY));
+          const amtCol  = isPayment || isCredit ? (isPayment ? GREEN : RED) : BLACK;
+
+          ['A','B','C','D','E','F','G'].forEach((col, ci) => {
+            const addr = col + excelRow;
+            if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+            let font = ci === 3 ? normFont(8, DGREY) : normFont(9, ci >= 4 ? amtCol : BLACK);
+            if (ci >= 4) font.bold = true;
+            if (ci === 1) { font.bold = true; font.color = { rgb: isPayment ? GREEN : (isCredit ? RED : BLACK) }; }
+            ws[addr].s = {
+              font,
+              fill: { fgColor: { rgb: rowFill } },
+              alignment: ci === 3 ? wrapLeft : (ci >= 4 ? right : left),
+              border: thinBorder,
+            };
+          });
+        });
+
+        // Summary block: find its row index
+        const summaryStartIdx = rows.findIndex(r => r[0] === 'ACCOUNT SUMMARY');
+        if (summaryStartIdx >= 0) {
+          const summaryRows = ['Opening Balance','Total Invoiced','Amount Received','Credit Notes','BALANCE DUE'];
+          summaryRows.forEach((label, si) => {
+            const ri = summaryStartIdx + 1 + si;
+            const isFinal = label === 'BALANCE DUE';
+            const labelCol = label === 'Amount Received' ? GREEN : (label === 'Credit Notes' ? RED : (isFinal ? WHITE : BLACK));
+            const fillCol  = isFinal ? BLUE : (si % 2 === 0 ? WHITE : GREY);
+            styleCell(enc({r: ri, c: 0}), { font: boldFont(isFinal ? 11 : 9, isFinal ? WHITE : labelCol), fill: { fgColor: { rgb: fillCol } }, alignment: left });
+            styleCell(enc({r: ri, c: 6}), { font: boldFont(isFinal ? 11 : 9, isFinal ? WHITE : labelCol), fill: { fgColor: { rgb: fillCol } }, alignment: right });
+          });
+          // "ACCOUNT SUMMARY" title
+          styleCell(enc({r: summaryStartIdx, c: 0}), { font: boldFont(10, WHITE), fill: { fgColor: { rgb: DBLUE } }, alignment: left });
+        }
+
+        // Merge title cells across columns
+        ws['!merges'] = [
+          { s:{r:0,c:0}, e:{r:0,c:6} },
+          { s:{r:1,c:0}, e:{r:1,c:6} },
+          { s:{r:2,c:0}, e:{r:2,c:6} },
+          { s:{r:3,c:0}, e:{r:3,c:6} },
+          { s:{r:4,c:0}, e:{r:4,c:6} },
+        ];
+
+        // Number format for currency cells (cols E, F, G in data rows)
+        const numFmt = `#,##0.00`;
+        const applyNumFmt = (r, c) => {
+          const addr = enc({r, c});
+          if (ws[addr] && typeof ws[addr].v === 'number') {
+            ws[addr].z = numFmt;
+          }
+        };
+        rows.forEach((row, ri) => {
+          [4, 5, 6].forEach(ci => {
+            if (typeof row[ci] === 'number') applyNumFmt(ri, ci);
+          });
+        });
+
+        const sheetName = clientName.replace(/[\/\\?*\[\]]/g, '').slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
       });
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, clientName.slice(0, 30) + '_Ledger');
-    });
 
-    XLSX.writeFile(wb, `BizSense_${orgName.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
-    this.hideLoading();
+      const fname = `SOA_${orgName.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+      XLSX.writeFile(wb, fname, { cellStyles: true });
+    } catch(err) {
+      alert('Excel export failed: ' + err.message);
+      console.error(err);
+    } finally {
+      this.hideLoading();
+    }
   }
 
   // ─────────────────────────────────────────

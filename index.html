@@ -971,8 +971,11 @@
 
     /* ─── PRINT ─── */
     @media print {
-      body > *:not(#statement-render-target) { display: none !important; }
+      body > * { display: none !important; }
       body { margin: 0; padding: 0; background: white !important; }
+      #view-dashboard { display: block !important; }
+      #view-ledger-container { display: block !important; }
+      #area-ledger { display: block !important; overflow: visible !important; padding: 0 !important; background: white !important; }
       #statement-render-target {
         display: block !important;
         position: static !important;
@@ -1001,6 +1004,7 @@
       .ledger-rows tr { break-inside: avoid; }
       tbody { break-inside: auto; }
       [data-biz-stamp] span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
 
     /* ─── DIVIDER ─── */
@@ -1397,7 +1401,6 @@
     <!-- Export buttons -->
     <button id="btn-print" disabled class="header-btn hbtn-ghost"><i class="ph ph-printer"></i> Print</button>
     <button id="btn-download-pdf" disabled class="header-btn hbtn-blue"><i class="ph ph-file-pdf"></i> PDF</button>
-    <button id="btn-download-image" disabled class="header-btn hbtn-purple"><i class="ph ph-image"></i> Image</button>
     <button id="btn-download-excel" disabled class="header-btn hbtn-green"><i class="ph ph-file-xls"></i> Excel</button>
 
 
