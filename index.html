@@ -655,51 +655,146 @@
     .module-card input { accent-color: var(--primary); width: 14px; height: 14px; }
     .module-card-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
 
-    /* ─── LOADING BAR ─── */
+    /* ─── AMBIENT LOADING BAR (always present at top) ─── */
     #loading-container {
       position: fixed;
       top: 0; left: 0;
       width: 100%;
-      height: 36px;
-      z-index: 9999;
-      background: #0f172a;
-      display: flex;
-      align-items: center;
+      height: 4px;
+      z-index: 10000;
       overflow: hidden;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+      pointer-events: none;
     }
     #loading-progress {
       height: 100%;
-      width: 0%;
+      width: 100%;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(59,130,246,0.15) 20%,
+        rgba(99,102,241,0.2) 40%,
+        rgba(59,130,246,0.15) 60%,
+        transparent 80%);
+      background-size: 200% 100%;
+      animation: ambientPulse 3s ease-in-out infinite;
+      transition: none;
+    }
+    /* When actively loading — bar intensifies and shows progress */
+    #loading-container[data-active] {
+      height: 5px;
+    }
+    #loading-container[data-active] #loading-progress {
       background: linear-gradient(90deg,
         #1e3a8a 0%,
-        #1d4ed8 20%,
-        #3b82f6 40%,
-        #0ea5e9 55%,
-        #06b6d4 70%,
+        #1d4ed8 15%,
+        #3b82f6 30%,
+        #0ea5e9 45%,
+        #06b6d4 55%,
+        #818cf8 70%,
         #3b82f6 85%,
         #1d4ed8 100%);
       background-size: 300% 100%;
-      animation: gradientFlow 2s linear infinite;
-      transition: width 0.35s cubic-bezier(0.4,0,0.2,1);
-      position: relative;
+      animation: gradientFlow 1.5s linear infinite;
+      box-shadow: 0 0 12px rgba(59,130,246,0.6), 0 0 4px rgba(99,102,241,0.4);
     }
     #loading-bar-text {
-      position: absolute;
+      position: fixed;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
-      font-size: 0.6rem;
+      font-size: 0.58rem;
       font-weight: 800;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
-      color: rgba(255,255,255,0.9);
+      color: #93c5fd;
       font-family: 'DM Mono', monospace;
       white-space: nowrap;
       pointer-events: none;
-      z-index: 2;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+      z-index: 10001;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      text-shadow: 0 0 12px rgba(59,130,246,0.5);
+      background: rgba(15,23,42,0.85);
+      padding: 3px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(59,130,246,0.2);
+      backdrop-filter: blur(8px);
     }
+    /* Loading overlay — dims and adds fun message to app while loading */
+    .app-loading .app-main {
+      pointer-events: none;
+    }
+    .app-loading #loading-bar-text {
+      opacity: 1;
+    }
+    /* Loading spinner overlay on statement area */
+    #loading-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: rgba(248,250,252,0.88);
+      backdrop-filter: blur(6px);
+      border-radius: 12px;
+      animation: overlayIn 0.2s ease;
+    }
+    #loading-overlay.visible { display: flex; }
+    @keyframes overlayIn { from { opacity:0; transform:scale(0.98); } to { opacity:1; transform:scale(1); } }
+    .loading-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #1d4ed8;
+      border-right-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s cubic-bezier(0.4,0,0.2,1) infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-status-text {
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #1d4ed8;
+      font-family: 'DM Mono', monospace;
+      animation: statusPulse 1.5s ease-in-out infinite;
+    }
+    .loading-fun-msg {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: #94a3b8;
+      font-family: 'DM Sans', sans-serif;
+      animation: fadeUpIn 0.4s ease 0.2s both;
+    }
+    @keyframes statusPulse { 0%,100%{opacity:0.7} 50%{opacity:1} }
+    @keyframes fadeUpIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes ambientPulse { 0%,100%{background-position:0% 0;opacity:0.4} 50%{background-position:100% 0;opacity:0.7} }
     @keyframes gradientFlow { 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
+    /* Report Error button */
+    .report-error-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.58rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+    .report-error-btn:hover {
+      color: #fbbf24;
+      border-color: rgba(251,191,36,0.25);
+      background: rgba(251,191,36,0.07);
+    }
 
     /* ─── SKELETON ─── */
     .skeleton {
@@ -1045,10 +1140,17 @@
 </head>
 <body>
 
-<!-- LOADING BAR -->
-<div id="loading-container" class="view-hidden">
+<!-- AMBIENT TOP BAR (always present) -->
+<div id="loading-container">
   <div id="loading-progress"></div>
-  <div id="loading-bar-text">Loading…</div>
+</div>
+<div id="loading-bar-text">Crunching numbers…</div>
+
+<!-- LOADING OVERLAY (shown inside statement area) -->
+<div id="loading-overlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-status-text" id="loading-overlay-text">Loading…</div>
+  <div class="loading-fun-msg" id="loading-fun-msg">Fetching your data from Zoho…</div>
 </div>
 
 <!-- ══════════════════════════════════════════
@@ -1107,6 +1209,11 @@
     </div>
 
     <p id="business-quote">"Revenue is vanity, profit is sanity, but cash is king."</p>
+    <div style="text-align:center;margin-top:1rem;">
+      <a href="https://wa.me/94715717171?text=BizSense+Pro+Error+Report" target="_blank" class="report-error-btn">
+        <i class="ph ph-bug"></i> Report Error
+      </a>
+    </div>
   </div>
 </div>
 
@@ -1141,7 +1248,7 @@
     <button id="btn-download-pdf" disabled class="header-btn hbtn-blue"><i class="ph ph-file-pdf"></i> PDF</button>
     <button id="btn-download-image" disabled class="header-btn hbtn-purple"><i class="ph ph-image"></i> Image</button>
     <button id="btn-download-excel" disabled class="header-btn hbtn-green"><i class="ph ph-file-xls"></i> Excel</button>
-    <button id="btn-email-composer" class="header-btn hbtn-ghost"><i class="ph ph-envelope"></i></button>
+
 
     <div style="flex:1;"></div>
 
@@ -1160,6 +1267,9 @@
     <button id="btn-project-settings" class="header-btn hbtn-ghost" title="Dataset Settings">
       <i class="ph ph-sliders"></i>
     </button>
+    <a href="https://wa.me/94715717171?text=BizSense+Pro+Error+Report" target="_blank" class="report-error-btn header-btn no-print" title="Report a bug via WhatsApp">
+      <i class="ph ph-bug"></i> Report Error
+    </a>
     <button id="btn-logout" class="header-btn" style="background:#fef2f2;color:#dc2626;" title="Logout">
       <i class="ph ph-sign-out"></i>
     </button>
@@ -1209,7 +1319,7 @@
     </div>
 
     <!-- MAIN CONTENT -->
-    <main class="app-main">
+    <main class="app-main" style="position:relative;">
 
       <!-- ── LEDGER VIEW ── -->
       <div id="view-ledger-container" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">

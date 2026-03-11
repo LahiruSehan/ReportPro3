@@ -1089,43 +1089,68 @@ class BizSensePro {
             : saved ? saved.price : item.origRate;
           const isSet = item.newRate !== null || saved;
           rowsHtml += `
-            <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}">
-              <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
-                <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset this item" style="background:rgba(220,38,38,0.12);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 5px;font-size:0.65rem;cursor:pointer;flex-shrink:0;line-height:1;">↺</button>
-                <div class="price-item-name" style="flex:1;">${item.name}</div>
+            <div class="price-item-row${isSet ? ' overridden' : ''}" data-item="${encodeURIComponent(item.name)}" style="border-radius:7px;padding:7px 9px;margin-bottom:5px;background:${isSet ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.03)'};border:1px solid ${isSet ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)'};">
+              <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+                <button class="pe-reset-btn" data-item="${encodeURIComponent(item.name)}" title="Reset this item" style="background:rgba(220,38,38,0.1);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;flex-shrink:0;line-height:1.2;">↺</button>
+                <div class="price-item-name" style="flex:1;color:${isSet ? '#e2e8f0' : 'rgba(255,255,255,0.55)'};font-size:0.7rem;font-weight:${isSet ? '700' : '500'};">${item.name}</div>
               </div>
-              <div class="price-input-wrap">
-                <span class="price-currency-tag">${this.state.currency}</span>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <span style="font-size:0.58rem;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;flex-shrink:0;">${this.state.currency}</span>
                 <input type="number" class="pe-item-input${isSet ? ' changed' : ''}"
                   data-item="${encodeURIComponent(item.name)}"
                   data-orig="${item.origRate}"
                   value="${parseFloat(displayVal).toFixed(2)}"
-                  step="0.01" min="0">
+                  step="0.01" min="0"
+                  style="flex:1;background:rgba(255,255,255,0.07);border:1px solid ${isSet ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'};color:${isSet ? '#93c5fd' : 'white'};border-radius:5px;padding:5px 7px;font-size:0.72rem;font-family:'DM Mono',monospace;outline:none;width:100%;color-scheme:dark;">
               </div>
-              ${isSet ? `<div class="price-orig-val">zoho: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
+              ${isSet ? `<div style="font-size:0.55rem;color:rgba(255,255,255,0.25);margin-top:3px;font-family:'DM Mono',monospace;">zoho rate: ${item.origRate.toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : ''}
             </div>`;
         });
       });
     }
 
     return `
-      <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.18);border-radius:7px;padding:7px 10px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.22);border-radius:8px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-size:0.55rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:rgba(255,255,255,0.3);">Editing Range</div>
-          <div style="font-size:0.65rem;font-weight:700;color:#93c5fd;margin-top:1px;">${from} → ${to}</div>
+          <div style="font-size:0.5rem;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.25);margin-bottom:2px;">Editing Range</div>
+          <div style="font-size:0.68rem;font-weight:800;color:#93c5fd;">${from} → ${to}</div>
+          <div style="font-size:0.58rem;color:rgba(255,255,255,0.3);margin-top:1px;">${items.length} item(s) found</div>
         </div>
-        <button id="pe-back-btn" style="background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 8px;font-size:0.6rem;cursor:pointer;font-family:'DM Sans',sans-serif;">← Back</button>
+        <button id="pe-back-btn" style="background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:4px 10px;font-size:0.6rem;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;">← Back</button>
+      </div>
+      <div style="position:relative;margin-bottom:8px;">
+        <input id="pe-item-search" type="text" placeholder="Search items…" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:white;border-radius:7px;padding:6px 10px 6px 28px;font-size:0.68rem;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box;color-scheme:dark;">
+        <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,0.3);font-size:0.7rem;pointer-events:none;">🔍</span>
       </div>
       <div id="pe-item-rows">${rowsHtml}</div>
-      <div style="display:flex;gap:5px;margin-top:10px;">
-        <button id="pe-save-rules-btn" style="flex:1;padding:7px;background:linear-gradient(135deg,#065f46,#059669);color:white;border:none;border-radius:7px;font-size:0.68rem;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;">
-          ✓ Save Rules
+      <div style="display:flex;gap:5px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);">
+        <button id="pe-save-rules-btn" style="flex:1;padding:7px 5px;background:linear-gradient(135deg,#065f46,#059669);color:white;border:none;border-radius:7px;font-size:0.65rem;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:0.04em;transition:all 0.15s;">
+          ✓ Save All Rules
         </button>
-        <button id="pe-reset-all-btn" style="padding:7px 10px;background:rgba(220,38,38,0.12);color:#f87171;border:1px solid rgba(220,38,38,0.18);border-radius:7px;font-size:0.68rem;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;" title="Reset all items in this range">↺</button>
+        <button id="pe-reset-all-btn" style="padding:7px 10px;background:rgba(220,38,38,0.1);color:#f87171;border:1px solid rgba(220,38,38,0.2);border-radius:7px;font-size:0.7rem;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;" title="Reset all items in this range">↺</button>
       </div>`;
   }
 
   _bindPriceItemEditor(list, session) {
+    // Item search filter
+    list.querySelector('#pe-item-search')?.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      list.querySelectorAll('.price-item-row').forEach(row => {
+        const name = row.querySelector('.price-item-name')?.textContent?.toLowerCase() || '';
+        row.style.display = (!q || name.includes(q)) ? '' : 'none';
+      });
+      list.querySelectorAll('.price-group-label').forEach(lbl => {
+        // Hide group label if all its items are hidden
+        let next = lbl.nextElementSibling;
+        let anyVisible = false;
+        while (next && !next.classList.contains('price-group-label')) {
+          if (next.style.display !== 'none') anyVisible = true;
+          next = next.nextElementSibling;
+        }
+        lbl.style.display = anyVisible ? '' : 'none';
+      });
+    });
+
     // Live preview on input
     list.querySelectorAll('.pe-item-input').forEach(input => {
       input.addEventListener('input', () => {
@@ -1414,7 +1439,7 @@ class BizSensePro {
         : 'All Transactions';
 
       html += `
-        <div class="a4-page" id="pdf-content">
+        <div class="a4-page" id="pdf-content" data-client-name="${clientName}" data-stamp-mode="${this.state.stampMode}">
           ${bc.showHeader ? `
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:3px solid ${theme.primary};">
             <div style="flex:1;">
@@ -1437,7 +1462,6 @@ class BizSensePro {
                 <div style="font-size:20px;font-weight:900;letter-spacing:-0.02em;">${this.state.currency} ${runningBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</div>
               </div>
               <div style="margin-top:8px;font-size:8px;font-weight:700;color:#94a3b8;">Dated: ${new Date().toLocaleDateString()}</div>
-              ${this.state.stampMode !== 'none' ? this._renderStampHtml() : ''}
             </div>
           </div>
           ` : ''}
@@ -1446,7 +1470,10 @@ class BizSensePro {
           <div style="margin-bottom:1.5rem;display:flex;gap:2rem;align-items:flex-start;">
             <div style="flex:1;">
               <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:#94a3b8;margin-bottom:6px;">Account</div>
-              <div style="font-size:16px;font-weight:900;color:${theme.primary};">${clientName}</div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div style="font-size:16px;font-weight:900;color:${theme.primary};">${clientName}</div>
+                ${this.state.stampMode !== 'none' ? this._renderStampTag() : ''}
+              </div>
               ${customer.contact_id ? `<div style="font-size:8px;font-weight:700;color:#94a3b8;margin-top:3px;font-family:'DM Mono',monospace;letter-spacing:0.06em;">ID: ${customer.contact_id}</div>` : ''}
               ${customer.email ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${customer.email}</div>` : ''}
               ${customer.mobile || customer.phone ? `<div style="font-size:9px;color:#64748b;">${customer.mobile || customer.phone}</div>` : ''}
@@ -1713,25 +1740,53 @@ class BizSensePro {
   // LOADING
   // ─────────────────────────────────────────
   showLoading(pct, txt) {
-    const lc = document.getElementById('loading-container');
-    const lp = document.getElementById('loading-progress');
-    const lt = document.getElementById('loading-bar-text');
-    if (lc) lc.classList.remove('view-hidden');
-    if (lp) { lp.style.width = `${pct}%`; }
-    if (lt) lt.textContent = txt.toUpperCase();
+    const lp  = document.getElementById('loading-progress');
+    const lt  = document.getElementById('loading-bar-text');
+    const lc  = document.getElementById('loading-container');
+    const ov  = document.getElementById('loading-overlay');
+    const ovt = document.getElementById('loading-overlay-text');
+    const fun = document.getElementById('loading-fun-msg');
+    if (lp)  lp.style.width = `${pct}%`;
+    if (lt)  lt.textContent = txt.toUpperCase();
+    if (lc)  lc.setAttribute('data-active','1');
+    if (ov)  ov.classList.add('visible');
+    if (ovt) ovt.textContent = txt.toUpperCase();
+    if (fun) {
+      const msgs = [
+        'Fetching your data from Zoho…',
+        'Crunching numbers like a pro…',
+        'Balancing the books…',
+        'Counting invoices…',
+        'Chasing payments (virtually)…',
+        'Running ledger calculations…',
+        'Syncing with Zoho Books…',
+        'Almost there, just one sec…',
+        'Loading statement data…',
+        'Preparing your report…',
+      ];
+      fun.textContent = msgs[Math.floor(Math.random() * msgs.length)];
+    }
+    document.body.classList.add('app-loading');
     if (this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
     if (this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
   }
 
   hideLoading() {
-    const lp = document.getElementById('loading-progress');
-    if (lp) lp.style.width = '100%';
+    const lp  = document.getElementById('loading-progress');
+    if (lp)  { lp.style.width = '100%'; }
     setTimeout(() => {
-      const lc = document.getElementById('loading-container');
-      if (lc) lc.classList.add('view-hidden');
+      const lc  = document.getElementById('loading-container');
+      const ov  = document.getElementById('loading-overlay');
+      document.body.classList.remove('app-loading');
+      if (lc)  lc.removeAttribute('data-active');
+      if (ov)  ov.classList.remove('visible');
+      // Reset progress bar back to ambient state after fade
+      setTimeout(() => {
+        if (lp) { lp.style.transition='none'; lp.style.width='100%'; setTimeout(()=>{ if(lp) lp.style.transition=''; },50); }
+      }, 200);
       if (this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
       if (this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
-    }, 700);
+    }, 800);
   }
 
   // ─────────────────────────────────────────
@@ -1748,33 +1803,51 @@ class BizSensePro {
   // ─────────────────────────────────────────
   // STAMP RENDERING
   // ─────────────────────────────────────────
-  // Inline stamp HTML — sits inside the SOA header right column, no absolute positioning
-  _renderStampHtml() {
+  // Big colored tag placed right after the client name
+  _renderStampTag() {
     if (this.state.stampMode === 'none') return '';
     const sc = this.state.stampConfig;
     const isD = this.state.stampMode === 'draft';
-    const col = isD ? sc.draftColor : sc.finalColor;
+    const col = isD ? (sc.draftColor || '#dc2626') : (sc.finalColor || '#059669');
     const txt = isD ? 'DRAFT' : 'FINAL';
-    return `<div data-biz-stamp="1" style="margin-top:10px;text-align:right;pointer-events:none;">
-      <span style="
-        display:inline-block;
-        font-size:${sc.stampFontSize};
-        font-weight:900;
-        color:${col};
-        border:${sc.stampBorderWidth} solid ${col};
-        padding:5px 16px;
-        border-radius:5px;
-        opacity:${sc.stampOpacity};
-        letter-spacing:0.18em;
-        font-family:'DM Sans',sans-serif;
-        text-transform:uppercase;
-        user-select:none;
-        line-height:1;
-        white-space:nowrap;
-        transform:rotate(${sc.stampRotation});
-        display:inline-block;
-      ">${txt}</span>
-    </div>`;
+    // Subtle bg derived from the color
+    const bg = isD ? 'rgba(220,38,38,0.08)' : 'rgba(5,150,105,0.08)';
+    return `<span data-biz-stamp="1" style="
+      display:inline-flex;
+      align-items:center;
+      padding:3px 12px;
+      border-radius:4px;
+      background:${bg};
+      border:2px solid ${col};
+      color:${col};
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:0.22em;
+      font-family:'DM Sans',sans-serif;
+      text-transform:uppercase;
+      user-select:none;
+      white-space:nowrap;
+      line-height:1.4;
+      flex-shrink:0;
+    ">${txt}</span>`;
+  }
+
+  // Compact stamp for continuation pages header
+  _renderContStamp() {
+    if (this.state.stampMode === 'none') return '';
+    const sc = this.state.stampConfig;
+    const isD = this.state.stampMode === 'draft';
+    const col = isD ? (sc.draftColor || '#dc2626') : (sc.finalColor || '#059669');
+    const txt = isD ? 'DRAFT' : 'FINAL';
+    const bg  = isD ? 'rgba(220,38,38,0.08)' : 'rgba(5,150,105,0.08)';
+    return `<span data-biz-stamp="1" style="
+      display:inline-flex;align-items:center;
+      padding:2px 9px;border-radius:4px;
+      background:${bg};border:1.5px solid ${col};
+      color:${col};font-size:9px;font-weight:900;
+      letter-spacing:0.2em;font-family:'DM Sans',sans-serif;
+      text-transform:uppercase;white-space:nowrap;
+    ">${txt}</span>`;
   }
 
   _renderTermsHtml() {
@@ -1840,14 +1913,10 @@ class BizSensePro {
       const termsHtml   = this.state.stampMode === 'final' ? this._renderTermsHtml() : '';
       const totalPages  = pageChunks.length;
 
-      // Build tiny continuation-page stamp (inline, no absolute)
-      const contStamp = this.state.stampMode !== 'none' ? (() => {
-        const sc = this.state.stampConfig;
-        const isD = this.state.stampMode === 'draft';
-        const col = isD ? sc.draftColor : sc.finalColor;
-        const txt = isD ? 'DRAFT' : 'FINAL';
-        return `<span data-biz-stamp="1" style="display:inline-block;font-size:10px;font-weight:900;color:${col};border:2px solid ${col};padding:2px 8px;border-radius:4px;opacity:${sc.stampOpacity};letter-spacing:0.15em;font-family:'DM Sans',sans-serif;transform:rotate(${sc.stampRotation});margin-left:auto;">${txt}</span>`;
-      })() : '';
+      // Continuation page header: client name + stamp + page num
+      const clientName = page.dataset?.clientName || '';
+      const contStampHtml = this._renderContStamp();
+      const theme = this.getTheme();
 
       let pagesHtml = '';
       pageChunks.forEach((chunk, pi) => {
@@ -1855,9 +1924,15 @@ class BizSensePro {
         const rowsHtml = chunk.map(r => r.outerHTML).join('');
         const pageNum  = pi + 1;
         const contHeader = pi > 0 ? `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">
-            <div style="font-size:9px;font-weight:700;color:#94a3b8;">CONTINUED — PAGE ${pageNum} OF ${totalPages}</div>
-            ${contStamp}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding-bottom:8px;border-bottom:3px solid ${theme.primary};">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="font-size:13px;font-weight:900;color:${theme.primary};">${clientName}</div>
+              ${contStampHtml}
+            </div>
+            <div style="font-size:8px;font-weight:700;color:#94a3b8;text-align:right;">
+              <div style="font-size:7px;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:1px;">Statement of Accounts</div>
+              PAGE ${pageNum} OF ${totalPages}
+            </div>
           </div>` : '';
         pagesHtml += `
           <div class="a4-page" style="overflow:visible;">
