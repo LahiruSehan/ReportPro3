@@ -1740,53 +1740,83 @@ class BizSensePro {
   // LOADING
   // ─────────────────────────────────────────
   showLoading(pct, txt) {
-    const lp  = document.getElementById('loading-progress');
-    const lt  = document.getElementById('loading-bar-text');
-    const lc  = document.getElementById('loading-container');
-    const ov  = document.getElementById('loading-overlay');
-    const ovt = document.getElementById('loading-overlay-text');
-    const fun = document.getElementById('loading-fun-msg');
-    if (lp)  lp.style.width = `${pct}%`;
-    if (lt)  lt.textContent = txt.toUpperCase();
-    if (lc)  lc.setAttribute('data-active','1');
-    if (ov)  ov.classList.add('visible');
-    if (ovt) ovt.textContent = txt.toUpperCase();
+    const lp   = document.getElementById('loading-progress');
+    const lc   = document.getElementById('loading-container');
+    const ov   = document.getElementById('loading-overlay');
+    const ovt  = document.getElementById('loading-overlay-text');
+    const fun  = document.getElementById('loading-fun-msg');
+    const fill = document.getElementById('lo-progress-fill');
+
+    if (lp)   lp.style.width = '100%';          // ambient stripe full-width
+    if (lc)   lc.setAttribute('data-active','1');
+    if (fill) fill.style.width = `${pct}%`;
+    if (ovt)  ovt.textContent = txt.toUpperCase();
+
     if (fun) {
       const msgs = [
-        'Fetching your data from Zoho…',
-        'Crunching numbers like a pro…',
-        'Balancing the books…',
-        'Counting invoices…',
-        'Chasing payments (virtually)…',
+        'Fetching your data from Zoho Books…',
+        'Crunching the numbers like a pro…',
+        'Balancing the ledger…',
+        'Counting every invoice…',
+        'Chasing those payments (virtually)…',
         'Running ledger calculations…',
         'Syncing with Zoho Books…',
-        'Almost there, just one sec…',
-        'Loading statement data…',
-        'Preparing your report…',
+        'Hang tight, almost there…',
+        'Pulling statement data…',
+        'Preparing your financial report…',
+        'Making the books look beautiful…',
+        'Reconciling transactions…',
       ];
       fun.textContent = msgs[Math.floor(Math.random() * msgs.length)];
     }
+
+    // Generate starfield on first show
+    const stars = document.getElementById('lo-stars-container');
+    if (stars && !stars.dataset.built) {
+      stars.dataset.built = '1';
+      let starsHtml = '';
+      for (let i = 0; i < 80; i++) {
+        const size = Math.random() * 2.5 + 0.5;
+        const x = Math.random() * 100;
+        const y = Math.random() * 100;
+        const dur = (Math.random() * 3 + 1.5).toFixed(1);
+        const delay = (Math.random() * 4).toFixed(1);
+        const minOp = (Math.random() * 0.04 + 0.02).toFixed(2);
+        const maxOp = (Math.random() * 0.35 + 0.15).toFixed(2);
+        starsHtml += `<div class="lo-star" style="width:${size.toFixed(1)}px;height:${size.toFixed(1)}px;left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--d:${dur}s;--delay:${delay}s;--min-op:${minOp};--max-op:${maxOp};"></div>`;
+      }
+      stars.innerHTML = starsHtml;
+    }
+
+    if (ov) ov.classList.add('visible');
     document.body.classList.add('app-loading');
     if (this.views.skeletonLoader) this.views.skeletonLoader.classList.remove('view-hidden');
     if (this.views.statementContainer) this.views.statementContainer.classList.add('view-hidden');
   }
 
   hideLoading() {
-    const lp  = document.getElementById('loading-progress');
-    if (lp)  { lp.style.width = '100%'; }
+    const fill = document.getElementById('lo-progress-fill');
+    if (fill) fill.style.width = '100%';
+    // Short pause so user sees 100% before dismissing
     setTimeout(() => {
       const lc  = document.getElementById('loading-container');
       const ov  = document.getElementById('loading-overlay');
       document.body.classList.remove('app-loading');
-      if (lc)  lc.removeAttribute('data-active');
-      if (ov)  ov.classList.remove('visible');
-      // Reset progress bar back to ambient state after fade
-      setTimeout(() => {
-        if (lp) { lp.style.transition='none'; lp.style.width='100%'; setTimeout(()=>{ if(lp) lp.style.transition=''; },50); }
-      }, 200);
+      if (lc) lc.removeAttribute('data-active');
+      // Fade out overlay
+      if (ov) {
+        ov.style.transition = 'opacity 0.45s ease';
+        ov.style.opacity = '0';
+        setTimeout(() => {
+          ov.classList.remove('visible');
+          ov.style.opacity = '';
+          ov.style.transition = '';
+          if (fill) fill.style.width = '0%';
+        }, 460);
+      }
       if (this.views.skeletonLoader) this.views.skeletonLoader.classList.add('view-hidden');
       if (this.views.statementContainer) this.views.statementContainer.classList.remove('view-hidden');
-    }, 800);
+    }, 500);
   }
 
   // ─────────────────────────────────────────
@@ -1810,12 +1840,12 @@ class BizSensePro {
     const isD = this.state.stampMode === 'draft';
     const col = isD ? (sc.draftColor || '#dc2626') : (sc.finalColor || '#059669');
     const txt = isD ? 'DRAFT' : 'FINAL';
-    // Subtle bg derived from the color
-    const bg = isD ? 'rgba(220,38,38,0.08)' : 'rgba(5,150,105,0.08)';
+    const bg  = isD ? 'rgba(220,38,38,0.09)' : 'rgba(5,150,105,0.09)';
+    // Use inline-block (not flex) so html2canvas renders text correctly in PDF
     return `<span data-biz-stamp="1" style="
-      display:inline-flex;
-      align-items:center;
-      padding:3px 12px;
+      display:inline-block;
+      vertical-align:middle;
+      padding:3px 12px 4px 12px;
       border-radius:4px;
       background:${bg};
       border:2px solid ${col};
@@ -1823,11 +1853,12 @@ class BizSensePro {
       font-size:11px;
       font-weight:900;
       letter-spacing:0.22em;
-      font-family:'DM Sans',sans-serif;
+      font-family:Arial,sans-serif;
       text-transform:uppercase;
       user-select:none;
       white-space:nowrap;
-      line-height:1.4;
+      line-height:16px;
+      box-sizing:border-box;
       flex-shrink:0;
     ">${txt}</span>`;
   }
@@ -1839,14 +1870,15 @@ class BizSensePro {
     const isD = this.state.stampMode === 'draft';
     const col = isD ? (sc.draftColor || '#dc2626') : (sc.finalColor || '#059669');
     const txt = isD ? 'DRAFT' : 'FINAL';
-    const bg  = isD ? 'rgba(220,38,38,0.08)' : 'rgba(5,150,105,0.08)';
+    const bg  = isD ? 'rgba(220,38,38,0.09)' : 'rgba(5,150,105,0.09)';
     return `<span data-biz-stamp="1" style="
-      display:inline-flex;align-items:center;
-      padding:2px 9px;border-radius:4px;
+      display:inline-block;vertical-align:middle;
+      padding:2px 9px 3px 9px;border-radius:4px;
       background:${bg};border:1.5px solid ${col};
       color:${col};font-size:9px;font-weight:900;
-      letter-spacing:0.2em;font-family:'DM Sans',sans-serif;
+      letter-spacing:0.2em;font-family:Arial,sans-serif;
       text-transform:uppercase;white-space:nowrap;
+      line-height:13px;box-sizing:border-box;
     ">${txt}</span>`;
   }
 
@@ -1866,8 +1898,14 @@ class BizSensePro {
   // MULTI-PAGE A4 SPLITTING
   // ─────────────────────────────────────────
   _splitIntoA4Pages() {
-    // Wait two animation frames so DOM layout fully settles before measuring
-    requestAnimationFrame(() => requestAnimationFrame(() => this._doSplit()));
+    // Fire via double-RAF for first attempt, then again via setTimeout
+    // to guarantee layout is fully settled (especially on first load)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      this._doSplit();
+      // Second pass after full paint cycle — catches cases where first pass
+      // sees 0 offsetHeights because the page wasn't yet in the paint tree
+      setTimeout(() => this._doSplit(), 120);
+    }));
   }
 
   _doSplit() {
@@ -2043,7 +2081,12 @@ class BizSensePro {
         const scaleH = imgH > ph ? ph : imgH;
         pdf.addImage(imgData, 'JPEG', 0, 0, pw, scaleH);
       }
-      pdf.save(`SOA_${new Date().toISOString().slice(0,10)}.pdf`);
+      const firstId = Array.from(this.state.selectedCustomerIds)[0];
+      const custName = (this.state.customerFullDetails[firstId]?.contact_name || 'Customer').replace(/[^a-z0-9\s]/gi, '').trim().replace(/\s+/g, '_');
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10);
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+      pdf.save(`SOA_${custName}_${dateStr}_${timeStr}.pdf`);
     } catch (err) { alert('PDF generation failed: ' + err.message); }
     finally { this.hideLoading(); }
   }
