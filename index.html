@@ -1723,44 +1723,116 @@
                 </select>
               </div>
 
-              <div class="builder-section-label">Terms &amp; Conditions</div>
-              <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:8px;">Shown only when stamp is set to FINAL.</div>
-              <div class="builder-toggle-row">
-                <span class="builder-toggle-label">Show T&amp;C Title</span>
-                <label class="toggle-switch"><input type="checkbox" id="tc-show-title" checked><span class="toggle-slider"></span></label>
+              <!-- ── DRAFT BILL SECTION ── -->
+              <div class="builder-section-label" style="display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.bl-chevron').style.transform=this.nextElementSibling.style.display==='none'?'rotate(-90deg)':'rotate(0deg)';">
+                <span style="display:flex;align-items:center;gap:6px;flex:1;">
+                  <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#dc2626;flex-shrink:0;"></span>
+                  Draft Bill Settings
+                </span>
+                <span class="bl-chevron" style="font-size:0.65rem;color:var(--text-muted);transition:transform 0.2s;">▾</span>
               </div>
-              <div style="margin-bottom:8px;">
-                <div class="modal-label" style="margin-bottom:4px;">Title Text</div>
-                <input type="text" id="tc-title-text" value="Terms &amp; Conditions" class="modal-input" style="font-size:0.75rem;padding:7px 10px;">
-              </div>
-              <div style="margin-bottom:8px;">
-                <div class="modal-label" style="margin-bottom:4px;">Text Color</div>
-                <div style="display:flex;gap:6px;align-items:center;">
-                  <input type="color" id="tc-color" value="#64748b" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
-                  <span style="font-size:0.65rem;color:var(--text-muted);">Text &amp; Title</span>
+              <div id="draft-bill-section" style="display:block;">
+                <div style="background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.15);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+                  <div style="font-size:0.62rem;color:rgba(220,38,38,0.7);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;">Terms &amp; Conditions — Draft Bill</div>
+                  <div class="builder-toggle-row">
+                    <span class="builder-toggle-label">Show T&amp;C on Draft Bill</span>
+                    <label class="toggle-switch"><input type="checkbox" id="tc-show-draft"><span class="toggle-slider"></span></label>
+                  </div>
+                  <div id="draft-tc-settings" style="display:none;margin-top:8px;">
+                    <div class="builder-toggle-row">
+                      <span class="builder-toggle-label">Show T&amp;C Title</span>
+                      <label class="toggle-switch"><input type="checkbox" id="tc-show-title-draft" checked><span class="toggle-slider"></span></label>
+                    </div>
+                    <div style="margin-bottom:8px;">
+                      <div class="modal-label" style="margin-bottom:4px;">Title Text</div>
+                      <input type="text" id="tc-title-text-draft" value="Terms &amp; Conditions" class="modal-input" style="font-size:0.75rem;padding:7px 10px;">
+                    </div>
+                    <div style="margin-bottom:8px;">
+                      <div class="modal-label" style="margin-bottom:4px;">Terms Content</div>
+                      <textarea id="tc-content-draft" style="width:100%;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:8px;font-size:0.7rem;font-family:'DM Sans',sans-serif;resize:vertical;outline:none;line-height:1.5;" rows="5" placeholder="Enter one term per line…"></textarea>
+                      <div style="font-size:0.6rem;color:var(--text-muted);margin-top:3px;">One term per line. Numbers added automatically.</div>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <div style="flex:1;min-width:80px;">
+                        <div class="modal-label" style="margin-bottom:4px;">Text Color</div>
+                        <input type="color" id="tc-color-draft" value="#64748b" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+                      </div>
+                      <div style="flex:1;min-width:80px;">
+                        <div class="modal-label" style="margin-bottom:4px;">BG Color</div>
+                        <input type="color" id="tc-bg-color-draft" value="#f8fafc" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+                      </div>
+                      <div style="flex:1;min-width:80px;">
+                        <div class="modal-label" style="margin-bottom:4px;">Border</div>
+                        <input type="color" id="tc-border-color-draft" value="#e2e8f0" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+                      </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                      <div class="modal-label" style="margin-bottom:4px;">Font Size</div>
+                      <select id="tc-font-size-draft" class="group-select">
+                        <option value="7px">Tiny (7px)</option>
+                        <option value="8px" selected>Small (8px)</option>
+                        <option value="9px">Medium (9px)</option>
+                        <option value="10px">Normal (10px)</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div style="margin-bottom:8px;">
-                <div class="modal-label" style="margin-bottom:4px;">Background Color</div>
-                <input type="color" id="tc-bg-color" value="#f8fafc" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+
+              <!-- ── FINAL BILL SECTION ── -->
+              <div class="builder-section-label" style="display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.bl-chevron').style.transform=this.nextElementSibling.style.display==='none'?'rotate(-90deg)':'rotate(0deg)';">
+                <span style="display:flex;align-items:center;gap:6px;flex:1;">
+                  <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#059669;flex-shrink:0;"></span>
+                  Final Bill Settings
+                </span>
+                <span class="bl-chevron" style="font-size:0.65rem;color:var(--text-muted);transition:transform 0.2s;">▾</span>
               </div>
-              <div style="margin-bottom:8px;">
-                <div class="modal-label" style="margin-bottom:4px;">Border Color</div>
-                <input type="color" id="tc-border-color" value="#e2e8f0" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
-              </div>
-              <div style="margin-bottom:8px;">
-                <div class="modal-label" style="margin-bottom:4px;">Font Size</div>
-                <select id="tc-font-size" class="group-select">
-                  <option value="7px">Tiny (7px)</option>
-                  <option value="8px" selected>Small (8px)</option>
-                  <option value="9px">Medium (9px)</option>
-                  <option value="10px">Normal (10px)</option>
-                </select>
-              </div>
-              <div style="margin-bottom:8px;">
-                <div class="modal-label" style="margin-bottom:4px;">Terms Content</div>
-                <textarea id="tc-content" style="width:100%;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:8px;font-size:0.7rem;font-family:'DM Sans',sans-serif;resize:vertical;outline:none;line-height:1.5;" rows="6" placeholder="Enter one term per line…"></textarea>
-                <div style="font-size:0.6rem;color:var(--text-muted);margin-top:3px;">One term per line. Numbers are added automatically.</div>
+              <div id="final-bill-section" style="display:block;">
+                <div style="background:rgba(5,150,105,0.06);border:1px solid rgba(5,150,105,0.15);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+                  <div style="font-size:0.62rem;color:rgba(5,150,105,0.8);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;">Terms &amp; Conditions — Final Bill</div>
+                  <div class="builder-toggle-row">
+                    <span class="builder-toggle-label">Show T&amp;C on Final Bill</span>
+                    <label class="toggle-switch"><input type="checkbox" id="tc-show-final" checked><span class="toggle-slider"></span></label>
+                  </div>
+                  <div id="final-tc-settings" style="margin-top:8px;">
+                    <div class="builder-toggle-row">
+                      <span class="builder-toggle-label">Show T&amp;C Title</span>
+                      <label class="toggle-switch"><input type="checkbox" id="tc-show-title" checked><span class="toggle-slider"></span></label>
+                    </div>
+                    <div style="margin-bottom:8px;">
+                      <div class="modal-label" style="margin-bottom:4px;">Title Text</div>
+                      <input type="text" id="tc-title-text" value="Terms &amp; Conditions" class="modal-input" style="font-size:0.75rem;padding:7px 10px;">
+                    </div>
+                    <div style="margin-bottom:8px;">
+                      <div class="modal-label" style="margin-bottom:4px;">Terms Content</div>
+                      <textarea id="tc-content" style="width:100%;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:8px;font-size:0.7rem;font-family:'DM Sans',sans-serif;resize:vertical;outline:none;line-height:1.5;" rows="5" placeholder="Enter one term per line…"></textarea>
+                      <div style="font-size:0.6rem;color:var(--text-muted);margin-top:3px;">One term per line. Numbers added automatically.</div>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <div style="flex:1;min-width:80px;">
+                        <div class="modal-label" style="margin-bottom:4px;">Text Color</div>
+                        <input type="color" id="tc-color" value="#64748b" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+                      </div>
+                      <div style="flex:1;min-width:80px;">
+                        <div class="modal-label" style="margin-bottom:4px;">BG Color</div>
+                        <input type="color" id="tc-bg-color" value="#f8fafc" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+                      </div>
+                      <div style="flex:1;min-width:80px;">
+                        <div class="modal-label" style="margin-bottom:4px;">Border</div>
+                        <input type="color" id="tc-border-color" value="#e2e8f0" style="width:28px;height:22px;border:none;border-radius:4px;cursor:pointer;background:none;padding:0;">
+                      </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                      <div class="modal-label" style="margin-bottom:4px;">Font Size</div>
+                      <select id="tc-font-size" class="group-select">
+                        <option value="7px">Tiny (7px)</option>
+                        <option value="8px" selected>Small (8px)</option>
+                        <option value="9px">Medium (9px)</option>
+                        <option value="10px">Normal (10px)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <button id="btn-builder-apply" class="builder-apply-btn">

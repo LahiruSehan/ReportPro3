@@ -55,6 +55,18 @@ class BizSensePro {
         bgColor: '#f8fafc',
         showTitle: true,
         titleText: 'Terms & Conditions',
+        showOnFinal: true,
+        showOnDraft: false,
+      })),
+      termsDraftContent: localStorage.getItem('biz_terms_draft') || '1. Prices shown are system prices for accounting reference only.\n2. Any special or discounted rates are applicable only upon settlement within the mutually agreed credit period. Discounts will be applied at the time of settlement, and payments received beyond the agreed timeline will be settled at the standard system price applicable for the relevant period.',
+      termsDraftConfig: JSON.parse(localStorage.getItem('biz_terms_draft_config') || JSON.stringify({
+        fontSize: '8px',
+        titleFontSize: '9px',
+        color: '#64748b',
+        borderColor: '#e2e8f0',
+        bgColor: '#f8fafc',
+        showTitle: true,
+        titleText: 'Terms & Conditions',
       })),
       searchField: localStorage.getItem('biz_search_field') || 'name', // 'name' | 'id' | 'phone'
       datePriceRules: JSON.parse(localStorage.getItem('biz_date_price_rules') || '[]'),
@@ -723,6 +735,7 @@ class BizSensePro {
   _populateBuilderStampTCFields() {
     const sc = this.state.stampConfig;
     const tc = this.state.termsConfig;
+    const tdc = this.state.termsDraftConfig;
     const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
     const setC = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
     setV('stamp-draft-color', sc.draftColor);
@@ -732,6 +745,8 @@ class BizSensePro {
     setV('stamp-rotation', sc.stampRotation);
     setV('stamp-opacity', sc.stampOpacity);
     setV('stamp-border-width', sc.stampBorderWidth);
+    // Final Bill T&C
+    setC('tc-show-final', tc.showOnFinal !== false);
     setC('tc-show-title', tc.showTitle);
     setV('tc-title-text', tc.titleText);
     setV('tc-color', tc.color);
@@ -740,6 +755,30 @@ class BizSensePro {
     setV('tc-font-size', tc.fontSize);
     const tcEl = document.getElementById('tc-content');
     if (tcEl) tcEl.value = this.state.termsContent || '';
+    // Draft Bill T&C
+    setC('tc-show-draft', tc.showOnDraft === true);
+    setC('tc-show-title-draft', tdc.showTitle);
+    setV('tc-title-text-draft', tdc.titleText);
+    setV('tc-color-draft', tdc.color);
+    setV('tc-bg-color-draft', tdc.bgColor);
+    setV('tc-border-color-draft', tdc.borderColor);
+    setV('tc-font-size-draft', tdc.fontSize);
+    const tcDraftEl = document.getElementById('tc-content-draft');
+    if (tcDraftEl) tcDraftEl.value = this.state.termsDraftContent || '';
+    // Show/hide draft TC settings panel based on toggle
+    const draftSettings = document.getElementById('draft-tc-settings');
+    if (draftSettings) draftSettings.style.display = tc.showOnDraft ? 'block' : 'none';
+    const finalSettings = document.getElementById('final-tc-settings');
+    if (finalSettings) finalSettings.style.display = tc.showOnFinal !== false ? 'block' : 'none';
+    // Wire toggle show/hide
+    const draftToggle = document.getElementById('tc-show-draft');
+    if (draftToggle) draftToggle.onchange = () => {
+      if (draftSettings) draftSettings.style.display = draftToggle.checked ? 'block' : 'none';
+    };
+    const finalToggle = document.getElementById('tc-show-final');
+    if (finalToggle) finalToggle.onchange = () => {
+      if (finalSettings) finalSettings.style.display = finalToggle.checked ? 'block' : 'none';
+    };
   }
 
   applyBuilderConfigToUI() {
@@ -797,8 +836,9 @@ class BizSensePro {
     sc.stampBorderWidth = gV('stamp-border-width') || sc.stampBorderWidth;
     localStorage.setItem('biz_stamp_config', JSON.stringify(sc));
 
-    // Read T&C config
+    // Read Final Bill T&C config
     const tc = this.state.termsConfig;
+    tc.showOnFinal = document.getElementById('tc-show-final')?.checked ?? tc.showOnFinal;
     tc.showTitle = document.getElementById('tc-show-title')?.checked ?? tc.showTitle;
     tc.titleText = gV('tc-title-text') || tc.titleText;
     tc.color = gV('tc-color') || tc.color;
@@ -810,7 +850,23 @@ class BizSensePro {
       this.state.termsContent = tcContent;
       localStorage.setItem('biz_terms', tcContent);
     }
+    // Read Draft Bill T&C config
+    tc.showOnDraft = document.getElementById('tc-show-draft')?.checked ?? tc.showOnDraft;
     localStorage.setItem('biz_terms_config', JSON.stringify(tc));
+
+    const tdc = this.state.termsDraftConfig;
+    tdc.showTitle = document.getElementById('tc-show-title-draft')?.checked ?? tdc.showTitle;
+    tdc.titleText = gV('tc-title-text-draft') || tdc.titleText;
+    tdc.color = gV('tc-color-draft') || tdc.color;
+    tdc.bgColor = gV('tc-bg-color-draft') || tdc.bgColor;
+    tdc.borderColor = gV('tc-border-color-draft') || tdc.borderColor;
+    tdc.fontSize = gV('tc-font-size-draft') || tdc.fontSize;
+    const tcDraftContent = document.getElementById('tc-content-draft')?.value;
+    if (tcDraftContent !== undefined) {
+      this.state.termsDraftContent = tcDraftContent;
+      localStorage.setItem('biz_terms_draft', tcDraftContent);
+    }
+    localStorage.setItem('biz_terms_draft_config', JSON.stringify(tdc));
 
     this.renderStatementUI();
   }
@@ -2101,16 +2157,33 @@ class BizSensePro {
     ">${txt}</span>`;
   }
 
-  _renderTermsHtml() {
-    const tc = this.state.termsConfig;
-    const lines = (this.state.termsContent || '').split('\n').filter(l => l.trim());
-    return `
-      <div data-biz-tc="1" style="margin-top:1.5rem;padding:12px 16px;background:${tc.bgColor};border-radius:8px;border:1px solid ${tc.borderColor};page-break-inside:avoid;">
-        ${tc.showTitle ? `<div style="font-size:${tc.titleFontSize};font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${tc.color};margin-bottom:8px;">${tc.titleText}</div>` : ''}
-        <ol style="margin:0;padding-left:18px;font-size:${tc.fontSize};color:${tc.color};line-height:1.7;">
-          ${lines.map(l => `<li>${l.replace(/^\d+\.\s*/, '')}</li>`).join('')}
-        </ol>
-      </div>`;
+  _renderTermsHtml(mode) {
+    // mode: 'draft' | 'final' (defaults based on stampMode)
+    const isDraft = (mode || this.state.stampMode) === 'draft';
+    if (isDraft) {
+      const tc = this.state.termsConfig;
+      if (!tc.showOnDraft) return '';
+      const tdc = this.state.termsDraftConfig;
+      const lines = (this.state.termsDraftContent || '').split('\n').filter(l => l.trim());
+      return `
+        <div data-biz-tc="1" style="margin-top:1.5rem;padding:12px 16px;background:${tdc.bgColor};border-radius:8px;border:1px solid ${tdc.borderColor};page-break-inside:avoid;">
+          ${tdc.showTitle ? `<div style="font-size:${tdc.titleFontSize || '9px'};font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${tdc.color};margin-bottom:8px;">${tdc.titleText}</div>` : ''}
+          <ol style="margin:0;padding-left:18px;font-size:${tdc.fontSize};color:${tdc.color};line-height:1.7;">
+            ${lines.map(l => `<li>${l.replace(/^\d+\.\s*/, '')}</li>`).join('')}
+          </ol>
+        </div>`;
+    } else {
+      const tc = this.state.termsConfig;
+      if (!tc.showOnFinal && tc.showOnFinal !== undefined) return '';
+      const lines = (this.state.termsContent || '').split('\n').filter(l => l.trim());
+      return `
+        <div data-biz-tc="1" style="margin-top:1.5rem;padding:12px 16px;background:${tc.bgColor};border-radius:8px;border:1px solid ${tc.borderColor};page-break-inside:avoid;">
+          ${tc.showTitle ? `<div style="font-size:${tc.titleFontSize};font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:${tc.color};margin-bottom:8px;">${tc.titleText}</div>` : ''}
+          <ol style="margin:0;padding-left:18px;font-size:${tc.fontSize};color:${tc.color};line-height:1.7;">
+            ${lines.map(l => `<li>${l.replace(/^\d+\.\s*/, '')}</li>`).join('')}
+          </ol>
+        </div>`;
+    }
   }
 
   // ─────────────────────────────────────────
@@ -2164,7 +2237,7 @@ class BizSensePro {
       const tableStyle = tableEl?.getAttribute('style') || '';
       const beforeTable = this._getContentBefore(page, tableEl);
       const afterTable  = this._getContentAfter(page, tableEl);
-      const termsHtml   = this.state.stampMode === 'final' ? this._renderTermsHtml() : '';
+      const termsHtml   = this.state.stampMode !== 'none' ? this._renderTermsHtml() : '';
       const totalPages  = pageChunks.length;
 
       // Continuation page header: client name + stamp + page num
@@ -2206,10 +2279,12 @@ class BizSensePro {
     // For pages that didn't need splitting, inject T&C in place of placeholder
     if (!didSplit) {
       this.targets.renderArea.querySelectorAll('[data-biz-tc-placeholder]').forEach(ph => {
-        if (this.state.stampMode === 'final') {
+        const termsHtml = this.state.stampMode !== 'none' ? this._renderTermsHtml() : '';
+        if (termsHtml) {
           const tcDiv = document.createElement('div');
-          tcDiv.innerHTML = this._renderTermsHtml();
-          ph.replaceWith(tcDiv.firstElementChild);
+          tcDiv.innerHTML = termsHtml;
+          if (tcDiv.firstElementChild) ph.replaceWith(tcDiv.firstElementChild);
+          else ph.remove();
         } else {
           ph.remove();
         }
